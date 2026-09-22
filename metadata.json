@@ -1,0 +1,6 @@
+{
+  "name": "PrimeHire Assignment Portal",
+  "description": "An admin portal for managing assessment creation, candidate assignment, interview credentials, and communication workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

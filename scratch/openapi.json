@@ -1,0 +1,1708 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "/primehire/api/v1"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "HEALTH CHECK"
+        ],
+        "summary": "Health Check API",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assessment": {
+      "post": {
+        "tags": [
+          "ASSESSMENT"
+        ],
+        "summary": "Create Assessment",
+        "description": "PROTECTED RESOURCE: Only Partners can Access",
+        "operationId": "add_assessment_assessment_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PartnerAuthorization": []
+          }
+        ]
+      }
+    },
+    "/interview": {
+      "post": {
+        "tags": [
+          "INTERVIEW"
+        ],
+        "summary": "Schedule an Interview",
+        "description": "PROTECTED RESOURCE: Only Partners can Access",
+        "operationId": "schedule_interview_interview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleInterviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleInterviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PartnerAuthorization": []
+          }
+        ]
+      }
+    },
+    "/candidate/{candidate_id}/password": {
+      "put": {
+        "tags": [
+          "INTERVIEW"
+        ],
+        "summary": "Update password of a candidate",
+        "description": "PROTECTED RESOURCE: Only Partners can Access",
+        "operationId": "update_password_candidate__candidate_id__password_put",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            },
+            "name": "candidate_id",
+            "in": "path"
+          },
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "New Password"
+            },
+            "name": "new_password",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "206": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PartnerAuthorization": []
+          }
+        ]
+      }
+    },
+    "/interview/{interview_id}/reschedule": {
+      "put": {
+        "tags": [
+          "INTERVIEW"
+        ],
+        "summary": "Reschedule interview for a candidate",
+        "description": "PROTECTED RESOURCE: Only Partners can Access",
+        "operationId": "reschedule_interview_interview__interview_id__reschedule_put",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Interview Id"
+            },
+            "name": "interview_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RescheduleInterview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "206": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PartnerAuthorization": []
+          }
+        ]
+      }
+    },
+    "/candidate/login": {
+      "post": {
+        "tags": [
+          "CANDIDATE"
+        ],
+        "summary": "Candidate Login",
+        "description": "PUBLIC RESOURCE: Anyone can Access",
+        "operationId": "login_candidate_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateLoginResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidate/check-login-status": {
+      "get": {
+        "tags": [
+          "CANDIDATE"
+        ],
+        "summary": "Check Login Status",
+        "description": "PROTECTED RESOURCE: Only Candidates can Access",
+        "operationId": "check_login_status_candidate_check_login_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidate/instructions": {
+      "get": {
+        "tags": [
+          "CANDIDATE"
+        ],
+        "summary": "Load Instructions",
+        "description": "PROTECTED RESOURCE: Only Candidates can Access",
+        "operationId": "load_instructions_candidate_instructions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoadInstructions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidate/questions": {
+      "get": {
+        "tags": [
+          "CANDIDATE"
+        ],
+        "summary": "Load Questions",
+        "description": "PROTECTED RESOURCE: Only Candidates can Access",
+        "operationId": "load_questions_candidate_questions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoadQuestions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidate/submit": {
+      "post": {
+        "tags": [
+          "CANDIDATE"
+        ],
+        "summary": "Submit Interview",
+        "description": "PROTECTED RESOURCE: Only Candidates can Access",
+        "operationId": "submit_interview_candidate_submit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitInterview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/response/report-not-generated": {
+      "get": {
+        "tags": [
+          "REPORT"
+        ],
+        "summary": "Get responses for which report is not generated",
+        "description": "PROTECTED RESOURCE: Only Partners can Access",
+        "operationId": "report_not_generated_response_report_not_generated_get",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportNotGenerated"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PartnerAuthorization": []
+          }
+        ]
+      }
+    },
+    "/response/{response_id}/generate-report": {
+      "post": {
+        "tags": [
+          "REPORT"
+        ],
+        "summary": "Regenerate report",
+        "description": "PROTECTED RESOURCE: Only Partners can Access",
+        "operationId": "generate_report_response__response_id__generate_report_post",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Response Id"
+            },
+            "name": "response_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PartnerAuthorization": []
+          }
+        ]
+      }
+    },
+    "/interview/{interview_id}/status": {
+      "get": {
+        "tags": [
+          "REPORT"
+        ],
+        "summary": "Get status of an Interview",
+        "description": "PROTECTED RESOURCE: Only Partners can Access",
+        "operationId": "get_status_interview__interview_id__status_get",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Interview Id"
+            },
+            "name": "interview_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PartnerAuthorization": []
+          }
+        ]
+      }
+    },
+    "/interview/{interview_id}/report": {
+      "get": {
+        "tags": [
+          "REPORT"
+        ],
+        "summary": "Get Report of an Interview",
+        "description": "PROTECTED RESOURCE: Only Partners can Access",
+        "operationId": "get_report_interview__interview_id__report_get",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Interview Id"
+            },
+            "name": "interview_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PartnerAuthorization": []
+          }
+        ]
+      }
+    },
+    "/partner/add": {
+      "post": {
+        "tags": [
+          "PARTNER"
+        ],
+        "summary": "Add new partner",
+        "description": "PROTECTED RESOURCE: Only Super Admins can Access",
+        "operationId": "add_partner_partner_add_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddPartnerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddPartnerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SuperAdminAuthorization": []
+          }
+        ]
+      }
+    },
+    "/partner/{partner_id}/enable": {
+      "put": {
+        "tags": [
+          "PARTNER"
+        ],
+        "summary": "Enable partner",
+        "description": "PROTECTED RESOURCE: Only Super Admins can Access",
+        "operationId": "change_status_to_enabled_partner__partner_id__enable_put",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Partner Id"
+            },
+            "name": "partner_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "206": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SuperAdminAuthorization": []
+          }
+        ]
+      }
+    },
+    "/partner/{partner_id}/disable": {
+      "put": {
+        "tags": [
+          "PARTNER"
+        ],
+        "summary": "Disable partner",
+        "description": "PROTECTED RESOURCE: Only Super Admins can Access",
+        "operationId": "change_status_to_disabled_partner__partner_id__disable_put",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Partner Id"
+            },
+            "name": "partner_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "206": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SuperAdminAuthorization": []
+          }
+        ]
+      }
+    },
+    "/partner/all": {
+      "get": {
+        "tags": [
+          "PARTNER"
+        ],
+        "summary": "Get all partners",
+        "description": "PROTECTED RESOURCE: Only Super Admins can Access",
+        "operationId": "get_all_partners_partner_all_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetAllPartnersResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SuperAdminAuthorization": []
+          }
+        ]
+      }
+    },
+    "/partner/{partner_id}/credentials": {
+      "put": {
+        "tags": [
+          "PARTNER"
+        ],
+        "summary": "Reset Credentials of Partner",
+        "description": "PROTECTED RESOURCE: Only Super Admins can Access",
+        "operationId": "reset_credentials_partner__partner_id__credentials_put",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Partner Id"
+            },
+            "name": "partner_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "206": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SuperAdminAuthorization": []
+          }
+        ]
+      }
+    },
+    "/partner/{partner_id}/credits/recharge": {
+      "post": {
+        "tags": [
+          "CREDIT SYSTEM"
+        ],
+        "summary": "Recharge Credits for partner",
+        "description": "PROTECTED RESOURCE: Only Super Admins can Access",
+        "operationId": "recharge_credits_partner__partner_id__credits_recharge_post",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Partner Id"
+            },
+            "name": "partner_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditSystem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SuperAdminAuthorization": []
+          }
+        ]
+      }
+    },
+    "/partner/{partner_id}/credits/available": {
+      "get": {
+        "tags": [
+          "CREDIT SYSTEM"
+        ],
+        "summary": "Check available credits for partner",
+        "description": "PROTECTED RESOURCE: Only Super Admins can Access",
+        "operationId": "check_available_credits_partner__partner_id__credits_available_get",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Partner Id"
+            },
+            "name": "partner_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SuperAdminAuthorization": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddJobRequest": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "job_title": {
+            "type": "string",
+            "title": "Job Title"
+          },
+          "job_description": {
+            "type": "string",
+            "title": "Job Description"
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          },
+          "round_type": {
+            "$ref": "#/components/schemas/RoundType"
+          },
+          "questions": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "job_title",
+          "job_description",
+          "language",
+          "round_type",
+          "questions"
+        ],
+        "title": "AddJobRequest"
+      },
+      "AddPartnerRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "AddPartnerRequest"
+      },
+      "AddPartnerResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/schemas__partner__add_partner__Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "title": "AddPartnerResponse"
+      },
+      "AllResponses": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "responses": {
+            "items": {
+              "$ref": "#/components/schemas/EachResponse"
+            },
+            "type": "array",
+            "title": "Responses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "responses"
+        ],
+        "title": "AllResponses"
+      },
+      "Candidate": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time",
+            "default": "2026-06-26T16:44:16.850648"
+          },
+          "end_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Time",
+            "default": "2026-07-10T16:44:16.850656"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id"
+        ],
+        "title": "Candidate"
+      },
+      "CandidateLoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "CandidateLoginRequest"
+      },
+      "CandidateLoginResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "CandidateLoginResponse"
+      },
+      "Credentials": {
+        "properties": {
+          "access_key": {
+            "type": "string",
+            "title": "Access Key"
+          },
+          "secret_key": {
+            "type": "string",
+            "title": "Secret Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_key",
+          "secret_key"
+        ],
+        "title": "Credentials"
+      },
+      "CreditSystem": {
+        "properties": {
+          "total_credits": {
+            "type": "integer",
+            "title": "Total Credits",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "CreditSystem"
+      },
+      "EachPartner": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "is_enabled"
+        ],
+        "title": "EachPartner"
+      },
+      "EachResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "interview_id": {
+            "type": "string",
+            "title": "Interview Id"
+          },
+          "round_type": {
+            "type": "string",
+            "title": "Round Type"
+          },
+          "partner_id": {
+            "type": "string",
+            "title": "Partner Id"
+          },
+          "submitted_at": {
+            "type": "string",
+            "title": "Submitted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "interview_id",
+          "round_type",
+          "partner_id",
+          "submitted_at"
+        ],
+        "title": "EachResponse"
+      },
+      "FaceAPIAttributes": {
+        "properties": {
+          "ideal_environment": {
+            "type": "integer",
+            "title": "Ideal Environment",
+            "default": 0
+          },
+          "multiple_faces_detected": {
+            "type": "integer",
+            "title": "Multiple Faces Detected",
+            "default": 0
+          },
+          "tab_switching": {
+            "type": "integer",
+            "title": "Tab Switching",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "FaceAPIAttributes"
+      },
+      "GetAllPartnersResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/schemas__partner__get_all_partners__Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "title": "GetAllPartnersResponse"
+      },
+      "GetReport": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "title": "GetReport"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InstructionsData": {
+        "properties": {
+          "job_title": {
+            "type": "string",
+            "title": "Job Title"
+          },
+          "job_description": {
+            "type": "string",
+            "title": "Job Description"
+          },
+          "round_type": {
+            "$ref": "#/components/schemas/RoundType"
+          },
+          "instructions_page": {
+            "$ref": "#/components/schemas/InstructionsPage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_title",
+          "job_description",
+          "round_type",
+          "instructions_page"
+        ],
+        "title": "InstructionsData"
+      },
+      "InstructionsPage": {
+        "properties": {
+          "show_company_logo": {
+            "type": "boolean",
+            "title": "Show Company Logo"
+          },
+          "show_partner_logo": {
+            "type": "boolean",
+            "title": "Show Partner Logo"
+          },
+          "company_logo": {
+            "type": "string",
+            "title": "Company Logo"
+          },
+          "partner_logo": {
+            "type": "string",
+            "title": "Partner Logo"
+          },
+          "instructions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Instructions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "show_company_logo",
+          "show_partner_logo",
+          "instructions"
+        ],
+        "title": "InstructionsPage"
+      },
+      "Interview": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "default": "some url comes here"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "default": "password"
+          },
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "candidate_id"
+        ],
+        "title": "Interview"
+      },
+      "Language": {
+        "enum": [
+          "ENGLISH",
+          "DUTCH"
+        ],
+        "title": "Language",
+        "description": "An enumeration."
+      },
+      "LoadInstructions": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/InstructionsData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "title": "LoadInstructions"
+      },
+      "LoadQuestions": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/schemas__assessment__load_questions__Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "title": "LoadQuestions"
+      },
+      "Option": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "data": {
+            "type": "string",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "data"
+        ],
+        "title": "Option"
+      },
+      "QuestionType": {
+        "enum": [
+          "MCQ",
+          "SPEAK_TO_ANSWER"
+        ],
+        "title": "QuestionType",
+        "description": "An enumeration."
+      },
+      "ReportNotGenerated": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AllResponses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "title": "ReportNotGenerated"
+      },
+      "RescheduleInterview": {
+        "properties": {
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time"
+          },
+          "end_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_time",
+          "end_time"
+        ],
+        "title": "RescheduleInterview"
+      },
+      "RoundType": {
+        "enum": [
+          "BASIC",
+          "TECHNICAL",
+          "HR"
+        ],
+        "title": "RoundType",
+        "description": "An enumeration."
+      },
+      "ScheduleInterviewRequest": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "round_type": {
+            "$ref": "#/components/schemas/RoundType"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidates",
+          "job_id",
+          "round_type"
+        ],
+        "title": "ScheduleInterviewRequest"
+      },
+      "ScheduleInterviewResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "$ref": "#/components/schemas/schemas__interview__schedule_interview_response__Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "data"
+        ],
+        "title": "ScheduleInterviewResponse"
+      },
+      "SubmitInterview": {
+        "properties": {
+          "questions": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/schemas__interview__submit_interview__AddMCQBasedQuestion"
+                },
+                {
+                  "$ref": "#/components/schemas/schemas__interview__submit_interview__AddVideoBasedQuestion"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "faceapi_attributes": {
+            "$ref": "#/components/schemas/FaceAPIAttributes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "questions"
+        ],
+        "title": "SubmitInterview"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "schemas__assessment__load_questions__AddMCQBasedQuestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "type": {
+            "$ref": "#/components/schemas/QuestionType"
+          },
+          "tts_url": {
+            "type": "string",
+            "title": "Tts Url"
+          },
+          "max_duration": {
+            "type": "integer",
+            "title": "Max Duration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "question",
+          "options",
+          "type",
+          "max_duration"
+        ],
+        "title": "AddMCQBasedQuestion"
+      },
+      "schemas__assessment__load_questions__AddVideoBasedQuestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "tts_url": {
+            "type": "string",
+            "title": "Tts Url"
+          },
+          "video_url": {
+            "type": "string",
+            "title": "Video Url"
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuestionType"
+              }
+            ],
+            "default": "SPEAK_TO_ANSWER"
+          },
+          "max_duration": {
+            "type": "integer",
+            "title": "Max Duration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "question",
+          "token",
+          "max_duration"
+        ],
+        "title": "AddVideoBasedQuestion"
+      },
+      "schemas__assessment__load_questions__Data": {
+        "properties": {
+          "questions": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/schemas__assessment__load_questions__AddMCQBasedQuestion"
+                },
+                {
+                  "$ref": "#/components/schemas/schemas__assessment__load_questions__AddVideoBasedQuestion"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "questions"
+        ],
+        "title": "Data"
+      },
+      "schemas__interview__schedule_interview_response__Data": {
+        "properties": {
+          "interviews": {
+            "items": {
+              "$ref": "#/components/schemas/Interview"
+            },
+            "type": "array",
+            "title": "Interviews"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interviews"
+        ],
+        "title": "Data"
+      },
+      "schemas__interview__submit_interview__AddMCQBasedQuestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "option_id": {
+            "type": "string",
+            "title": "Option Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "option_id"
+        ],
+        "title": "AddMCQBasedQuestion"
+      },
+      "schemas__interview__submit_interview__AddVideoBasedQuestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "video_id"
+        ],
+        "title": "AddVideoBasedQuestion"
+      },
+      "schemas__partner__add_partner__Data": {
+        "properties": {
+          "credentials": {
+            "$ref": "#/components/schemas/Credentials"
+          }
+        },
+        "type": "object",
+        "required": [
+          "credentials"
+        ],
+        "title": "Data"
+      },
+      "schemas__partner__get_all_partners__Data": {
+        "properties": {
+          "partners": {
+            "items": {
+              "$ref": "#/components/schemas/EachPartner"
+            },
+            "type": "array",
+            "title": "Partners"
+          }
+        },
+        "type": "object",
+        "required": [
+          "partners"
+        ],
+        "title": "Data"
+      }
+    },
+    "securitySchemes": {
+      "PartnerAuthorization": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "SuperAdminAuthorization": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
