@@ -71,14 +71,28 @@ async function startServer() {
     const queryString = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
     const targetUrl = `https://api.placement.vils.ai/primehire/api/v1${subpath}${queryString}`;
 
-    // Log with environment credentials confirmation
-    const hasCredentials = !!process.env.PRIMEHIRE_ACCESS_KEY && !!process.env.PRIMEHIRE_SECRET_KEY;
+    // Validate credentials BEFORE proxying so a missing .env produces an
+    // actionable error instead of a cryptic upstream "401: Invalid Credentials".
+    const accessKey = (process.env.PRIMEHIRE_ACCESS_KEY || "").trim();
+    const secretKey = (process.env.PRIMEHIRE_SECRET_KEY || "").trim();
+    const hasCredentials = !!accessKey && !!secretKey;
     console.log(`\n${'='.repeat(70)}`);
     console.log(`[Proxy] ${req.method} ${req.url} -> ${targetUrl}`);
     console.log(`[Auth] Credentials: ${hasCredentials ? '✓ PRESENT' : '✗ MISSING'}`);
 
-    const accessKey = process.env.PRIMEHIRE_ACCESS_KEY || "";
-    const secretKey = process.env.PRIMEHIRE_SECRET_KEY || "";
+    if (!hasCredentials) {
+      console.error(
+        `[Auth Error] PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY are missing or empty. ` +
+        `Create a .env file (see .env.example) and restart the server.`
+      );
+      console.log(`${'='.repeat(70)}\n`);
+      return res.status(500).json({
+        status: "ERROR",
+        type: "CONFIGURATION_ERROR",
+        message:
+          "PrimeHire credentials are not configured on the server (.env missing PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY). Add them and restart the server, then retry.",
+      });
+    }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -129,6 +143,14 @@ async function startServer() {
       console.log(`[Response Body] ↓↓↓`);
       console.log(JSON.stringify(responseBody, null, 2));
       console.log(`[Response Body] ↑↑↑`);
+
+      if (response.status === 401) {
+        console.error(
+          `[Auth Hint] Upstream PrimeHire API returned 401 Invalid Credentials. ` +
+          `Verify PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY values in .env are correct ` +
+          `and restart the server. Request: ${req.method} ${subpath}`
+        );
+      }
 
       console.log(`${'='.repeat(70)}\n`);
 

@@ -3,9 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { INITIAL_ASSESSMENTS, INITIAL_CANDIDATES, INITIAL_TEMPLATES } from './mockData';
-import { primehireClient } from './lib/primehireClient';
 import { AssessmentProfile, Candidate, MailTemplate } from './types';
 import Dashboard from './components/Dashboard';
 import AssessmentsAndAssignments from './components/AssessmentsAndAssignments';
@@ -13,34 +12,63 @@ import CandidateManagement from './components/CandidateManagement';
 import MailTemplates from './components/MailTemplates';
 import ReportDialog from './components/ReportDialog';
 import { Toaster } from '@/components/ui/sonner';
-import { 
-  LayoutDashboard, 
-  Users, 
-  Mail, 
-  Briefcase, 
-  ChevronRight, 
+import {
+  FrostedDetailPanel,
+  ModeToggle,
+  Pill,
+} from './components/ui/primitives';
+import {
+  LayoutDashboard,
+  Users,
+  Mail,
+  Briefcase,
   Menu,
   X,
   Zap,
-  Plus,
-  Download,
-  Filter,
   SlidersHorizontal,
-  Check,
-  RotateCcw
+  RotateCcw,
+  Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 const MODULE_TABS = [
-  { id: 'dashboard',   label: 'Dashboard Overview',    icon: LayoutDashboard },
-  { id: 'candidates',  label: 'Candidate Directory',   icon: Users },
-  { id: 'assessments', label: 'Assessments & Profiles', icon: Briefcase },
-  { id: 'templates',   label: 'Mail Templates',        icon: Mail },
+  { id: 'dashboard', label: 'Dashboard Overview', short: 'Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
+  { id: 'candidates', label: 'Candidate Directory', short: 'Candidates', icon: Users, desc: 'Pipeline, reports & credentials' },
+  { id: 'assessments', label: 'Assessments & Profiles', short: 'Assessments', icon: Briefcase, desc: 'Profiles, scheduling & links' },
+  { id: 'templates', label: 'Mail Templates', short: 'Templates', icon: Mail, desc: 'Invites & reminder sequences' },
 ];
+
+function useCompactHeader() {
+  const [compact, setCompact] = useState(false);
+  const rafRef = useRef<number | null>(null);
+  useEffect(() => {
+    const onScroll = () => {
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const y = window.scrollY;
+        setCompact((prev) => {
+          if (!prev && y > 72) return true;
+          if (prev && y < 32) return false;
+          return prev;
+        });
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+  return compact;
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const compact = useCompactHeader();
 
   // Global Filter State (preserved across navigation views)
   const [filterRound, setFilterRound] = useState<string>('ALL');
@@ -151,177 +179,196 @@ export default function App() {
         return {
           title: 'Executive Portal Dashboard',
           subtitle: 'Operational decision-support overview for assessment throughput, candidate evaluations, and performance metrics.',
-          actionLabel: 'Create Assessment',
-          actionTab: 'assessments'
         };
       case 'candidates':
         return {
           title: 'Candidate Directory & Pipeline',
           subtitle: 'Centralized directory monitoring candidate evaluation statuses, reports, and credential access.',
-          actionLabel: 'Schedule Candidates',
-          actionTab: 'assessments'
         };
       case 'assessments':
         return {
           title: 'Assessment Profiles & Scheduling',
           subtitle: 'Manage evaluation question sets, configure test bounds, and provision interview access links.',
-          actionLabel: 'New Assessment',
-          actionTab: 'assessments'
         };
       case 'templates':
         return {
           title: 'Email Templates & Communications',
           subtitle: 'Configure automated invite and reminder email templates with dynamic merge variables.',
-          actionLabel: 'New Template',
-          actionTab: 'templates'
         };
       default:
         return {
           title: 'Dashboard Overview',
           subtitle: 'Manage candidate assessment pipeline.',
-          actionLabel: 'Action',
-          actionTab: 'dashboard'
         };
     }
   };
 
   const moduleContext = getModuleContext();
+  const hasActiveFilters = filterRound !== 'ALL' || filterStatus !== 'ALL' || searchQuery;
 
   return (
-    <div className="min-h-screen flex flex-col font-sans" style={{ background: 'var(--canvas-gradient)' }}>
-      
-      {/* ════════════════════════════════════════════════════════════════
-          BAND 1 — MODULE NAVIGATION (Sticky White Top Bar)
-          ════════════════════════════════════════════════════════════════ */}
-      <header className="sticky top-0 z-30 bg-white border-b border-[var(--line)] shadow-2xs">
-        <div className="max-w-[1180px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          
-          {/* Product Identity */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-[var(--purple-700)] text-white flex items-center justify-center font-black shadow-xs">
-              <Zap className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-base font-extrabold tracking-tight text-[var(--ink)]">PrimeHire Agent</span>
-                <span className="chip chip-purple text-[10px] uppercase font-mono">v1.0 API</span>
+    <div className="min-h-screen bg-gradient-app text-foreground font-sans antialiased">
+      {/* fixed radial glows behind content */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(60rem 40rem at 15% 30%, oklch(0.55 0.2 285 / 0.12), transparent 70%)',
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(50rem 34rem at 85% 65%, oklch(0.7 0.17 150 / 0.10), transparent 70%)',
+          }}
+        />
+      </div>
+
+      {/* ── Collapsing purple header ─────────────────────────── */}
+      <header className="sticky top-0 z-30 bg-gradient-primary shadow-[var(--shadow-glow)] text-primary-foreground">
+        <div className="max-w-7xl mx-auto px-6">
+          {/* top row: brand + mode + mobile toggle */}
+          <div
+            className={cn(
+              'flex items-center justify-between gap-4 transition-all duration-[300ms] ease-out',
+              compact ? 'py-2.5 gap-3' : 'py-4 gap-4'
+            )}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className={cn(
+                  'rounded-xl bg-primary-foreground/10 border border-primary-foreground/15 backdrop-blur flex items-center justify-center text-primary-foreground font-extrabold transition-all duration-[300ms] ease-out shrink-0',
+                  compact ? 'w-8 h-8 scale-95' : 'w-10 h-10 scale-100'
+                )}
+              >
+                <Zap className={cn('transition-all duration-[300ms] ease-out', compact ? 'w-4 h-4' : 'w-5 h-5')} />
               </div>
-              <span className="eyebrow block text-[10px]">Assignment & Candidate Portal</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      'font-semibold tracking-tight truncate transition-all duration-[300ms] ease-out',
+                      compact ? 'text-base' : 'text-lg leading-[1.6rem]'
+                    )}
+                  >
+                    PrimeHire Analytics
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-primary-foreground/25 bg-primary-foreground/10 backdrop-blur px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                    v1.0
+                  </span>
+                </div>
+                {/* collapsible eyebrow — never unmounted */}
+                <div
+                  className={cn(
+                    'overflow-hidden transition-all duration-[300ms] ease-out',
+                    compact ? 'max-h-0 opacity-0' : 'max-h-6 opacity-100'
+                  )}
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
+                    Placement Analytics · Assignment Portal
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <div className="hidden sm:flex items-center gap-2.5 pr-1">
+                <div className="w-8 h-8 rounded-full bg-primary-foreground/15 border border-primary-foreground/20 flex items-center justify-center font-bold text-xs">
+                  PV
+                </div>
+                <div className="text-left hidden lg:block">
+                  <div className="font-semibold text-xs leading-tight">PNS Varma</div>
+                  <div className="text-[10px] uppercase tracking-wide text-primary-foreground/70 font-medium">Administrator</div>
+                </div>
+              </div>
+              <ModeToggle />
+              <button
+                onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+                aria-label="Toggle navigation"
+                className="md:hidden p-2 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 hover:bg-primary-foreground/20 transition cursor-pointer"
+              >
+                {isMobileNavOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
-          {/* Module Navigation Tabs (Horizontal scroll on mobile) */}
-          <nav className="hidden md:flex items-center gap-1 overflow-x-auto no-scrollbar">
-            {MODULE_TABS.map(({ id, label, icon: Icon }) => {
+          {/* collapsible title block — never unmounted */}
+          <div
+            className={cn(
+              'overflow-hidden transition-all duration-[300ms] ease-out',
+              compact ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
+            )}
+          >
+            <div className="pb-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
+                PrimeHire Agent Module
+              </div>
+              <h1 className="text-[1.875rem] leading-[2.25rem] font-semibold tracking-tight text-white">
+                {moduleContext.title}
+              </h1>
+              <p className="text-xs sm:text-sm text-primary-foreground/85 max-w-2xl font-medium leading-relaxed">
+                {moduleContext.subtitle}
+              </p>
+            </div>
+          </div>
+
+          {/* compact title (visible only when collapsed, kept mounted for animation) */}
+          <div
+            aria-hidden={!compact}
+            className={cn(
+              'overflow-hidden transition-all duration-[300ms] ease-out',
+              compact ? 'max-h-10 opacity-100 pb-2' : 'max-h-0 opacity-0'
+            )}
+          >
+            <div className="text-sm font-semibold tracking-tight truncate text-white">{moduleContext.title}</div>
+          </div>
+
+          {/* desktop module pills */}
+          <nav aria-label="Modules" className="hidden md:flex items-center gap-2 pb-3 overflow-x-auto no-scrollbar">
+            {MODULE_TABS.map(({ id, short, icon: Icon }) => {
               const isActive = activeTab === id;
               return (
                 <button
                   key={id}
+                  role="tab"
+                  aria-selected={isActive}
                   onClick={() => setActiveTab(id)}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all relative cursor-pointer ${
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border backdrop-blur transition-all duration-200 cursor-pointer whitespace-nowrap',
                     isActive
-                      ? 'bg-[var(--purple-50)] text-[var(--purple-700)]'
-                      : 'text-[var(--muted-ink)] hover:text-[var(--ink)] hover:bg-slate-50'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-[var(--purple-600)]' : 'text-slate-400'}`} />
-                  <span>{label}</span>
-                  {isActive && (
-                    <div className="absolute bottom-0 left-3 right-3 h-0.5 bg-[var(--purple-600)] rounded-full" />
+                      ? 'bg-primary-foreground text-primary border-primary-foreground shadow-[var(--shadow-glow)]'
+                      : 'border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20'
                   )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {short}
                 </button>
               );
             })}
+            <span className="ml-auto hidden lg:inline-flex items-center rounded-full border border-primary-foreground/25 bg-primary-foreground/10 px-2.5 py-1 text-[11px] font-medium tabular-nums">
+              {assessments.length} assessments · {candidates.length} candidates
+            </span>
           </nav>
 
-          {/* User Profile / Mobile Toggle */}
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2.5 pl-3 border-l border-[var(--line)]">
-              <div className="w-8 h-8 rounded-full bg-[var(--purple-700)] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
-                PV
-              </div>
-              <div className="text-left text-xs">
-                <div className="font-bold text-[var(--ink)] leading-tight">PNS Varma</div>
-                <div className="text-[10px] text-[var(--muted-ink)] font-medium">Administrator</div>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
-              className="md:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
-            >
-              {isMobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Navigation Dropdown */}
-        {isMobileNavOpen && (
-          <div className="md:hidden border-t border-[var(--line)] bg-white px-4 py-3 space-y-1">
-            {MODULE_TABS.map(({ id, label, icon: Icon }) => {
-              const isActive = activeTab === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => { setActiveTab(id); setIsMobileNavOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer ${
-                    isActive
-                      ? 'bg-[var(--purple-50)] text-[var(--purple-700)]'
-                      : 'text-[var(--muted-ink)] hover:bg-slate-50'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 text-[var(--purple-600)]" />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </header>
-
-      {/* ════════════════════════════════════════════════════════════════
-          BAND 2 — MODULE CONTEXT (Purple Branded Header)
-          ════════════════════════════════════════════════════════════════ */}
-      <section 
-        className="py-8 px-4 sm:px-6 shadow-md text-white border-b border-purple-900/30"
-        style={{ background: 'linear-gradient(120deg, #3b0764 0%, #581c87 55%, #6b21a8 100%)' }}
-      >
-        <div className="max-w-[1180px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-200 font-mono">
-              PRIMEHIRE AGENT MODULE
+          {/* filter row — on-brand glass */}
+          <div
+            className={cn(
+              'flex flex-wrap items-center gap-2 transition-all duration-[300ms] ease-out',
+              compact ? 'pb-2.5' : 'pb-4'
+            )}
+          >
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70 mr-1">
+              <SlidersHorizontal className="w-3.5 h-3.5" /> Filters
             </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-xs">
-              {moduleContext.title}
-            </h1>
-            <p className="text-xs sm:text-sm text-purple-100 max-w-2xl font-medium leading-relaxed opacity-95">
-              {moduleContext.subtitle}
-            </p>
-          </div>
-
-        </div>
-      </section>
-
-      {/* ════════════════════════════════════════════════════════════════
-          BAND 3 — MODULE FILTERS (White Separated Filter Bar)
-          ════════════════════════════════════════════════════════════════ */}
-      <section className="bg-white border-b border-[var(--line)] py-3 px-4 sm:px-6 shadow-2xs">
-        <div className="max-w-[1180px] mx-auto flex flex-wrap items-center justify-between gap-3">
-          
-          {/* Left: Filter dropdowns */}
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5 text-[var(--muted-ink)] font-bold text-[11px] uppercase tracking-wider mr-1">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--purple-600)]" />
-              Filters:
-            </div>
-
-            {/* Filter 1: Round Type */}
-            <div className="flex items-center gap-1 bg-slate-50 border border-[var(--line)] rounded-lg px-2.5 py-1.5">
-              <span className="text-[10px] font-bold text-[var(--muted-ink)] uppercase">Round:</span>
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 backdrop-blur px-3 py-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-foreground/70">Round</span>
               <select
+                aria-label="Round filter"
                 value={filterRound}
                 onChange={(e) => setFilterRound(e.target.value)}
-                className="bg-transparent text-xs font-bold text-[var(--ink)] focus:outline-hidden cursor-pointer"
+                className="bg-transparent text-xs font-semibold text-primary-foreground focus:outline-none cursor-pointer [&>option]:text-foreground"
               >
                 <option value="ALL">All Rounds</option>
                 <option value="BASIC">BASIC</option>
@@ -329,14 +376,13 @@ export default function App() {
                 <option value="HR">HR</option>
               </select>
             </div>
-
-            {/* Filter 2: Evaluation Status */}
-            <div className="flex items-center gap-1 bg-slate-50 border border-[var(--line)] rounded-lg px-2.5 py-1.5">
-              <span className="text-[10px] font-bold text-[var(--muted-ink)] uppercase">Report:</span>
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 backdrop-blur px-3 py-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-foreground/70">Report</span>
               <select
+                aria-label="Report filter"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-transparent text-xs font-bold text-[var(--ink)] focus:outline-hidden cursor-pointer"
+                className="bg-transparent text-xs font-semibold text-primary-foreground focus:outline-none cursor-pointer [&>option]:text-foreground"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="GENERATED">Evaluated / Generated</option>
@@ -344,100 +390,175 @@ export default function App() {
                 <option value="PENDING">Pending / No Report</option>
               </select>
             </div>
-
-            {/* Filter 3: Search text input */}
-            <div className="relative min-w-[200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-primary-foreground/60" />
               <input
                 type="text"
-                placeholder="Search candidate name or title..."
+                aria-label="Search candidates"
+                placeholder="Search candidate or title..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-3 pr-8 py-1.5 text-xs rounded-lg border border-[var(--line)] bg-slate-50 text-[var(--ink)] focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[var(--purple-500)]"
+                className="w-56 rounded-full border border-primary-foreground/15 bg-primary-foreground/5 backdrop-blur pl-8 pr-8 py-1.5 text-xs text-primary-foreground placeholder:text-primary-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary-foreground/40"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-primary-foreground/70 hover:text-primary-foreground cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
-
-            {(filterRound !== 'ALL' || filterStatus !== 'ALL' || searchQuery) && (
+            {hasActiveFilters && (
               <button
-                onClick={() => {
-                  setFilterRound('ALL');
-                  setFilterStatus('ALL');
-                  setSearchQuery('');
-                }}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:underline cursor-pointer"
+                onClick={() => { setFilterRound('ALL'); setFilterStatus('ALL'); setSearchQuery(''); }}
+                className="inline-flex items-center gap-1 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 hover:bg-primary-foreground/20 px-3 py-1.5 text-[11px] font-semibold cursor-pointer transition"
               >
-                <RotateCcw className="w-3 h-3" />
-                Reset
+                <RotateCcw className="w-3 h-3" /> Reset
               </button>
             )}
           </div>
 
-          {/* Right: Directory Summary note */}
-          <div className="text-[11px] font-medium text-[var(--muted-ink)]">
-            Active Assessments: <strong className="text-[var(--ink)]">{assessments.length}</strong> • Total Candidates: <strong className="text-[var(--ink)]">{candidates.length}</strong>
-          </div>
+          {/* mobile nav */}
+          {isMobileNavOpen && (
+            <div className="md:hidden pb-3 grid grid-cols-2 gap-2">
+              {MODULE_TABS.map(({ id, label, icon: Icon }) => {
+                const isActive = activeTab === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => { setActiveTab(id); setIsMobileNavOpen(false); }}
+                    aria-pressed={isActive}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-2.5 rounded-2xl text-xs font-semibold border backdrop-blur cursor-pointer transition',
+                      isActive
+                        ? 'bg-primary-foreground text-primary border-primary-foreground'
+                        : 'border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground'
+                    )}
+                  >
+                    <Icon className="w-4 h-4" /> {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </section>
+      </header>
 
-      {/* ════════════════════════════════════════════════════════════════
-          MAIN CONTENT AREA (Max Width 1180px, Responsive Padding)
-          ════════════════════════════════════════════════════════════════ */}
-      <main className="flex-1 max-w-[1180px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {activeTab === 'dashboard' && (
-          <Dashboard 
-            assessments={assessments} 
-            candidates={candidates} 
-            filterRound={filterRound}
-            filterStatus={filterStatus}
-            searchQuery={searchQuery}
-            onNavigate={(tab) => setActiveTab(tab)} 
-          />
-        )}
-        {activeTab === 'candidates' && (
-          <CandidateManagement 
-            candidates={candidates} 
-            assessments={assessments} 
-            filterRound={filterRound}
-            filterStatus={filterStatus}
-            searchQuery={searchQuery}
-            onToggleCandidateStatus={handleToggleCandidateStatus} 
-            onOpenReport={handleOpenCandidateReport} 
-            onSetCandidates={handleSetCandidates} 
-          />
-        )}
-        {activeTab === 'assessments' && (
-          <AssessmentsAndAssignments 
-            assessments={assessments} 
-            candidates={candidates} 
-            templates={templates} 
-            onSetAssessments={handleSetAssessments} 
-            onSetCandidates={handleSetCandidates} 
-            onOpenReport={handleOpenCandidateReport} 
-          />
-        )}
-        {activeTab === 'templates' && (
-          <MailTemplates 
-            templates={templates} 
-            onSaveTemplate={handleSaveMailTemplate} 
-          />
-        )}
+      {/* ── Main: selectable cards + single frosted workspace ── */}
+      <main className="relative z-10 max-w-7xl w-full mx-auto px-6 py-8 space-y-6">
+        {/* selectable domain cards */}
+        <div role="tablist" aria-label="Placement domains" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {MODULE_TABS.map(({ id, label, desc, icon: Icon }) => {
+            const isActive = activeTab === id;
+            const count = id === 'dashboard'
+              ? `${assessments.length} profiles`
+              : id === 'candidates'
+                ? `${candidates.length} records`
+                : id === 'assessments'
+                  ? `${assessments.length} active`
+                  : `${templates.length} templates`;
+            return (
+              <div key={id} className="relative">
+                <button
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-pressed={isActive}
+                  onClick={() => setActiveTab(id)}
+                  className={cn(
+                    'w-full text-left rounded-2xl border p-5 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer',
+                    isActive
+                      ? 'border-primary bg-card shadow-[var(--shadow-card)] -translate-y-0.5'
+                      : 'border-border/70 bg-card shadow-[var(--shadow-card)] hover:-translate-y-0.5 hover:border-primary/40'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div
+                      className={cn(
+                        'w-10 h-10 rounded-xl flex items-center justify-center border shrink-0',
+                        isActive
+                          ? 'bg-gradient-primary text-primary-foreground border-transparent'
+                          : 'bg-accent/10 text-accent border-accent/15'
+                      )}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    {isActive && (
+                      <span className="w-5 h-5 rounded-full bg-gradient-primary text-primary-foreground flex items-center justify-center shrink-0 text-[10px] font-bold">
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-sm font-semibold text-foreground">{label}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
+                    <div className="mt-2">
+                      <Pill tone={isActive ? 'info' : 'neutral'}>{count}</Pill>
+                    </div>
+                  </div>
+                </button>
+                {isActive && (
+                  <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-primary" aria-hidden>
+                    <div className="w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-primary" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* single frosted workspace per screen */}
+        <FrostedDetailPanel panelKey={activeTab}>
+          {activeTab === 'dashboard' && (
+            <Dashboard
+              assessments={assessments}
+              candidates={candidates}
+              filterRound={filterRound}
+              filterStatus={filterStatus}
+              searchQuery={searchQuery}
+              onNavigate={(tab) => setActiveTab(tab)}
+            />
+          )}
+          {activeTab === 'candidates' && (
+            <CandidateManagement
+              candidates={candidates}
+              assessments={assessments}
+              filterRound={filterRound}
+              filterStatus={filterStatus}
+              searchQuery={searchQuery}
+              onToggleCandidateStatus={handleToggleCandidateStatus}
+              onOpenReport={handleOpenCandidateReport}
+              onSetCandidates={handleSetCandidates}
+            />
+          )}
+          {activeTab === 'assessments' && (
+            <AssessmentsAndAssignments
+              assessments={assessments}
+              candidates={candidates}
+              templates={templates}
+              onSetAssessments={handleSetAssessments}
+              onSetCandidates={handleSetCandidates}
+              onOpenReport={handleOpenCandidateReport}
+            />
+          )}
+          {activeTab === 'templates' && (
+            <MailTemplates
+              templates={templates}
+              onSaveTemplate={handleSaveMailTemplate}
+            />
+          )}
+        </FrostedDetailPanel>
       </main>
 
       {/* Candidate Evaluation Report Workspace */}
-      <ReportDialog 
-        isOpen={isReportOpen} 
-        candidate={reportCandidate} 
-        assessment={reportAssessment} 
-        allCandidates={candidates} 
-        onClose={() => setIsReportOpen(false)} 
-        onReportUpdated={handleReportUpdated} 
+      <ReportDialog
+        isOpen={isReportOpen}
+        candidate={reportCandidate}
+        assessment={reportAssessment}
+        allCandidates={candidates}
+        onClose={() => setIsReportOpen(false)}
+        onReportUpdated={handleReportUpdated}
       />
 
       <Toaster position="bottom-right" />

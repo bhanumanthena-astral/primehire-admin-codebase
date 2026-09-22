@@ -66,6 +66,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { SectionHeader, Panel, PanelTitle, Pill, PAButton, IconSquare, EmptyNote, Bar } from './ui/primitives';
 import { toast } from 'sonner';
 
 const LAYER2_OPTIONS: Record<string, string[]> = {
@@ -673,7 +674,12 @@ export default function AssessmentsAndAssignments({
       setCurrentView('LIST');
     } catch (err: any) {
       console.error('[Create Assessment Error]', err);
-      toast.error('Failed to create assessment: ' + (err.message || 'Unknown error'));
+      const rawMsg = err.message || 'Unknown error';
+      const isAuth = /401|invalid credentials|not configured|PRIMEHIRE_ACCESS_KEY/i.test(rawMsg);
+      // Keep entered form data intact on failure (no reset here) so nothing is lost.
+      toast.error('Failed to create assessment: ' + rawMsg, {
+        duration: isAuth ? 10000 : 5000,
+      });
     } finally {
       setIsSavingAssessment(false);
     }
@@ -1511,22 +1517,26 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
   };
 
   return (
-    <div className="space-y-6 text-[#111827]">
+    <div className="space-y-6 text-foreground">
       {/* =========================================================================
           VIEW 1: ASSESSMENT CARD LIST
           ========================================================================= */}
       {currentView === 'LIST' && (
         <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-xl font-bold text-[#111827] flex items-center gap-2">
-                Assessments & Candidate Assignments
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Establish individual assessment profiles, assign candidate schedules via CSV uploads, and monitor security access credentials.
-              </p>
+          <div className="flex justify-between items-start gap-4">
+            <div className="flex items-start gap-3">
+              <IconSquare><Cpu className="w-5 h-5" /></IconSquare>
+              <div>
+                <span className="eyebrow block">Profiles & scheduling</span>
+                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+                  Assessments & Candidate Assignments
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Establish individual assessment profiles, assign candidate schedules via CSV uploads, and monitor security access credentials.
+                </p>
+              </div>
             </div>
-            <button
+            <PAButton
               onClick={() => {
                 setEditingAssessmentId(null);
                 setFormJobId('JOB-' + generate32BitId());
@@ -1541,45 +1551,45 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 setFormEndDate('');
                 setCurrentView('CREATE');
               }}
-              className="btn-primary text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs"
+              className="shrink-0"
             >
               <Plus className="w-3.5 h-3.5" /> New Assessment
-            </button>
+            </PAButton>
           </div>
 
           {/* Info bar explaining where filters are */}
-          <div className="bg-[var(--purple-50)] border border-[var(--purple-100)] rounded-xl p-4 flex items-start gap-3">
-            <Info className="w-5 h-5 text-[var(--purple-600)] shrink-0 mt-0.5" />
-            <div className="text-xs text-[var(--ink)] space-y-1">
+          <div className="bg-accent/10 border border-accent/15 rounded-2xl p-4 flex items-start gap-3">
+            <Info className="w-5 h-5 text-accent shrink-0 mt-0.5" />
+            <div className="text-xs text-foreground space-y-1">
               <p className="font-bold">Looking for Candidate Evaluation Filters?</p>
-              <p className="text-[var(--muted-ink)] font-medium">
-                We've integrated the <strong className="text-[var(--purple-700)] font-bold">LinkedIn-style cascading pipeline filters</strong> in two prominent places:
+              <p className="text-muted-foreground font-medium">
+                We've integrated the <strong className="text-accent font-bold">LinkedIn-style cascading pipeline filters</strong> in two prominent places:
               </p>
-              <ul className="list-disc list-inside mt-1 space-y-0.5 font-medium text-[var(--muted-ink)]">
-                <li>Globally under the <strong className="text-[var(--purple-700)] font-bold">Candidate Directory</strong> tab (to filter candidates from all assessments at once).</li>
-                <li>Individually by clicking <strong className="text-[var(--purple-700)] font-bold">"View Detail"</strong> on any assessment card below (to focus on candidates for that specific profile).</li>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 font-medium text-muted-foreground">
+                <li>Globally under the <strong className="text-accent font-bold">Candidate Directory</strong> tab (to filter candidates from all assessments at once).</li>
+                <li>Individually by clicking <strong className="text-accent font-bold">"View Detail"</strong> on any assessment card below (to focus on candidates for that specific profile).</li>
               </ul>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {assessments.map((asm) => {
               const assessmentCandidates = candidates.filter(c => c.assessmentId === asm.id);
               const activeCandCount = assessmentCandidates.filter(c => c.status === 'ACTIVE').length;
               return (
                 <div
                   key={asm.id}
-                  className={`bg-white rounded-xl border p-5 shadow-xs transition flex flex-col justify-between h-[255px] relative ${
-                    asm.isActive 
-                      ? 'border-gray-200' 
-                      : 'border-gray-150 bg-gray-50/50 opacity-75'
+                  className={`bg-card rounded-2xl border border-border/70 p-5 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between min-h-[255px] relative ${
+                    asm.isActive
+                      ? ''
+                      : 'opacity-75'
                   }`}
                 >
                   <div>
                     {/* Header: Title and edit options */}
                     <div className="flex items-start justify-between">
                       <div className="space-y-1 pr-12 min-w-0">
-                        <h3 className="text-sm font-bold text-[#111827] truncate" title={asm.jobTitle}>
+                        <h3 className="text-sm font-bold text-foreground truncate" title={asm.jobTitle}>
                           {asm.jobTitle}
                         </h3>
                         <span className="text-[10px] text-gray-400 font-mono font-bold uppercase">
@@ -1592,7 +1602,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         {/* Quick Edit icon */}
                         <button
                           onClick={() => handleStartEditAssessment(asm)}
-                          className="p-1.5 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                          className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer"
                           title="Edit Assessment"
                         >
                           <Edit className="w-3.5 h-3.5" />
@@ -1605,7 +1615,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               e.stopPropagation();
                               setActiveDropdownAsmId(activeDropdownAsmId === asm.id ? null : asm.id);
                             }}
-                            className="p-1.5 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer"
                             title="Actions"
                           >
                             <MoreVertical className="w-3.5 h-3.5" />
@@ -1617,24 +1627,24 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                 className="fixed inset-0 z-10" 
                                 onClick={() => setActiveDropdownAsmId(null)} 
                               />
-                              <div className="absolute right-0 mt-1.5 w-36 rounded-lg bg-white border border-slate-200 shadow-md z-20 py-1 text-left">
+                              <div className="absolute right-0 mt-1.5 w-36 rounded-lg bg-card border border-border/70 shadow-md z-20 py-1 text-left">
                                 <button
                                   onClick={() => {
                                     handleStartEditAssessment(asm);
                                     setActiveDropdownAsmId(null);
                                   }}
-                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700 flex items-center gap-2"
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/40 text-foreground flex items-center gap-2"
                                 >
-                                  <Edit className="w-3 h-3 text-slate-400" /> Edit Profile
+                                  <Edit className="w-3 h-3 text-muted-foreground" /> Edit Profile
                                 </button>
                                 <button
                                   onClick={() => {
                                     handleToggleAssessmentActiveState(asm.id);
                                     setActiveDropdownAsmId(null);
                                   }}
-                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700 flex items-center gap-2 font-medium"
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/40 text-foreground flex items-center gap-2 font-medium"
                                 >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${asm.isActive ? 'bg-red-500' : 'bg-emerald-500'}`} />
+                                  <span className={`w-1.5 h-1.5 rounded-full ${asm.isActive ? 'bg-destructive' : 'bg-success'}`} />
                                   {asm.isActive ? 'Deactivate' : 'Activate'}
                                 </button>
                               </div>
@@ -1648,15 +1658,15 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     <div className="flex flex-wrap gap-2 mt-4">
                       <span className={`text-[9px] font-bold tracking-wider px-2 py-0.5 rounded border ${
                         asm.roundType === 'TECHNICAL' ? 'bg-gray-100 border-gray-300 text-gray-800' :
-                        asm.roundType === 'BASIC' ? 'bg-gray-50 border-gray-200 text-gray-700' :
-                        'bg-gray-50 border-gray-150 text-gray-600'
+                        asm.roundType === 'BASIC' ? 'bg-muted/40 border-gray-200 text-foreground' :
+                        'bg-muted/40 border-gray-150 text-gray-600'
                       }`}>
                         {asm.roundType}
                       </span>
-                      <span className="text-[9px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded">
+                      <span className="text-[9px] font-semibold text-muted-foreground bg-muted/40 border border-border/70 px-2 py-0.5 rounded">
                         {asm.questions.length} Questions
                       </span>
-                      <span className="text-[9px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded">
+                      <span className="text-[9px] font-semibold text-muted-foreground bg-muted/40 border border-border/70 px-2 py-0.5 rounded">
                         {assessmentCandidates.length} Registered
                       </span>
                     </div>
@@ -1665,12 +1675,12 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     <div className="text-[10px] text-gray-400 mt-4 space-y-0.5">
                       <div>Created: {new Date(asm.createdAt).toLocaleDateString()}</div>
                       {asm.startDate && asm.endDate && (
-                        <div className="text-slate-500 font-medium">
+                        <div className="text-muted-foreground font-medium">
                           Active Window: {new Date(asm.startDate).toLocaleDateString()} - {new Date(asm.endDate).toLocaleDateString()}
                         </div>
                       )}
                       {!asm.isActive && asm.deactivatedAt && (
-                        <div className="text-red-500 font-semibold">
+                        <div className="text-destructive font-semibold">
                           Deactivated: {new Date(asm.deactivatedAt).toLocaleDateString()}
                         </div>
                       )}
@@ -1684,7 +1694,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         setSelectedAssessmentId(asm.id);
                         setCurrentView('DETAIL');
                       }}
-                      className="flex-1 text-center border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold py-2 rounded-md transition flex items-center justify-center gap-1 cursor-pointer"
+                      className="flex-1 text-center border border-border/70 hover:bg-muted/40 text-foreground text-xs font-semibold py-2 rounded-md transition flex items-center justify-center gap-1 cursor-pointer"
                     >
                       <Eye className="w-3.5 h-3.5" /> View Detail
                     </button>
@@ -1696,8 +1706,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       disabled={!asm.isActive}
                       className={`flex-1 text-center text-xs font-bold py-2 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer ${
                         asm.isActive
-                          ? 'bg-[var(--purple-700)] hover:bg-[var(--purple-600)] text-white shadow-xs'
-                          : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                          ? 'bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 text-white shadow-xs'
+                          : 'bg-gray-100 text-gray-400 border border-border/70 cursor-not-allowed'
                       }`}
                     >
                       <UserPlus className="w-3.5 h-3.5" /> Assignments
@@ -1720,22 +1730,22 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
           VIEW 2: CREATION / EDIT MODULE
           ========================================================================= */}
       {(currentView === 'CREATE' || currentView === 'EDIT') && (
-        <div className="space-y-6 text-[#111827]">
+        <div className="space-y-6 text-foreground">
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
                 setCurrentView('LIST');
                 setEditingAssessmentId(null);
               }}
-              className="p-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 transition cursor-pointer"
+              className="p-1.5 rounded-md border border-border/70 bg-card hover:bg-muted/40 text-foreground transition cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
             </button>
             <div>
-              <h2 className="text-lg font-bold text-[#111827]">
+              <h2 className="text-lg font-bold text-foreground">
                 {currentView === 'EDIT' ? 'Edit Assessment Profile' : 'Create Assessment Profile'}
               </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {currentView === 'EDIT' 
                   ? 'Modify the structure, questions, and parameters for candidate evaluative screens.' 
                   : 'Design the structure, questions, and parameters for candidate evaluative screens.'}
@@ -1745,19 +1755,19 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left Columns: Parameters Form */}
-            <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-6">
+            <div className="lg:col-span-2 bg-card p-6 rounded-xl border border-border/70 shadow-sm space-y-6">
               {/* Header block */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700">
-                    Job ID <span className="text-red-500">*</span> <span className="text-[10px] text-gray-400 font-normal">(32-bit System Generated)</span>
+                  <label className="text-xs font-bold text-foreground">
+                    Job ID <span className="text-destructive">*</span> <span className="text-[10px] text-gray-400 font-normal">(32-bit System Generated)</span>
                   </label>
                   <div className="flex gap-2">
                     <Input
                       readOnly
                       placeholder="e.g. JOB-705"
                       value={formJobId}
-                      className="text-xs bg-gray-50 text-gray-500 select-all flex-1"
+                      className="text-xs bg-muted/40 text-muted-foreground select-all flex-1"
                     />
                     <Button
                       type="button"
@@ -1775,8 +1785,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700">
-                    Job Title <span className="text-red-500">*</span>
+                  <label className="text-xs font-bold text-foreground">
+                    Job Title <span className="text-destructive">*</span>
                   </label>
                   <Input
                     placeholder="e.g. Technical Project Lead"
@@ -1788,8 +1798,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-700">
-                  Job Description <span className="text-red-500">*</span>
+                <label className="text-xs font-bold text-foreground">
+                  Job Description <span className="text-destructive">*</span>
                 </label>
                 <Textarea
                   placeholder="Outline responsibilities, daily operations, and technical stack parameters..."
@@ -1802,13 +1812,13 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700">
+                  <label className="text-xs font-bold text-foreground">
                     Language Selection
                   </label>
                   <select
                     value={formLanguage}
                     onChange={(e) => setFormLanguage(e.target.value)}
-                    className="w-full text-xs rounded-md border border-gray-200 bg-white p-2.5 text-[#111827] focus:outline-hidden"
+                    className="w-full text-xs rounded-md border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden"
                   >
                     <option value="ENGLISH">English</option>
                     <option value="DUTCH">Dutch</option>
@@ -1817,8 +1827,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700">
-                    Round Type <span className="text-red-500">*</span>
+                  <label className="text-xs font-bold text-foreground">
+                    Round Type <span className="text-destructive">*</span>
                   </label>
                   <select
                     disabled={currentView === 'EDIT'}
@@ -1837,8 +1847,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         ]);
                       }
                     }}
-                    className={`w-full text-xs rounded-md border border-gray-200 bg-white p-2.5 text-[#111827] focus:outline-hidden font-bold ${
-                      currentView === 'EDIT' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
+                    className={`w-full text-xs rounded-md border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden font-bold ${
+                      currentView === 'EDIT' ? 'bg-gray-100 text-muted-foreground cursor-not-allowed' : ''
                     }`}
                   >
                     <option value="TECHNICAL">TECHNICAL (Coding & Technical Speech)</option>
@@ -1851,8 +1861,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               {/* Start Date & End Date Inputs */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-150 pt-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700">
-                    Start Date <span className="text-red-500">*</span>
+                  <label className="text-xs font-bold text-foreground">
+                    Start Date <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="datetime-local"
@@ -1863,8 +1873,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700">
-                    End Date <span className="text-red-500">*</span>
+                  <label className="text-xs font-bold text-foreground">
+                    End Date <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="datetime-local"
@@ -1883,7 +1893,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   </span>
                   <button
                     onClick={handleAddQuestion}
-                    className="text-xs font-semibold text-gray-600 hover:text-[#111827] hover:underline flex items-center gap-1 transition cursor-pointer"
+                    className="text-xs font-semibold text-gray-600 hover:text-foreground hover:underline flex items-center gap-1 transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> Add Question Card
                   </button>
@@ -1891,11 +1901,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                 <div className="space-y-4">
                   {formQuestions.map((q, idx) => (
-                    <div key={q.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/30 space-y-4 relative">
+                    <div key={q.id} className="p-4 rounded-xl border border-border/70 bg-muted/40/30 space-y-4 relative">
                       {/* Close button */}
                       <button
                         onClick={() => handleRemoveQuestion(idx)}
-                        className="absolute right-3 top-3 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-red-500 transition"
+                        className="absolute right-3 top-3 p-1 rounded-lg hover:bg-muted dark:hover:bg-slate-800 text-muted-foreground hover:text-destructive transition"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1903,11 +1913,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       {/* Header block within card */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Question Type</label>
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase">Question Type</label>
                           <select
                             value={q.type}
                             onChange={(e) => handleUpdateQuestion(idx, { type: e.target.value as QuestionType })}
-                            className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 focus:outline-hidden"
+                            className="w-full text-xs rounded-lg border border-border/70 bg-card p-2 focus:outline-hidden"
                           >
                             <option value="SPEAK_TO_ANSWER">SPEAK_TO_ANSWER</option>
                             <option value="MCQ">MCQ</option>
@@ -1915,33 +1925,33 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Max Duration (Seconds)</label>
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase">Max Duration (Seconds)</label>
                           <Input
                             type="number"
                             value={q.maxDuration}
                             onChange={(e) => handleUpdateQuestion(idx, { maxDuration: Number(e.target.value) })}
-                            className="text-xs bg-white"
+                            className="text-xs bg-card"
                           />
                         </div>
 
                         {formRoundType !== 'HR' && (
                           <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase">Max Score</label>
+                              <label className="text-[10px] font-bold text-muted-foreground uppercase">Max Score</label>
                               <Input
                                 type="number"
                                 value={q.maxScore || 0}
                                 onChange={(e) => handleUpdateQuestion(idx, { maxScore: Number(e.target.value) })}
-                                className="text-xs bg-white"
+                                className="text-xs bg-card"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase">Weightage %</label>
+                              <label className="text-[10px] font-bold text-muted-foreground uppercase">Weightage %</label>
                               <Input
                                 type="number"
                                 value={q.weightage || 0}
                                 onChange={(e) => handleUpdateQuestion(idx, { weightage: Number(e.target.value) })}
-                                className="text-xs bg-white"
+                                className="text-xs bg-card"
                               />
                             </div>
                           </div>
@@ -1950,54 +1960,54 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                       {/* Question Content Input */}
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Question Prompt / Text</label>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Question Prompt / Text</label>
                         <Textarea
                           placeholder="e.g. Write a React hook to manage debounce input schedules..."
                           rows={2}
                           value={q.text}
                           onChange={(e) => handleUpdateQuestion(idx, { text: e.target.value })}
-                          className="text-xs bg-white"
+                          className="text-xs bg-card"
                         />
                       </div>
 
                       {/* CONDITIONAL EXTRA FIELDS */}
                       {/* 1. TECHNICAL + SPEAK_TO_ANSWER -> Reference Answer */}
                       {formRoundType === 'TECHNICAL' && q.type === 'SPEAK_TO_ANSWER' && (
-                        <div className="space-y-1.5 border-t border-slate-100 dark:border-slate-800 pt-3.5">
+                        <div className="space-y-1.5 border-t border-slate-100 pt-3.5">
                           <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase flex items-center gap-1">
-                            <Sparkles className="w-3 h-3" /> Expected Reference Answer <span className="text-red-500">*</span>
+                            <Sparkles className="w-3 h-3" /> Expected Reference Answer <span className="text-destructive">*</span>
                           </label>
                           <Textarea
                             placeholder="Provide details on correct concepts, structures, or terminology the candidate speech must address..."
                             rows={2}
                             value={q.referenceAnswer || ''}
                             onChange={(e) => handleUpdateQuestion(idx, { referenceAnswer: e.target.value })}
-                            className="text-xs bg-white"
+                            className="text-xs bg-card"
                           />
                         </div>
                       )}
 
                       {/* 2. BASIC + SPEAK_TO_ANSWER -> Rubric Criteria */}
                       {formRoundType === 'BASIC' && q.type === 'SPEAK_TO_ANSWER' && (
-                        <div className="space-y-1.5 border-t border-slate-100 dark:border-slate-800 pt-3.5">
+                        <div className="space-y-1.5 border-t border-slate-100 pt-3.5">
                           <label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
-                            Grading Rubric Criteria <span className="text-red-500">*</span>
+                            Grading Rubric Criteria <span className="text-destructive">*</span>
                           </label>
                           <Textarea
                             placeholder="Detail parameters such as Empathy, Problem Identification, Tone control, and Resolution cadence..."
                             rows={2}
                             value={q.criteria || ''}
                             onChange={(e) => handleUpdateQuestion(idx, { criteria: e.target.value })}
-                            className="text-xs bg-white"
+                            className="text-xs bg-card"
                           />
                         </div>
                       )}
 
                       {/* 3. MCQ Options list (Universal MCQ DISPLAY) */}
                       {q.type === 'MCQ' && (
-                        <div className="space-y-3.5 border-t border-slate-100 dark:border-slate-800 pt-3.5">
+                        <div className="space-y-3.5 border-t border-slate-100 pt-3.5">
                           <div className="flex justify-between items-center">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">MCQ Options Configuration</label>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase">MCQ Options Configuration</label>
                             <button
                               onClick={() => {
                                 const currentOpts = q.options || [];
@@ -2015,7 +2025,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                           <div className="space-y-2">
                             {(q.options || []).map((opt, optIdx) => (
                               <div key={optIdx} className="flex gap-2 items-center">
-                                <span className="text-xs font-mono font-bold text-slate-400">
+                                <span className="text-xs font-mono font-bold text-muted-foreground">
                                   {String.fromCharCode(65 + optIdx)}.
                                 </span>
                                 <Input
@@ -2025,14 +2035,14 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                     nextOpts[optIdx] = e.target.value;
                                     handleUpdateQuestion(idx, { options: nextOpts });
                                   }}
-                                  className="text-xs bg-white flex-1"
+                                  className="text-xs bg-card flex-1"
                                 />
                                 <button
                                   onClick={() => {
                                     const nextOpts = (q.options || []).filter((_, o) => o !== optIdx);
                                     handleUpdateQuestion(idx, { options: nextOpts });
                                   }}
-                                  className="p-1 rounded hover:bg-slate-150 text-slate-400"
+                                  className="p-1 rounded hover:bg-slate-150 text-muted-foreground"
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
@@ -2041,11 +2051,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                           </div>
 
                           <div className="space-y-1.5 mt-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Correct MCQ Option</label>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Correct MCQ Option</label>
                             <select
                               value={q.correctOption || ''}
                               onChange={(e) => handleUpdateQuestion(idx, { correctOption: e.target.value })}
-                              className="w-full text-xs rounded-lg border border-slate-200 bg-white p-2 focus:outline-hidden"
+                              className="w-full text-xs rounded-lg border border-border/70 bg-card p-2 focus:outline-hidden"
                             >
                               {(q.options || []).map((opt, o) => (
                                 <option key={o} value={opt}>{opt}</option>
@@ -2061,8 +2071,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             </div>
 
             {/* Right Column: Submission Summary & Weightage validation */}
-            <div className="space-y-6 text-[#111827]">
-              <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-4 shadow-sm">
+            <div className="space-y-6 text-foreground">
+              <div className="bg-card border border-border/70 p-5 rounded-xl space-y-4 shadow-sm">
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
                   Profile Summary
                 </span>
@@ -2070,11 +2080,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 <div className="space-y-3.5 text-xs">
                   <div className="flex justify-between font-bold">
                     <span className="text-gray-400">Round Type:</span>
-                    <span className="font-bold text-[#111827]">{formRoundType}</span>
+                    <span className="font-bold text-foreground">{formRoundType}</span>
                   </div>
                   <div className="flex justify-between font-bold font-semibold">
                     <span className="text-gray-400">Total Questions:</span>
-                    <span className="font-bold text-[#111827]">{formQuestions.length}</span>
+                    <span className="font-bold text-foreground">{formQuestions.length}</span>
                   </div>
 
                   {formRoundType !== 'HR' && (
@@ -2089,7 +2099,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       {/* Progress bar */}
                       <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
                         <div
-                          className={`h-full transition-all duration-300 ${totalWeightageSum === 100 ? 'bg-sky-600' : 'bg-amber-400'}`}
+                          className={`h-full ${totalWeightageSum === 100 ? 'bg-info' : 'bg-warning'}`}
                           style={{ width: `${Math.min(totalWeightageSum, 100)}%` }}
                         />
                       </div>
@@ -2100,7 +2110,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                           Sum of weightages must equal exactly 100% before submission can proceed.
                         </div>
                       ) : (
-                        <div className="text-[10px] text-gray-700 font-semibold flex items-center gap-1">
+                        <div className="text-[10px] text-foreground font-semibold flex items-center gap-1">
                           <CheckCircle className="w-3.5 h-3.5" /> Weightage criteria balanced.
                         </div>
                       )}
@@ -2114,7 +2124,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     id="sim-fail"
                     checked={simulateCreateFailure}
                     onChange={(e) => setSimulateCreateFailure(e.target.checked)}
-                    className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+                    className="rounded border-gray-300 text-info focus:ring-ring"
                   />
                   <label htmlFor="sim-fail" className="text-[10px] font-semibold text-gray-400 cursor-pointer select-none">
                     Simulate API POST Failure
@@ -2127,9 +2137,9 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     disabled={isSavingAssessment || (formRoundType !== 'HR' && totalWeightageSum !== 100)}
                     className={`w-full py-2.5 rounded text-xs font-semibold text-center text-white transition flex items-center justify-center gap-2 ${
                       isSavingAssessment
-                        ? 'bg-[var(--purple-700)]/70 cursor-wait'
+                        ? 'bg-gradient-primary opacity-70 cursor-wait'
                         : formRoundType === 'HR' || totalWeightageSum === 100
-                          ? 'bg-[var(--purple-700)] hover:bg-[var(--purple-600)] cursor-pointer shadow-xs'
+                          ? 'bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 cursor-pointer shadow-xs'
                           : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     }`}
                   >
@@ -2147,7 +2157,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       setCurrentView('LIST');
                       setEditingAssessmentId(null);
                     }}
-                    className="w-full py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded text-xs font-semibold text-center transition cursor-pointer"
+                    className="w-full py-2 bg-card border border-border/70 hover:bg-muted/40 text-foreground rounded text-xs font-semibold text-center transition cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -2164,15 +2174,15 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
       {currentView === 'DETAIL' && activeAssessment && (
         <div className="space-y-6">
           {/* Header row */}
-          <div className="flex items-center gap-3 text-[#111827]">
+          <div className="flex items-center gap-3 text-foreground">
             <button
               onClick={() => setCurrentView('LIST')}
-              className="p-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 transition cursor-pointer"
+              className="p-1.5 rounded-md border border-border/70 bg-card hover:bg-muted/40 text-foreground transition cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
             </button>
             <div>
-              <h2 className="text-lg font-bold text-[#111827]">
+              <h2 className="text-lg font-bold text-foreground">
                 {activeAssessment.jobTitle}
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">
@@ -2182,12 +2192,12 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
           </div>
 
           {/* Expanded Assessment details */}
-          <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
+          <div className="border border-border/70 rounded-xl overflow-hidden bg-card">
             {/* 1. Assessment General Details Accordion */}
-            <div className="border-b border-slate-200 dark:border-slate-800">
+            <div className="border-b border-border/70">
               <button
                 onClick={() => setExpandedDetails(!expandedDetails)}
-                className="w-full flex items-center justify-between p-4 font-bold text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider bg-slate-50/50 dark:bg-slate-950/20"
+                className="w-full flex items-center justify-between p-4 font-bold text-xs text-muted-foreground dark:text-muted-foreground uppercase tracking-wider bg-muted/40/50 dark:bg-slate-950/20"
               >
                 <span>Assessment Profile Details</span>
                 {expandedDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -2195,35 +2205,35 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
               {expandedDetails && (
                 <div className="p-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-xs">
-                  <div className="p-3 bg-gray-50/60 border border-gray-200 rounded-lg space-y-1 shadow-2xs">
+                  <div className="p-3 bg-muted/40/60 border border-border/70 rounded-lg space-y-1 shadow-2xs">
                     <span className="text-gray-400 font-bold block uppercase tracking-wider text-[9px]">Title of Assessment</span>
-                    <span className="font-bold text-[#111827] text-xs truncate block" title={activeAssessment.jobTitle}>{activeAssessment.jobTitle}</span>
+                    <span className="font-bold text-foreground text-xs truncate block" title={activeAssessment.jobTitle}>{activeAssessment.jobTitle}</span>
                   </div>
-                  <div className="p-3 bg-gray-50/60 border border-gray-200 rounded-lg space-y-1 shadow-2xs">
+                  <div className="p-3 bg-muted/40/60 border border-border/70 rounded-lg space-y-1 shadow-2xs">
                     <span className="text-gray-400 font-bold block uppercase tracking-wider text-[9px]">Round Type</span>
-                    <span className="font-bold text-[#111827] text-xs block">{activeAssessment.roundType}</span>
+                    <span className="font-bold text-foreground text-xs block">{activeAssessment.roundType}</span>
                   </div>
-                  <div className="p-3 bg-gray-50/60 border border-gray-200 rounded-lg space-y-1 shadow-2xs">
+                  <div className="p-3 bg-muted/40/60 border border-border/70 rounded-lg space-y-1 shadow-2xs">
                     <span className="text-gray-400 font-bold block uppercase tracking-wider text-[9px]">Date of Creation</span>
-                    <span className="font-bold text-[#111827] text-xs block">
+                    <span className="font-bold text-foreground text-xs block">
                       {new Date(activeAssessment.createdAt).toLocaleDateString()}
                     </span>
                   </div>
-                  <div className="p-3 bg-gray-50/60 border border-gray-200 rounded-lg space-y-1 shadow-2xs">
+                  <div className="p-3 bg-muted/40/60 border border-border/70 rounded-lg space-y-1 shadow-2xs">
                     <span className="text-gray-400 font-bold block uppercase tracking-wider text-[9px]">Number of Candidates</span>
-                    <span className="font-bold text-[#111827] text-xs block">
+                    <span className="font-bold text-foreground text-xs block">
                       {activeAssessmentCandidates.length} Registered
                     </span>
                   </div>
-                  <div className="p-3 bg-gray-50/60 border border-gray-200 rounded-lg space-y-1 shadow-2xs">
+                  <div className="p-3 bg-muted/40/60 border border-border/70 rounded-lg space-y-1 shadow-2xs">
                     <span className="text-gray-400 font-bold block uppercase tracking-wider text-[9px]">Reports Generated</span>
                     <span className="font-bold text-emerald-700 text-xs block">
                       {activeAssessmentCandidates.filter(c => c.reportStatus === 'GENERATED').length} Generated
                     </span>
                   </div>
-                  <div className="p-3 bg-gray-50/60 border border-gray-200 rounded-lg space-y-1 shadow-2xs">
+                  <div className="p-3 bg-muted/40/60 border border-border/70 rounded-lg space-y-1 shadow-2xs">
                     <span className="text-gray-400 font-bold block uppercase tracking-wider text-[9px]">Number of Questions</span>
-                    <span className="font-bold text-[#111827] text-xs block">
+                    <span className="font-bold text-foreground text-xs block">
                       {activeAssessment.questions.length} Questions
                     </span>
                   </div>
@@ -2232,10 +2242,10 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             </div>
 
             {/* 2. Questions & Answer Key Accordion */}
-            <div className="border-b border-slate-200 dark:border-slate-800">
+            <div className="border-b border-border/70">
               <button
                 onClick={() => setExpandedQuestions(!expandedQuestions)}
-                className="w-full flex items-center justify-between p-4 font-bold text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider bg-slate-50/50 dark:bg-slate-950/20"
+                className="w-full flex items-center justify-between p-4 font-bold text-xs text-muted-foreground dark:text-muted-foreground uppercase tracking-wider bg-muted/40/50 dark:bg-slate-950/20"
               >
                 <span>Questions Formulation ({activeAssessment.questions.length})</span>
                 {expandedQuestions ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -2244,17 +2254,17 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               {expandedQuestions && (
                 <div className="p-5 space-y-4">
                   {activeAssessment.questions.map((q, i) => (
-                    <div key={q.id} className="p-4 rounded-lg border border-slate-150 dark:border-slate-800/80 space-y-2 bg-slate-50/25">
-                      <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-slate-400">
+                    <div key={q.id} className="p-4 rounded-lg border border-slate-150/80 space-y-2 bg-muted/40/25">
+                      <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-muted-foreground">
                         <span>QUESTION #{i+1} • {q.type}</span>
                         <span>Max Duration: {q.maxDuration}s {activeAssessment.roundType !== 'HR' && `• Max Score: ${q.maxScore} (Weightage: ${q.weightage}%)`}</span>
                       </div>
-                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{q.text}</p>
+                      <p className="text-xs font-semibold text-foreground">{q.text}</p>
                       
                       {q.type === 'MCQ' && q.options && (
                         <div className="grid grid-cols-2 gap-2 mt-2">
                           {q.options.map(opt => (
-                            <div key={opt} className={`p-2 rounded text-[11px] border ${opt === q.correctOption ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-white border-slate-100 text-slate-500'}`}>
+                            <div key={opt} className={`p-2 rounded text-[11px] border ${opt === q.correctOption ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-card border-slate-100 text-muted-foreground'}`}>
                               {opt} {opt === q.correctOption && '✓ (Correct)'}
                             </div>
                           ))}
@@ -2262,15 +2272,15 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       )}
 
                       {q.type === 'SPEAK_TO_ANSWER' && q.referenceAnswer && (
-                        <div className="text-[10px] bg-white p-2.5 rounded border border-slate-100 text-slate-500 mt-1">
-                          <strong className="text-slate-600 block">AI Baseline Expected Reference Answer:</strong>
+                        <div className="text-[10px] bg-card p-2.5 rounded border border-slate-100 text-muted-foreground mt-1">
+                          <strong className="text-muted-foreground block">AI Baseline Expected Reference Answer:</strong>
                           {q.referenceAnswer}
                         </div>
                       )}
 
                       {q.type === 'SPEAK_TO_ANSWER' && q.criteria && (
-                        <div className="text-[10px] bg-white p-2.5 rounded border border-slate-100 text-slate-500 mt-1">
-                          <strong className="text-slate-600 block">Evaluation Criteria / Rubric:</strong>
+                        <div className="text-[10px] bg-card p-2.5 rounded border border-slate-100 text-muted-foreground mt-1">
+                          <strong className="text-muted-foreground block">Evaluation Criteria / Rubric:</strong>
                           {q.criteria}
                         </div>
                       )}
@@ -2284,11 +2294,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
           {/* Scoped Candidate Table Workspace */}
           <div className="space-y-4">
             {/* LinkedIn-Style Cascading Filters Container */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-4">
+            <div className="bg-muted/40 border border-border/70/80 rounded-xl p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <SlidersHorizontal className="w-4 h-4 text-slate-700" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  <SlidersHorizontal className="w-4 h-4 text-foreground" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-foreground">
                     LinkedIn-Style Pipeline Filters
                   </span>
                   {filterRound !== 'ALL' && (
@@ -2314,13 +2324,13 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
                 {/* 1. Round Selection (L1) */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                     Assessment Round
                   </label>
                   <select
                     value={filterRound}
                     onChange={(e) => handleSetFilterRound(e.target.value as any)}
-                    className="w-full text-xs rounded-lg border border-slate-200 bg-white p-2.5 text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-medium"
+                    className="w-full text-xs rounded-lg border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden focus:ring-1 focus:ring-ring font-medium"
                   >
                     <option value="ALL">All Rounds (No Filter)</option>
                     <option value="TECHNICAL">TECHNICAL Round</option>
@@ -2331,14 +2341,14 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
  
                 {/* 2. Evaluation Metric (L2) */}
                 <div className={`space-y-1.5 transition-all duration-200 ${filterRound === 'ALL' ? 'opacity-40 pointer-events-none' : ''}`}>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                     Evaluation Metric
                   </label>
                   <select
                     disabled={filterRound === 'ALL'}
                     value={filterLayer2 || ''}
                     onChange={(e) => handleSetFilterLayer2(e.target.value || null)}
-                    className="w-full text-xs rounded-lg border border-slate-200 bg-white p-2.5 text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-medium"
+                    className="w-full text-xs rounded-lg border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden focus:ring-1 focus:ring-ring font-medium"
                   >
                     <option value="">-- All Metrics (No Filter) --</option>
                     {filterRound !== 'ALL' && LAYER2_OPTIONS[filterRound]?.map((opt) => (
@@ -2349,14 +2359,14 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
  
                 {/* 3. Sub-Metric (L3) */}
                 <div className={`space-y-1.5 transition-all duration-200 ${!shouldShowLayer3 ? 'opacity-40 pointer-events-none' : ''}`}>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                     Sub-Metric / Dimension
                   </label>
                   <select
                     disabled={!shouldShowLayer3}
                     value={filterLayer3 || ''}
                     onChange={(e) => handleSetFilterLayer3(e.target.value || null)}
-                    className="w-full text-xs rounded-lg border border-slate-200 bg-white p-2.5 text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-medium"
+                    className="w-full text-xs rounded-lg border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden focus:ring-1 focus:ring-ring font-medium"
                   >
                     <option value="">-- All Dimensions --</option>
                     {shouldShowLayer3 && layer3Options.map((opt) => (
@@ -2367,14 +2377,14 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
  
                 {/* 4. Competency / Personality (L4) */}
                 <div className={`space-y-1.5 transition-all duration-200 ${!shouldShowLayer4 ? 'opacity-40 pointer-events-none' : ''}`}>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                     Specific Trait / Aspect
                   </label>
                   <select
                     disabled={!shouldShowLayer4}
                     value={filterLayer4 || ''}
                     onChange={(e) => handleSetFilterLayer4(e.target.value || null)}
-                    className="w-full text-xs rounded-lg border border-slate-200 bg-white p-2.5 text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-medium"
+                    className="w-full text-xs rounded-lg border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden focus:ring-1 focus:ring-ring font-medium"
                   >
                     <option value="">-- All Aspects --</option>
                     {shouldShowLayer4 && layer4Options.map((opt) => (
@@ -2385,10 +2395,10 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
  
                 {/* 5. Score Filter (L5) */}
                 <div className={`space-y-1.5 transition-all duration-200 ${!activeScale ? 'opacity-40 pointer-events-none' : ''}`}>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                     Mathematical Score Check
                     {activeScale && (
-                      <span className="font-mono text-[8px] bg-slate-200 px-1 rounded">
+                      <span className="font-mono text-[8px] bg-muted px-1 rounded">
                         {activeScale === 'scale5' ? '1-5 Scale' : '0-100 Scale'}
                       </span>
                     )}
@@ -2397,7 +2407,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     disabled={!activeScale}
                     value={filterScoreValue || ''}
                     onChange={(e) => handleSetFilterScoreValue(e.target.value || null)}
-                    className="w-full text-xs rounded-lg border border-slate-200 bg-white p-2.5 text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-medium"
+                    className="w-full text-xs rounded-lg border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden focus:ring-1 focus:ring-ring font-medium"
                   >
                     <option value="">-- All Scores (No Filter) --</option>
                     {activeScale === 'scale5' && (
@@ -2421,11 +2431,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               </div>
  
               {/* Informational Guidance bar */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pt-1.5 border-t border-slate-200/60 text-[11px] text-slate-500 font-medium">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pt-1.5 border-t border-border/70/60 text-[11px] text-muted-foreground font-medium">
                 <div className="flex items-center gap-1.5">
                   <Info className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                   <span>
-                    Current Assessment Type: <strong className="text-slate-700 uppercase">{activeAssessment.roundType}</strong>.
+                    Current Assessment Type: <strong className="text-foreground uppercase">{activeAssessment.roundType}</strong>.
                     {filterRound !== 'ALL' && filterRound !== activeAssessment.roundType && (
                       <span className="text-amber-600 font-semibold ml-1">
                         ⚠️ Note: Filtering for "{filterRound}" on a "{activeAssessment.roundType}" profile will return 0 rows.
@@ -2434,17 +2444,17 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   </span>
                 </div>
                 <div>
-                  Showing <strong className="text-slate-800">{filteredCandidates.length}</strong> of <strong className="text-slate-800">{activeAssessmentCandidates.length}</strong> assigned candidates.
+                  Showing <strong className="text-foreground">{filteredCandidates.length}</strong> of <strong className="text-foreground">{activeAssessmentCandidates.length}</strong> assigned candidates.
                 </div>
               </div>
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
                   Assigned Candidates & Access Control
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Links are never generated automatically — click Generate Link to activate.
                 </p>
               </div>
@@ -2452,7 +2462,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               <div className="flex gap-2">
                 <button
                   onClick={() => setCurrentView('UPLOAD')}
-                  className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold px-3 py-2 rounded-lg transition"
+                  className="flex items-center gap-1.5 bg-muted/40 hover:bg-muted border border-border/70 text-foreground text-xs font-semibold px-3 py-2 rounded-lg transition"
                 >
                   <UserPlus className="w-4 h-4 text-blue-500" /> Create Assignment (CSV Upload)
                 </button>
@@ -2559,8 +2569,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   disabled={selectedCandidateIds.length === 0}
                   className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-lg border transition cursor-pointer text-white ${
                     selectedCandidateIds.length > 0
-                      ? 'bg-[var(--purple-700)] hover:bg-[var(--purple-600)] border-transparent shadow-xs'
-                      : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-50'
+                      ? 'bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 border-transparent shadow-xs'
+                      : 'bg-muted text-muted-foreground border-border/70 cursor-not-allowed opacity-50'
                   }`}
                   title={selectedCandidateIds.length === 0 ? 'Disabled: Select candidates first.' : 'Generate unique evaluation links for selected candidates'}
                 >
@@ -2633,10 +2643,10 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             </div>
 
             {/* Candidate Table Grid */}
-            <div className={`overflow-x-auto bg-white border border-slate-200 rounded-xl shadow-2xs transition-all duration-200 ${openMenuCandId ? 'pb-40' : ''}`}>
+            <div className={`overflow-x-auto bg-card border border-border/70 rounded-xl shadow-2xs transition-all duration-200 ${openMenuCandId ? 'pb-40' : ''}`}>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-slate-50 hover:bg-slate-50 border-b border-slate-200">
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/70">
                     <TableHead className="w-[45px] text-center px-3 py-3">
                       <input
                         type="checkbox"
@@ -2648,20 +2658,20 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                             setSelectedCandidateIds([]);
                           }
                         }}
-                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                        className="rounded border-border text-foreground focus:ring-slate-900 cursor-pointer"
                         title="Select All option"
                       />
                     </TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3 w-[100px]">Candidate ID</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3">Candidate Info</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3 text-center w-[90px]">Status</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3 min-w-[180px]">Credentials & Links</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3 text-center">Mailing Controls</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3 text-center">Simulation Sandbox</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3 text-center">Mail Status</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3">Mailing Stats & Timestamps</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3 text-center">AI Scorecard</TableHead>
-                    <TableHead className="font-bold text-slate-900 text-[10px] uppercase tracking-wider px-3 py-3 text-center">Actions</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 w-[100px]">Candidate ID</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3">Candidate Info</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center w-[90px]">Status</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 min-w-[180px]">Credentials & Links</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">Mailing Controls</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">Simulation Sandbox</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">Mail Status</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3">Mailing Stats & Timestamps</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">AI Scorecard</TableHead>
+                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2684,7 +2694,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       : (c.mailStatus || (hasInvite ? (c.reminderCount ? 'Reminder Sent' : 'Invite Sent') : 'Not Sent'));
 
                     return (
-                      <TableRow key={c.id} className={`hover:bg-slate-50/40 border-b border-slate-100 ${!isActive ? 'opacity-70 bg-slate-50/20' : ''}`}>
+                      <TableRow key={c.id} className={`hover:bg-muted/40/40 border-b border-slate-100 ${!isActive ? 'opacity-70 bg-muted/40/20' : ''}`}>
                         {/* 0. Row Selector */}
                         <TableCell className="text-center px-3 py-3.5">
                           <input
@@ -2697,22 +2707,22 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                 setSelectedCandidateIds(prev => prev.filter(id => id !== c.id));
                               }
                             }}
-                            className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                            className="rounded border-border text-foreground focus:ring-slate-900 cursor-pointer"
                           />
                         </TableCell>
 
                         {/* 1. Candidate ID */}
                         <TableCell className="px-3 py-3.5">
-                          <span className="font-mono text-[10px] font-bold bg-slate-100 border border-slate-200 text-slate-700 rounded px-1.5 py-0.5">
+                          <span className="font-mono text-[10px] font-bold bg-muted border border-border/70 text-foreground rounded px-1.5 py-0.5">
                             #{c.id}
                           </span>
                         </TableCell>
 
                         {/* 2. Candidate Info */}
                         <TableCell className="px-3 py-3.5">
-                          <div className="font-bold text-slate-900 text-xs">{c.name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{c.email}</div>
-                          {c.phone && <div className="text-[10px] text-slate-400 font-mono">{c.phone}</div>}
+                          <div className="font-bold text-foreground text-xs">{c.name}</div>
+                          <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{c.email}</div>
+                          {c.phone && <div className="text-[10px] text-muted-foreground font-mono">{c.phone}</div>}
                         </TableCell>
 
                         {/* 3. Candidate Status (Static Status Badge) */}
@@ -2722,7 +2732,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
                               : 'bg-red-50 border-red-100 text-red-700'
                           }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-success' : 'bg-destructive animate-pulse'}`}></span>
                             {isActive ? 'Active' : 'Inactive'}
                           </span>
                         </TableCell>
@@ -2732,7 +2742,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                           {hasLink ? (
                             <div className="space-y-1">
                               <div className="flex items-center gap-1.5 max-w-[200px]">
-                                <span className="text-[10px] text-slate-600 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded truncate font-mono select-all" title={c.link || ''}>
+                                <span className="text-[10px] text-muted-foreground bg-muted/40 border border-border/70 px-1.5 py-0.5 rounded truncate font-mono select-all" title={c.link || ''}>
                                   {c.link}
                                 </span>
                                 <button
@@ -2740,7 +2750,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                     navigator.clipboard.writeText(c.link || '');
                                     toast.success('Link copied to clipboard.');
                                   }}
-                                  className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+                                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
                                   title="Copy Link"
                                 >
                                   <Copy className="w-3 h-3" />
@@ -2748,8 +2758,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               </div>
                               {c.password && (
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] text-slate-400 font-semibold uppercase">Pwd:</span>
-                                  <span className="text-[10px] font-mono text-slate-600 bg-slate-50 px-1 py-0.2 rounded border border-slate-150">
+                                  <span className="text-[10px] text-muted-foreground font-semibold uppercase">Pwd:</span>
+                                  <span className="text-[10px] font-mono text-muted-foreground bg-muted/40 px-1 py-0.2 rounded border border-slate-150">
                                     {c.password}
                                   </span>
                                   <button
@@ -2757,7 +2767,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                       navigator.clipboard.writeText(c.password || '');
                                       toast.success('Password copied.');
                                     }}
-                                    className="p-0.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+                                    className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
                                     title="Copy Password"
                                   >
                                     <Copy className="w-2.5 h-2.5" />
@@ -2771,7 +2781,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition border ${
                                     isActive
                                       ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-200 cursor-pointer'
-                                      : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-60'
+                                      : 'text-muted-foreground bg-muted/40 border-border/70 cursor-not-allowed opacity-60'
                                   }`}
                                   title={isActive ? "Previous link will be invalidated and fresh credentials issued." : "Disabled: Candidate must be Active to regenerate link."}
                                 >
@@ -2786,11 +2796,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded transition shadow-2xs ${
                                 isActive
                                   ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer'
-                                  : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                                  : 'bg-muted text-muted-foreground border border-border/70 cursor-not-allowed opacity-60'
                               }`}
                               title={isActive ? "Links are never generated automatically — click to generate unique credentials" : "Disabled: Candidate must be Active to generate evaluation link."}
                             >
-                              <Sparkles className={`w-2.5 h-2.5 ${isActive ? 'text-amber-300' : 'text-slate-400'}`} />
+                              <Sparkles className={`w-2.5 h-2.5 ${isActive ? 'text-amber-300' : 'text-muted-foreground'}`} />
                               Generate Link
                             </button>
                           )}
@@ -2870,7 +2880,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               disabled={isCompleted}
                               className={`text-[9px] font-bold px-2 py-1 rounded border transition select-none ${
                                 isCompleted
-                                  ? 'bg-slate-150 border-slate-200 text-slate-400 cursor-not-allowed'
+                                  ? 'bg-slate-150 border-border/70 text-muted-foreground cursor-not-allowed'
                                   : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700 cursor-pointer'
                               }`}
                               title={isCompleted ? 'Assessment completed' : 'Simulate candidate completing assessment instantly'}
@@ -2884,7 +2894,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               className={`text-[9px] font-bold px-2 py-1 rounded border transition cursor-pointer select-none ${
                                 isExpired
                                   ? 'bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-150'
-                                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+                                  : 'bg-muted border-border/70 text-muted-foreground hover:bg-muted'
                               }`}
                               title="Toggle expired status to test reminder disable rules"
                             >
@@ -2923,7 +2933,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                 );
                               default:
                                 return (
-                                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1 bg-slate-50 border border-slate-200 text-slate-500">
+                                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1 bg-muted/40 border border-border/70 text-muted-foreground">
                                     Not Sent
                                   </span>
                                 );
@@ -2938,24 +2948,24 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                             style={{ background: 'rgba(99,102,241,0.03)', border: '1px solid rgba(99,102,241,0.1)' }}
                           >
                             <div className="flex items-center gap-1 text-[10px]">
-                              <span className="text-slate-500 font-semibold">Schedule:</span>
+                              <span className="text-muted-foreground font-semibold">Schedule:</span>
                               <span className={`font-bold ${isExpired ? 'text-amber-600' : 'text-emerald-600'}`}>
                                 {isExpired ? 'Expired' : 'Active'}
                               </span>
                             </div>
                             {c.inviteSentAt && (
                               <div className="text-[9px] leading-tight">
-                                <span className="text-slate-400 block">Invited At:</span>
-                                <span className="text-slate-600">{new Date(c.inviteSentAt).toLocaleString()}</span>
+                                <span className="text-muted-foreground block">Invited At:</span>
+                                <span className="text-muted-foreground">{new Date(c.inviteSentAt).toLocaleString()}</span>
                               </div>
                             )}
                             {c.lastReminderSentAt && (
                               <div className="text-[9px] leading-tight">
-                                <span className="text-slate-400 block">Last Remind:</span>
-                                <span className="text-slate-600">{new Date(c.lastReminderSentAt).toLocaleString()}</span>
+                                <span className="text-muted-foreground block">Last Remind:</span>
+                                <span className="text-muted-foreground">{new Date(c.lastReminderSentAt).toLocaleString()}</span>
                               </div>
                             )}
-                            <div className="text-[9px] text-slate-400 font-mono">
+                            <div className="text-[9px] text-muted-foreground font-mono">
                               Ends: {new Date(c.endTime).toLocaleDateString()}
                             </div>
                           </div>
@@ -2968,7 +2978,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               <button
                                 onClick={() => handleCheckCandidateStatus(c.id)}
                                 disabled={syncingCandidateId === c.id}
-                                className="p-1.5 rounded border border-slate-200 text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                                className="p-1.5 rounded border border-border/70 text-foreground hover:bg-muted/40 transition cursor-pointer"
                                 title="Check status from PrimeHire API"
                               >
                                 <RefreshCw className={`w-3.5 h-3.5 ${syncingCandidateId === c.id ? 'animate-spin' : ''}`} />
@@ -2979,8 +2989,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               disabled={!isReportReady}
                               className={`text-[10px] font-bold px-2.5 py-1 rounded transition ${
                                 isReportReady
-                                  ? 'bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-950 cursor-pointer shadow-2xs'
-                                  : 'bg-slate-50 border border-slate-200 text-slate-300 cursor-not-allowed opacity-50'
+                                  ? 'bg-card hover:bg-muted/40 border border-border/70 text-foreground hover:text-slate-950 cursor-pointer shadow-2xs'
+                                  : 'bg-muted/40 border border-border/70 text-slate-300 cursor-not-allowed opacity-50'
                               }`}
                               title={isReportReady ? 'View candidate AI scorecard' : 'Report is not available yet'}
                             >
@@ -3019,7 +3029,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                   setDeleteConfirmCandId(null);
                                   setDoubleConfirmCandId(null);
                                 }}
-                                className="px-2 py-1 border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-700 rounded transition cursor-pointer text-[9px] font-bold"
+                                className="px-2 py-1 border border-border/70 bg-card hover:bg-muted/40 text-muted-foreground hover:text-foreground rounded transition cursor-pointer text-[9px] font-bold"
                                 title="Cancel Delete"
                               >
                                 Cancel
@@ -3032,7 +3042,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                   e.stopPropagation();
                                   setOpenMenuCandId(openMenuCandId === c.id ? null : c.id);
                                 }}
-                                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                                className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer"
                                 title="More Actions"
                               >
                                 <MoreVertical className="w-4 h-4" />
@@ -3048,7 +3058,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                     }}
                                   />
                                   
-                                  <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1.5 z-40 text-left font-sans">
+                                  <div className="absolute right-0 mt-1 w-44 bg-card border border-border/70 rounded-lg shadow-lg py-1.5 z-40 text-left font-sans">
                                     {/* Option: Activate */}
                                     <button
                                       onClick={(e) => {
@@ -3060,8 +3070,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                       disabled={isActive}
                                       className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
                                         isActive 
-                                          ? 'text-slate-300 bg-slate-50 cursor-not-allowed' 
-                                          : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer'
+                                          ? 'text-slate-300 bg-muted/40 cursor-not-allowed' 
+                                          : 'text-foreground hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer'
                                       }`}
                                     >
                                       <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -3079,8 +3089,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                       disabled={!isActive}
                                       className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
                                         !isActive 
-                                          ? 'text-slate-300 bg-slate-50 cursor-not-allowed' 
-                                          : 'text-slate-700 hover:bg-amber-50 hover:text-amber-700 cursor-pointer'
+                                          ? 'text-slate-300 bg-muted/40 cursor-not-allowed' 
+                                          : 'text-foreground hover:bg-amber-50 hover:text-amber-700 cursor-pointer'
                                       }`}
                                     >
                                       <X className="w-3.5 h-3.5 text-amber-500" />
@@ -3098,7 +3108,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                       }}
                                       className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
                                       Delete
                                     </button>
 
@@ -3112,9 +3122,9 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                         setPasswordEditCandId(c.id);
                                         setNewCandPassword(c.password || '');
                                       }}
-                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/40 transition cursor-pointer"
                                     >
-                                      <Lock className="w-3.5 h-3.5 text-slate-400" />
+                                      <Lock className="w-3.5 h-3.5 text-muted-foreground" />
                                       Update Password
                                     </button>
 
@@ -3135,8 +3145,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                       }
                                       className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
                                         !hasLink || !isActive
-                                          ? 'text-slate-300 bg-slate-50 cursor-not-allowed'
-                                          : 'text-slate-700 hover:bg-slate-50 cursor-pointer'
+                                          ? 'text-slate-300 bg-muted/40 cursor-not-allowed'
+                                          : 'text-foreground hover:bg-muted/40 cursor-pointer'
                                       }`}
                                     >
                                       <Calendar className={`w-3.5 h-3.5 ${hasLink && isActive ? 'text-amber-500' : 'text-slate-300'}`} />
@@ -3154,8 +3164,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                       title={c.submittedDate ? 'Request report regeneration' : 'Disabled: Candidate must complete the assessment first.'}
                                       className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
                                         c.submittedDate
-                                          ? 'text-slate-700 hover:bg-slate-50 cursor-pointer'
-                                          : 'text-slate-300 bg-slate-50 cursor-not-allowed'
+                                          ? 'text-foreground hover:bg-muted/40 cursor-pointer'
+                                          : 'text-slate-300 bg-muted/40 cursor-not-allowed'
                                       }`}
                                     >
                                       <RefreshCw className={`w-3.5 h-3.5 ${c.submittedDate ? 'text-blue-500' : 'text-slate-300'}`} />
@@ -3173,7 +3183,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                   {activeAssessmentCandidates.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={11} className="py-12 text-center text-slate-400 text-xs">
+                      <TableCell colSpan={11} className="py-12 text-center text-muted-foreground text-xs">
                         No candidates are registered for this assessment. Click "Create Assignment (CSV Upload)" to populate candidates.
                       </TableCell>
                     </TableRow>
@@ -3193,16 +3203,16 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
           <div className="flex items-center gap-3">
             <button
               onClick={() => setCurrentView('DETAIL')}
-              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 text-slate-600 transition"
+              className="p-1.5 rounded-lg border border-border/70 hover:bg-muted/40 text-muted-foreground transition"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+              <h2 className="text-lg font-bold text-foreground dark:text-slate-100">
                 CSV Candidate Importer
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Bulk register assignment schedules for: <span className="font-semibold text-slate-700 dark:text-slate-300">{activeAssessment.jobTitle}</span>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Bulk register assignment schedules for: <span className="font-semibold text-foreground">{activeAssessment.jobTitle}</span>
               </p>
             </div>
           </div>
@@ -3211,9 +3221,9 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             {/* Left side upload interface */}
             <div className="lg:col-span-1 space-y-4">
               {/* Manual Student Registration Form Space */}
-              <form onSubmit={handleAddManualCandidate} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3.5 shadow-xs">
+              <form onSubmit={handleAddManualCandidate} className="bg-card border border-border/70 rounded-xl p-5 space-y-3.5 shadow-xs">
                 <div className="border-b border-slate-100 dark:border-slate-850 pb-2 flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
                     <UserPlus className="w-3.5 h-3.5 text-blue-500" /> Manual Student Registration
                   </h3>
                   <span className="text-[9px] bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 px-1.5 py-0.5 rounded-sm font-bold">
@@ -3223,7 +3233,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                 <div className="space-y-2.5">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
                       Full Name *
                     </label>
                     <Input
@@ -3231,13 +3241,13 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       placeholder="e.g. Dr. Jane Doe"
                       value={manualName}
                       onChange={(e) => setManualName(e.target.value)}
-                      className="text-xs h-8.5 bg-slate-50/20"
+                      className="text-xs h-8.5 bg-muted/40/20"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
                       Email Address *
                     </label>
                     <Input
@@ -3245,13 +3255,13 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       placeholder="e.g. jane.doe@university.edu"
                       value={manualEmail}
                       onChange={(e) => setManualEmail(e.target.value)}
-                      className="text-xs h-8.5 bg-slate-50/20"
+                      className="text-xs h-8.5 bg-muted/40/20"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
                       Phone Number (Optional)
                     </label>
                     <Input
@@ -3259,31 +3269,31 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       placeholder="10-digit number, e.g. 1234567890"
                       value={manualPhone}
                       onChange={(e) => setManualPhone(e.target.value)}
-                      className="text-xs h-8.5 bg-slate-50/20"
+                      className="text-xs h-8.5 bg-muted/40/20"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
                         Start Time (Optional)
                       </label>
                       <Input
                         type="datetime-local"
                         value={manualStartTime}
                         onChange={(e) => setManualStartTime(e.target.value)}
-                        className="text-xs h-8.5 font-mono bg-slate-50/20"
+                        className="text-xs h-8.5 font-mono bg-muted/40/20"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
                         End Time (Optional)
                       </label>
                       <Input
                         type="datetime-local"
                         value={manualEndTime}
                         onChange={(e) => setManualEndTime(e.target.value)}
-                        className="text-xs h-8.5 font-mono bg-slate-50/20"
+                        className="text-xs h-8.5 font-mono bg-muted/40/20"
                       />
                     </div>
                   </div>
@@ -3311,15 +3321,17 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                 <button
                   type="submit"
-                  className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-lg transition shadow-xs cursor-pointer"
+                  disabled={(!manualStartTime.trim() || !manualEndTime.trim()) && !timeConsent}
+                  title={(!manualStartTime.trim() || !manualEndTime.trim()) && !timeConsent ? 'Tick the consent box to enable when Start/End time is empty' : 'Add student to list'}
+                  className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-lg transition shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
                 >
                   <UserPlus className="w-3.5 h-3.5" /> Add Student to List
                 </button>
               </form>
 
               {/* Bulk upload option */}
-              <div className="border-t border-slate-100 dark:border-slate-800 my-4 pt-4">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Or Bulk Upload Candidate List</span>
+              <div className="border-t border-slate-100 my-4 pt-4">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-2">Or Bulk Upload Candidate List</span>
               </div>
 
               <div
@@ -3339,17 +3351,17 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 className={`border-2 border-dashed rounded-xl p-8 text-center transition flex flex-col items-center justify-center min-h-[220px] ${
                   isDragging 
                     ? 'border-blue-500 bg-blue-50/10' 
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50/50'
+                    : 'border-border/70 bg-card hover:bg-muted/40/50'
                 }`}
               >
                 <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-full mb-3">
                   <Upload className="w-6 h-6" />
                 </div>
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-100">Drag and drop candidate list here</span>
-                <span className="text-[10px] text-slate-400 mt-1 block">Supports .csv file types (10MB max)</span>
+                <span className="text-xs font-semibold text-foreground dark:text-slate-100">Drag and drop candidate list here</span>
+                <span className="text-[10px] text-muted-foreground mt-1 block">Supports .csv file types (10MB max)</span>
                 
                 <div className="mt-4">
-                  <label className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer">
+                  <label className="bg-muted dark:bg-slate-800 hover:bg-muted text-foreground text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer">
                     Choose File
                     <input
                       type="file"
@@ -3366,7 +3378,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1">
                   <Sparkles className="w-4 h-4 animate-pulse" /> Sandbox Template Generator
                 </span>
-                <p className="text-[10px] text-slate-400 leading-relaxed">
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
                   Generate mock rows (including red-blocking and yellow-warning scenarios) to test validation features:
                 </p>
                 <button
@@ -3383,9 +3395,9 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               {parsedRows.length > 0 ? (
                 <div className="space-y-4">
                   {/* Validation Panel */}
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <div className="p-4 bg-muted/40 border border-border/70 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-border/70 pb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                         Validation Log ({validationErrors.length} Checks flagged)
                       </span>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
@@ -3409,8 +3421,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                           <span className={`px-1.5 py-0.5 rounded-sm font-bold text-[9px] ${err.type === 'red' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                             {err.type.toUpperCase()}
                           </span>
-                          <span className="text-slate-500 font-semibold">Row {err.row}:</span>
-                          <span className="text-slate-600 dark:text-slate-400">{err.message} ({err.col})</span>
+                          <span className="text-muted-foreground font-semibold">Row {err.row}:</span>
+                          <span className="text-muted-foreground dark:text-muted-foreground">{err.message} ({err.col})</span>
                         </div>
                       ))}
                       {validationErrors.length === 0 && (
@@ -3422,15 +3434,15 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   </div>
 
                   {/* Editable grid Table before confirmation */}
-                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs">
+                  <div className="bg-card border border-border/70 rounded-xl overflow-hidden shadow-xs">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-slate-50/50 dark:bg-slate-950/20">
-                          <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Name</TableHead>
-                          <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Email</TableHead>
-                          <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Phone</TableHead>
-                          <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Start Time</TableHead>
-                          <TableHead className="font-semibold text-slate-700 dark:text-slate-300">End Time</TableHead>
+                        <TableRow className="bg-muted/40/50 dark:bg-slate-950/20">
+                          <TableHead className="font-semibold text-foreground">Name</TableHead>
+                          <TableHead className="font-semibold text-foreground">Email</TableHead>
+                          <TableHead className="font-semibold text-foreground">Phone</TableHead>
+                          <TableHead className="font-semibold text-foreground">Start Time</TableHead>
+                          <TableHead className="font-semibold text-foreground">End Time</TableHead>
                           <TableHead className="w-[50px] text-right"></TableHead>
                         </TableRow>
                       </TableHeader>
@@ -3441,41 +3453,41 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               <Input
                                 value={row.name}
                                 onChange={(e) => handleUpdateImportRow(row.rowId, 'name', e.target.value)}
-                                className="text-xs h-8 bg-slate-50/30 font-semibold"
+                                className="text-xs h-8 bg-muted/40/30 font-semibold"
                               />
                             </TableCell>
                             <TableCell>
                               <Input
                                 value={row.email}
                                 onChange={(e) => handleUpdateImportRow(row.rowId, 'email', e.target.value)}
-                                className="text-xs h-8 bg-slate-50/30"
+                                className="text-xs h-8 bg-muted/40/30"
                               />
                             </TableCell>
                             <TableCell>
                               <Input
                                 value={row.phone}
                                 onChange={(e) => handleUpdateImportRow(row.rowId, 'phone', e.target.value)}
-                                className="text-xs h-8 bg-slate-50/30"
+                                className="text-xs h-8 bg-muted/40/30"
                               />
                             </TableCell>
                             <TableCell>
                               <Input
                                 value={row.startTime}
                                 onChange={(e) => handleUpdateImportRow(row.rowId, 'startTime', e.target.value)}
-                                className="text-xs h-8 bg-slate-50/30 font-mono"
+                                className="text-xs h-8 bg-muted/40/30 font-mono"
                               />
                             </TableCell>
                             <TableCell>
                               <Input
                                 value={row.endTime}
                                 onChange={(e) => handleUpdateImportRow(row.rowId, 'endTime', e.target.value)}
-                                className="text-xs h-8 bg-slate-50/30 font-mono"
+                                className="text-xs h-8 bg-muted/40/30 font-mono"
                               />
                             </TableCell>
                             <TableCell className="text-right">
                               <button
                                 onClick={() => handleRemoveImportRow(row.rowId)}
-                                className="p-1 hover:text-red-500 rounded"
+                                className="p-1 hover:text-destructive rounded"
                               >
                                 <Trash className="w-3.5 h-3.5" />
                               </button>
@@ -3494,7 +3506,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         setValidationErrors([]);
                         setUploadedFileName('');
                       }}
-                      className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition"
+                      className="px-4 py-2 border border-border/70 hover:bg-muted/40 text-foreground rounded-lg text-xs font-semibold transition"
                     >
                       Clear Data
                     </button>
@@ -3503,7 +3515,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       disabled={validationErrors.some(e => e.type === 'red')}
                       className={`px-5 py-2 rounded-lg text-xs font-semibold text-white transition ${
                         validationErrors.some(e => e.type === 'red')
-                          ? 'bg-slate-300 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
+                          ? 'bg-slate-300 cursor-not-allowed dark:bg-slate-800 dark:text-muted-foreground'
                           : 'bg-blue-600 hover:bg-blue-700 shadow-xs cursor-pointer'
                       }`}
                     >
@@ -3512,7 +3524,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   </div>
                 </div>
               ) : (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-20 rounded-xl text-center text-slate-400">
+                <div className="bg-card border border-border/70 p-20 rounded-xl text-center text-muted-foreground">
                   Please upload a candidate .csv or load the sandbox template on the left to begin candidate validation checks.
                 </div>
               )}
@@ -3538,12 +3550,12 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
           />
           {/* Modal */}
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-xl w-full max-w-md p-6 space-y-5">
+            <div className="bg-card rounded-xl border border-border/70 shadow-xl w-full max-w-md p-6 space-y-5">
               <div>
-                <h3 className="text-sm font-bold text-[#111827]">Reschedule Interview</h3>
-                <p className="text-[11px] text-gray-500 mt-1">
+                <h3 className="text-sm font-bold text-foreground">Reschedule Interview</h3>
+                <p className="text-[11px] text-muted-foreground mt-1">
                   Set a new scheduling window for this candidate. This calls{' '}
-                  <span className="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded border border-gray-200">PUT /interview/{'{id}'}/reschedule</span>.
+                  <span className="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded border border-border/70">PUT /interview/{'{id}'}/reschedule</span>.
                 </p>
               </div>
 
@@ -3551,14 +3563,14 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               {(() => {
                 const cand = candidates.find(c => c.id === rescheduleCandId);
                 return cand ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-1">
+                  <div className="bg-muted/40 border border-border/70 rounded-lg p-3 text-xs space-y-1">
                     <div className="flex justify-between">
-                      <span className="text-slate-400 font-semibold">Candidate:</span>
-                      <span className="font-bold text-slate-700">{cand.name}</span>
+                      <span className="text-muted-foreground font-semibold">Candidate:</span>
+                      <span className="font-bold text-foreground">{cand.name}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400 font-semibold">Interview ID:</span>
-                      <span className="font-mono text-[10px] text-slate-600">{cand.interviewId || '—'}</span>
+                      <span className="text-muted-foreground font-semibold">Interview ID:</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{cand.interviewId || '—'}</span>
                     </div>
                   </div>
                 ) : null;
@@ -3567,8 +3579,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               {/* Time Inputs */}
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700">
-                    New Start Time <span className="text-red-500">*</span>
+                  <label className="text-xs font-bold text-foreground">
+                    New Start Time <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="datetime-local"
@@ -3579,8 +3591,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-700">
-                    New End Time <span className="text-red-500">*</span>
+                  <label className="text-xs font-bold text-foreground">
+                    New End Time <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="datetime-local"
@@ -3592,7 +3604,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                 {/* Validation hint */}
                 {rescheduleStartTime && rescheduleEndTime && new Date(rescheduleEndTime) <= new Date(rescheduleStartTime) && (
-                  <div className="text-[10px] text-red-500 font-semibold flex items-center gap-1">
+                  <div className="text-[10px] text-destructive font-semibold flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" /> End Time must be after Start Time.
                   </div>
                 )}
@@ -3607,7 +3619,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     setRescheduleEndTime('');
                   }}
                   disabled={isRescheduling}
-                  className="flex-1 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-md text-xs font-semibold text-center transition cursor-pointer"
+                  className="flex-1 py-2 bg-card border border-border/70 hover:bg-muted/40 text-foreground rounded-md text-xs font-semibold text-center transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -3651,12 +3663,12 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
           />
           {/* Dialog Container */}
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-md p-6 space-y-4 text-left">
+            <div className="bg-card rounded-xl border border-border/70 shadow-xl w-full max-w-md p-6 space-y-4 text-left">
               <div>
-                <h3 className="text-sm font-bold text-[#111827] flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-slate-500" /> Update Candidate Password
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-muted-foreground" /> Update Candidate Password
                 </h3>
-                <p className="text-[11px] text-gray-500 mt-1">
+                <p className="text-[11px] text-muted-foreground mt-1">
                   Assign a new evaluation access credential key for this candidate.
                 </p>
               </div>
@@ -3665,21 +3677,21 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               {(() => {
                 const target = candidates.find(c => c.id === passwordEditCandId);
                 return target ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-1">
+                  <div className="bg-muted/40 border border-border/70 rounded-lg p-3 text-xs space-y-1">
                     <div className="flex justify-between">
-                      <span className="text-slate-400 font-semibold">Candidate:</span>
-                      <span className="font-bold text-slate-700">{target.name}</span>
+                      <span className="text-muted-foreground font-semibold">Candidate:</span>
+                      <span className="font-bold text-foreground">{target.name}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400 font-semibold">Email:</span>
-                      <span className="font-semibold text-slate-600">{target.email}</span>
+                      <span className="text-muted-foreground font-semibold">Email:</span>
+                      <span className="font-semibold text-muted-foreground">{target.email}</span>
                     </div>
                   </div>
                 ) : null;
               })()}
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-700">New Password Key <span className="text-red-500">*</span></label>
+                <label className="text-xs font-bold text-foreground">New Password Key <span className="text-destructive">*</span></label>
                 <Input
                   value={newCandPassword}
                   onChange={(e) => setNewCandPassword(e.target.value)}
@@ -3695,7 +3707,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     setNewCandPassword('');
                   }}
                   disabled={isSavingPassword}
-                  className="flex-1 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-md text-xs font-semibold text-center transition cursor-pointer"
+                  className="flex-1 py-2 bg-card border border-border/70 hover:bg-muted/40 text-foreground rounded-md text-xs font-semibold text-center transition cursor-pointer"
                 >
                   Cancel
                 </button>

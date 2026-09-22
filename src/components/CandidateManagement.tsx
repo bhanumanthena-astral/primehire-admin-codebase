@@ -26,6 +26,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { SectionHeader, Panel, Pill, PAButton, IconSquare, EmptyNote } from './ui/primitives';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // METRIC TREE CONFIGURATION
@@ -389,32 +390,22 @@ export default function CandidateManagement({
   });
 
   return (
-    <div className="space-y-6 text-[var(--ink)] font-sans">
-      
-      {/* ── Section Heading ────────────────────────────────────────── */}
-      <div className="flex items-start gap-3">
-        <div className="icon-badge">
-          <Users className="w-5 h-5" />
-        </div>
-        <div>
-          <span className="eyebrow block">DIRECTORY & PIPELINE</span>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-[var(--ink)] tracking-tight">
-            Candidate Directory Workspace
-          </h2>
-          <p className="text-xs text-[var(--muted-ink)] mt-0.5">
-            Which candidates require status sync, credential updates, or report evaluation inspection?
-          </p>
-        </div>
-      </div>
+    <div className="space-y-6 text-foreground font-sans">
+      <SectionHeader
+        eyebrow="Directory & pipeline"
+        title="Candidate Directory Workspace"
+        subtitle="Which candidates require status sync, credential updates, or report evaluation inspection?"
+        icon={<Users className="w-5 h-5" />}
+      />
 
       {/* ── Cascading Score Filter Workspace ──────────────────────── */}
-      <div className="ds-card space-y-4">
-        <div className="flex items-center justify-between border-b border-[var(--line)] pb-3">
+      <Panel className="space-y-4">
+        <div className="flex items-center justify-between border-b border-border/60 pb-3">
           <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 text-[var(--purple-600)]" />
-            <span className="eyebrow-purple text-xs">Multi-Criteria Evaluation Query Builder</span>
+            <SlidersHorizontal className="w-4 h-4 text-accent" />
+            <span className="eyebrow">Multi-Criteria Evaluation Query Builder</span>
             {activeFilters.length > 0 && (
-              <span className="chip chip-purple">{activeFilters.length} active</span>
+              <Pill tone="info">{activeFilters.length} active</Pill>
             )}
           </div>
 
@@ -433,14 +424,14 @@ export default function CandidateManagement({
           <div className="flex flex-wrap items-end gap-2.5">
             {/* 1. Round */}
             <div className="space-y-1 min-w-[130px]">
-              <label className="eyebrow block text-[10px]">Round</label>
+              <label className="eyebrow block">Round</label>
               <select
                 value={pickerRound}
                 onChange={(e) => {
                   setPickerRound(e.target.value as any);
                   setPickerL2(null); setPickerL3(null); setPickerL4(null);
                 }}
-                className="w-full text-xs rounded-lg border border-[var(--line)] bg-slate-50 p-2 text-[var(--ink)] font-semibold focus:bg-white"
+                className="w-full text-xs rounded-full border border-border/70 bg-card px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-ring/40 shadow-[var(--shadow-card)]"
               >
                 <option value="ALL">Select Round...</option>
                 <option value="BASIC">BASIC</option>
@@ -449,19 +440,19 @@ export default function CandidateManagement({
               </select>
             </div>
 
-            {pickerRound !== 'ALL' && <ChevronRight className="w-3.5 h-3.5 text-slate-400 mb-2 shrink-0" />}
+            {pickerRound !== 'ALL' && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mb-2 shrink-0" />}
 
             {/* 2. Metric */}
             {pickerRound !== 'ALL' && (
               <div className="space-y-1 min-w-[170px]">
-                <label className="eyebrow block text-[10px]">Metric</label>
+                <label className="eyebrow block">Metric</label>
                 <select
                   value={pickerL2 || ''}
                   onChange={(e) => {
                     setPickerL2(e.target.value || null);
                     setPickerL3(null); setPickerL4(null);
                   }}
-                  className="w-full text-xs rounded-lg border border-[var(--line)] bg-slate-50 p-2 text-[var(--ink)] font-semibold focus:bg-white"
+                  className="w-full text-xs rounded-full border border-border/70 bg-card px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-ring/40 shadow-[var(--shadow-card)]"
                 >
                   <option value="">Select Metric...</option>
                   {LAYER2_OPTIONS[pickerRound]?.map(opt => (
@@ -471,19 +462,19 @@ export default function CandidateManagement({
               </div>
             )}
 
-            {pickerShowL3 && <ChevronRight className="w-3.5 h-3.5 text-slate-400 mb-2 shrink-0" />}
+            {pickerShowL3 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mb-2 shrink-0" />}
 
             {/* 3. Sub-Metric */}
             {pickerShowL3 && (
               <div className="space-y-1 min-w-[170px]">
-                <label className="eyebrow block text-[10px]">Sub-Metric</label>
+                <label className="eyebrow block">Sub-Metric</label>
                 <select
                   value={pickerL3 || ''}
                   onChange={(e) => {
                     setPickerL3(e.target.value || null);
                     setPickerL4(null);
                   }}
-                  className="w-full text-xs rounded-lg border border-[var(--line)] bg-slate-50 p-2 text-[var(--ink)] font-semibold focus:bg-white"
+                  className="w-full text-xs rounded-full border border-border/70 bg-card px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-ring/40 shadow-[var(--shadow-card)]"
                 >
                   <option value="">Select Sub-Metric...</option>
                   {pickerL3Options.map(opt => (
@@ -493,16 +484,16 @@ export default function CandidateManagement({
               </div>
             )}
 
-            {pickerShowL4 && <ChevronRight className="w-3.5 h-3.5 text-slate-400 mb-2 shrink-0" />}
+            {pickerShowL4 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mb-2 shrink-0" />}
 
             {/* 4. Trait */}
             {pickerShowL4 && (
               <div className="space-y-1 min-w-[170px]">
-                <label className="eyebrow block text-[10px]">Trait</label>
+                <label className="eyebrow block">Trait</label>
                 <select
                   value={pickerL4 || ''}
                   onChange={(e) => setPickerL4(e.target.value || null)}
-                  className="w-full text-xs rounded-lg border border-[var(--line)] bg-slate-50 p-2 text-[var(--ink)] font-semibold focus:bg-white"
+                  className="w-full text-xs rounded-full border border-border/70 bg-card px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-ring/40 shadow-[var(--shadow-card)]"
                 >
                   <option value="">Select Trait...</option>
                   {pickerL4Options.map(opt => (
@@ -513,37 +504,37 @@ export default function CandidateManagement({
             )}
           </div>
 
-          {/* Range Buttons */}
+          {/* Range Buttons — locked grade palette */}
           {pickerIsTerminal && pickerScale && (
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
-              <span className="eyebrow text-[10px] mr-1">Select Range Filter:</span>
-              {pickerScale === 'scale5' && [
-                { value: 'A', label: 'Grade A (> 80)', cls: 'chip-positive' },
-                { value: 'B', label: 'Grade B (61–80)', cls: 'chip-purple' },
-                { value: 'C', label: 'Grade C (41–60)', cls: 'chip-warning' },
-                { value: 'D', label: 'Grade D (21–40)', cls: 'chip-warning' },
-                { value: 'E', label: 'Grade E (0–20)', cls: 'chip-negative' }
-              ].map(opt => (
+            <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border/60">
+              <span className="eyebrow mr-1">Select Range Filter:</span>
+              {pickerScale === 'scale5' && ([
+                { value: 'A', label: 'Grade A (> 80)', tone: 'success' as const },
+                { value: 'B', label: 'Grade B (61–80)', tone: 'info' as const },
+                { value: 'C', label: 'Grade C (41–60)', tone: 'warning' as const },
+                { value: 'D', label: 'Grade D (21–40)', tone: 'warning' as const },
+                { value: 'E', label: 'Grade E (0–20)', tone: 'danger' as const },
+              ]).map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => handleAddFilter(opt.value)}
-                  className={`chip ${opt.cls} cursor-pointer hover:opacity-90 transition`}
+                  className="cursor-pointer transition-opacity hover:opacity-80"
                 >
-                  <Plus className="w-3 h-3" /> {opt.label}
+                  <Pill tone={opt.tone}><Plus className="w-3 h-3" /> {opt.label}</Pill>
                 </button>
               ))}
 
-              {pickerScale === 'scale3' && [
-                { value: '60 - 100', label: '61–100', cls: 'chip-positive' },
-                { value: '30 - 60', label: '31–60', cls: 'chip-warning' },
-                { value: '0 - 30', label: '0–30', cls: 'chip-negative' }
-              ].map(opt => (
+              {pickerScale === 'scale3' && ([
+                { value: '60 - 100', label: '61–100', tone: 'success' as const },
+                { value: '30 - 60', label: '31–60', tone: 'warning' as const },
+                { value: '0 - 30', label: '0–30', tone: 'danger' as const },
+              ]).map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => handleAddFilter(opt.value)}
-                  className={`chip ${opt.cls} cursor-pointer hover:opacity-90 transition`}
+                  className="cursor-pointer transition-opacity hover:opacity-80"
                 >
-                  <Plus className="w-3 h-3" /> {opt.label}
+                  <Pill tone={opt.tone}><Plus className="w-3 h-3" /> {opt.label}</Pill>
                 </button>
               ))}
             </div>
@@ -552,167 +543,145 @@ export default function CandidateManagement({
 
         {/* Active Badges Bar */}
         {activeFilters.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--line)]">
-            <span className="eyebrow text-[10px] mr-1">Active Criteria (AND):</span>
+          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border/60">
+            <span className="eyebrow mr-1">Active Criteria (AND):</span>
             {activeFilters.map(badge => (
-              <span key={badge.id} className="chip chip-purple text-[10px]">
+              <span key={badge.id} className="inline-flex">
+              <Pill tone="info">
                 <span className="font-mono uppercase text-[9px]">{badge.round}</span>
-                <ChevronRight className="w-2.5 h-2.5 text-purple-400" />
+                <ChevronRight className="w-2.5 h-2.5 opacity-70" />
                 <span>{badge.metricLabel}</span>
-                <span className="font-mono">: {badge.rangeLabel}</span>
+                <span className="font-mono tnum tabular-nums">: {badge.rangeLabel}</span>
                 <button
                   onClick={() => setActiveFilters(prev => prev.filter(f => f.id !== badge.id))}
-                  className="ml-1 text-purple-400 hover:text-rose-600 cursor-pointer"
+                  aria-label="Remove filter"
+                  className="ml-1 opacity-70 hover:opacity-100 hover:text-destructive cursor-pointer transition"
                 >
                   <X className="w-3 h-3" />
                 </button>
+              </Pill>
               </span>
             ))}
           </div>
         )}
-      </div>
+      </Panel>
 
       {/* ── Aggregate Candidate Table ─────────────────────────────── */}
-      <div className="ds-card p-0 overflow-hidden">
-        <div className="overflow-x-auto">
+      <Panel padded={false} className="overflow-hidden">
+        <div className="overflow-auto rounded-lg">
           <Table>
-            <TableHeader className="bg-slate-50 border-b border-[var(--line)]">
+            <TableHeader className="bg-card border-b border-border/60">
               <TableRow>
-                <TableHead className="eyebrow text-[10px] py-3 text-[var(--muted-ink)]">Candidate Identity</TableHead>
-                <TableHead className="eyebrow text-[10px] py-3 text-[var(--muted-ink)]">Assessment Profile</TableHead>
-                <TableHead className="eyebrow text-[10px] py-3 text-[var(--muted-ink)]">Round</TableHead>
-                <TableHead className="eyebrow text-[10px] py-3 text-[var(--muted-ink)]">Assigned</TableHead>
-                <TableHead className="eyebrow text-[10px] py-3 text-[var(--muted-ink)]">Submitted Date</TableHead>
-                <TableHead className="eyebrow text-[10px] py-3 text-[var(--muted-ink)]">Report Status</TableHead>
-                <TableHead className="eyebrow text-[10px] py-3 text-[var(--muted-ink)]">Access</TableHead>
-                <TableHead className="eyebrow text-[10px] py-3 text-right text-[var(--muted-ink)]">Actions</TableHead>
+                <TableHead>Candidate Identity</TableHead>
+                <TableHead>Assessment Profile</TableHead>
+                <TableHead>Round</TableHead>
+                <TableHead>Assigned</TableHead>
+                <TableHead>Submitted Date</TableHead>
+                <TableHead>Report Status</TableHead>
+                <TableHead>Access</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className="divide-y divide-[var(--line)]">
+            <TableBody>
               {filteredCandidates.map(c => {
                 const assessment = assessments.find(a => a.id === c.assessmentId);
                 return (
-                  <TableRow key={c.id} className="hover:bg-slate-50/60 transition-colors">
-                    
-                    {/* Name & Email */}
-                    <TableCell className="py-3">
-                      <div className="font-bold text-[var(--ink)] text-xs">{c.name}</div>
-                      <div className="text-[10px] text-[var(--muted-ink)] font-mono">{c.email}</div>
+                  <TableRow key={c.id} className="hover:bg-muted/40">
+                    <TableCell>
+                      <div className="font-semibold text-foreground text-sm">{c.name}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-mono">{c.email}</div>
                     </TableCell>
-
-                    {/* Assessment Job */}
-                    <TableCell className="py-3">
+                    <TableCell>
                       {assessment ? (
                         <div>
-                          <span className="font-semibold text-[var(--ink)] text-xs">{assessment.jobTitle}</span>
-                          <span className="block text-[10px] font-mono text-[var(--muted-ink)]">{assessment.jobId}</span>
+                          <span className="font-semibold text-foreground text-sm">{assessment.jobTitle}</span>
+                          <span className="block text-[10px] font-mono text-muted-foreground">{assessment.jobId}</span>
                         </div>
                       ) : (
-                        <span className="text-rose-500 italic text-xs">Unmapped profile</span>
+                        <span className="text-destructive italic text-xs">Unmapped profile</span>
                       )}
                     </TableCell>
-
-                    {/* Round Tag */}
-                    <TableCell className="py-3">
+                    <TableCell>
                       {assessment && (
-                        <span className="chip chip-purple text-[10px] font-mono uppercase">
-                          {assessment.roundType}
-                        </span>
+                        <Pill tone="neutral"><span className="font-mono uppercase text-[10px]">{assessment.roundType}</span></Pill>
                       )}
                     </TableCell>
-
-                    {/* Assigned Date */}
-                    <TableCell className="py-3 text-xs font-mono text-[var(--muted-ink)]">
+                    <TableCell className="text-xs font-mono text-muted-foreground tnum tabular-nums">
                       {c.assignedDate ? new Date(c.assignedDate).toLocaleDateString() : 'Unassigned'}
                     </TableCell>
-
-                    {/* Submitted Date */}
-                    <TableCell className="py-3 text-xs font-mono text-[var(--ink)]">
-                      {c.submittedDate || <span className="text-[var(--muted-ink)] italic text-[11px]">Pending</span>}
+                    <TableCell className="text-xs font-mono text-foreground tnum tabular-nums">
+                      {c.submittedDate || <span className="text-muted-foreground italic text-[11px]">Pending</span>}
                     </TableCell>
-
-                    {/* Report Status */}
-                    <TableCell className="py-3">
+                    <TableCell>
                       {c.reportStatus === 'GENERATED' ? (
-                        <span className="chip chip-positive">
-                          <CheckCircle className="w-3 h-3" /> Evaluated
-                        </span>
+                        <Pill tone="success"><CheckCircle className="w-3 h-3" /> Evaluated</Pill>
                       ) : c.reportStatus === 'GENERATING' ? (
-                        <span className="chip chip-warning animate-pulse">
-                          <RefreshCw className="w-3 h-3 animate-spin" /> Analyzing
-                        </span>
+                        <Pill tone="warning"><span className="animate-pulse inline-flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Analyzing</span></Pill>
                       ) : (
-                        <span className="chip chip-purple">No Report</span>
+                        <Pill tone="neutral">No Report</Pill>
                       )}
                     </TableCell>
-
-                    {/* Status */}
-                    <TableCell className="py-3">
-                      <span className={`chip ${c.status === 'ACTIVE' ? 'chip-positive' : 'chip-negative'}`}>
+                    <TableCell>
+                      <Pill tone={c.status === 'ACTIVE' ? 'success' : 'danger'}>
                         {c.status}
-                      </span>
+                      </Pill>
                     </TableCell>
-
-                    {/* Actions */}
-                    <TableCell className="py-3 text-right">
+                    <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {c.linkGenerated && c.interviewId && (
                           <button
                             onClick={() => handleCheckStatus(c.id)}
                             disabled={syncingId === c.id}
                             title="Sync status with API"
-                            className="p-1.5 rounded-lg border border-[var(--line)] text-slate-700 hover:bg-slate-100 cursor-pointer"
+                            className="p-1.5 rounded-full border border-border/70 text-foreground hover:bg-muted cursor-pointer transition disabled:opacity-50"
                           >
                             <RefreshCw className={`w-3.5 h-3.5 ${syncingId === c.id ? 'animate-spin' : ''}`} />
                           </button>
                         )}
-
                         <button
                           onClick={() => assessment && onOpenReport(c, assessment)}
                           disabled={c.reportStatus !== 'GENERATED'}
                           title={c.reportStatus !== 'GENERATED' ? 'Report not generated yet' : 'View report'}
-                          className={`p-1.5 rounded-lg border text-slate-700 hover:bg-slate-100 cursor-pointer ${
-                            c.reportStatus !== 'GENERATED' ? 'opacity-30 cursor-not-allowed' : 'border-[var(--line)]'
+                          className={`p-1.5 rounded-full border border-border/70 text-foreground hover:bg-muted cursor-pointer transition ${
+                            c.reportStatus !== 'GENERATED' ? 'opacity-40 cursor-not-allowed' : ''
                           }`}
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
-
                         <div className="relative inline-block">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setOpenMenuCandId(openMenuCandId === c.id ? null : c.id);
                             }}
-                            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+                            className="p-1.5 rounded-full hover:bg-muted text-muted-foreground cursor-pointer transition"
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>
-
                           {openMenuCandId === c.id && (
                             <>
                               <div className="fixed inset-0 z-30" onClick={() => setOpenMenuCandId(null)} />
-                              <div className="absolute right-0 mt-1 w-44 bg-white border border-[var(--line)] rounded-xl shadow-lg py-1.5 z-40 text-left">
+                              <div className="absolute right-0 mt-1 w-44 bg-card border border-border/70 rounded-2xl shadow-[var(--shadow-card)] py-1.5 z-40 text-left">
                                 <button
                                   onClick={() => { setOpenMenuCandId(null); onToggleCandidateStatus(c.id); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer transition"
                                 >
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" /> Toggle Active
+                                  <Check className="w-3.5 h-3.5 text-success" /> Toggle Active
                                 </button>
                                 <button
                                   onClick={() => { setOpenMenuCandId(null); setPasswordEditCandId(c.id); setNewCandPassword(c.password || ''); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer transition"
                                 >
-                                  <Lock className="w-3.5 h-3.5 text-slate-500" /> Update Password
+                                  <Lock className="w-3.5 h-3.5 text-muted-foreground" /> Update Password
                                 </button>
                                 <button
                                   onClick={() => { setOpenMenuCandId(null); handleRegenerateReport(c.id); }}
                                   disabled={!c.submittedDate}
-                                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold ${
-                                    c.submittedDate ? 'hover:bg-slate-50 cursor-pointer' : 'opacity-40 cursor-not-allowed'
-                                  }`}
+                                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground ${
+                                    c.submittedDate ? 'hover:bg-muted cursor-pointer' : 'opacity-40 cursor-not-allowed'
+                                  } transition`}
                                 >
-                                  <RefreshCw className="w-3.5 h-3.5 text-sky-600" /> Regenerate Report
+                                  <RefreshCw className="w-3.5 h-3.5 text-info" /> Regenerate Report
                                 </button>
                               </div>
                             </>
@@ -723,63 +692,56 @@ export default function CandidateManagement({
                   </TableRow>
                 );
               })}
-
               {filteredCandidates.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-[var(--muted-ink)] italic text-xs">
-                    No candidate records match the active filter criteria.
+                  <TableCell colSpan={8}>
+                    <EmptyNote>No candidate records match the active filter criteria.</EmptyNote>
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
-
-        <div className="p-3 bg-slate-50 border-t border-[var(--line)] flex items-center justify-between text-xs text-[var(--muted-ink)]">
-          <span>Showing <strong>{filteredCandidates.length}</strong> of <strong>{candidates.length}</strong> total candidates</span>
+        <div className="p-3 bg-muted/40 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+          <span className="tnum tabular-nums">Showing <strong className="text-foreground">{filteredCandidates.length}</strong> of <strong className="text-foreground">{candidates.length}</strong> total candidates</span>
           <span className="text-[11px] font-mono">Preserving filter context</span>
         </div>
-      </div>
+      </Panel>
 
       {/* Update Password Dialog Modal */}
       {passwordEditCandId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl border border-[var(--line)] shadow-xl w-full max-w-md p-6 space-y-4 text-left">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-sm">
+          <Panel className="w-full max-w-md space-y-4">
             <div>
-              <h3 className="text-sm font-extrabold text-[var(--ink)] flex items-center gap-2">
-                <Lock className="w-4 h-4 text-[var(--purple-600)]" /> Update Candidate Password
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Lock className="w-4 h-4 text-accent" /> Update Candidate Password
               </h3>
-              <p className="text-xs text-[var(--muted-ink)] mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Assign a custom login password credential for candidate login.
               </p>
             </div>
-
             <div className="space-y-1">
-              <label className="eyebrow block text-[10px]">New Password Key *</label>
+              <label className="eyebrow block">New Password Key *</label>
               <Input
                 value={newCandPassword}
                 onChange={(e) => setNewCandPassword(e.target.value)}
                 placeholder="Enter password credential..."
-                className="text-xs font-bold"
+                className="rounded-full"
               />
             </div>
-
-            <div className="flex gap-2 pt-2 border-t border-[var(--line)]">
-              <button
-                onClick={() => setPasswordEditCandId(null)}
-                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold cursor-pointer"
-              >
+            <div className="flex gap-2 pt-3 border-t border-border/60">
+              <PAButton variant="secondary" onClick={() => setPasswordEditCandId(null)} className="flex-1">
                 Cancel
-              </button>
-              <button
+              </PAButton>
+              <PAButton
                 onClick={handleUpdatePasswordSubmit}
                 disabled={isSavingPassword || !newCandPassword.trim()}
-                className="flex-1 py-2 bg-[var(--purple-700)] hover:bg-[var(--purple-600)] text-white rounded-xl text-xs font-bold cursor-pointer"
+                className="flex-1"
               >
                 Save Password
-              </button>
+              </PAButton>
             </div>
-          </div>
+          </Panel>
         </div>
       )}
 

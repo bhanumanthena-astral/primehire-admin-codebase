@@ -377,23 +377,23 @@ export default function CandidateWorkspaceSimulator({
   };
 
   return (
-    <div className="fixed inset-0 bg-[#0f172a] text-white z-50 overflow-y-auto flex flex-col font-sans">
-      {/* Simulation Top bar */}
-      <div className="bg-amber-500 text-slate-900 px-6 py-2 flex items-center justify-between text-xs font-bold select-none shrink-0 shadow-md">
+    <div className="dark fixed inset-0 bg-sidebar text-sidebar-foreground z-50 overflow-y-auto flex flex-col font-sans">
+      {/* Simulation Top bar — on-brand gradient */}
+      <div className="bg-gradient-primary text-primary-foreground px-6 py-2 flex items-center justify-between text-xs font-semibold select-none shrink-0 shadow-[var(--shadow-glow)]">
         <div className="flex items-center gap-2">
-          <span className="bg-[#111827] text-white text-[10px] px-2 py-0.5 rounded uppercase">SIMULATOR ACTIVE</span>
+          <span className="bg-primary-foreground/15 border border-primary-foreground/20 text-primary-foreground text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-semibold">Simulator active</span>
           <span>Testing End-to-End Candidate Lifecycle for: <span className="underline">{candidate.name}</span> ({assessment.jobTitle})</span>
         </div>
-        <button 
+        <button
           onClick={onClose}
-          className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded text-[11px] cursor-pointer transition"
+          className="bg-primary-foreground/10 hover:bg-primary-foreground/20 border border-primary-foreground/20 text-primary-foreground px-3 py-1 rounded-full text-[11px] font-semibold cursor-pointer transition"
         >
           Close Simulator & Return
         </button>
       </div>
 
       <div className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-3xl bg-[#1e293b] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col min-h-[500px]">
+        <div className="w-full max-w-3xl bg-card border border-border/70 text-card-foreground rounded-2xl shadow-[var(--shadow-card)] overflow-hidden flex flex-col min-h-[500px]">
           
           {/* 1. Login Step */}
           {step === 'LOGIN' && (
@@ -403,7 +403,7 @@ export default function CandidateWorkspaceSimulator({
               </div>
               <div>
                 <h3 className="text-xl font-extrabold tracking-tight">Access Verification Required</h3>
-                <p className="text-slate-400 text-xs mt-1.5">
+                <p className="text-muted-foreground text-xs mt-1.5">
                   Welcome to the PrimeHire evaluation sandbox. Please enter the generated password to proceed with the assessment simulation.
                 </p>
               </div>
@@ -415,11 +415,11 @@ export default function CandidateWorkspaceSimulator({
                     placeholder="Enter Candidate Password"
                     value={passwordInput}
                     onChange={(e) => setPasswordInput(e.target.value)}
-                    className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-4 py-2.5 text-center text-sm font-mono tracking-widest text-white focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    className="w-full bg-muted/40 border border-border/60 rounded-lg px-4 py-2.5 text-center text-sm font-mono tracking-widest text-white focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
-                <div className="p-3 bg-slate-900/40 border border-slate-800 rounded-lg flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-semibold">Autofill credentials:</span>
+                <div className="p-3 bg-muted/40 border border-border/60 rounded-lg flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground font-semibold">Autofill credentials:</span>
                   <button
                     onClick={() => setPasswordInput(candidate.password || '')}
                     className="text-indigo-400 hover:text-indigo-300 font-bold underline"
@@ -430,7 +430,7 @@ export default function CandidateWorkspaceSimulator({
                 
                 <button
                   onClick={handlePasswordLogin}
-                  className="w-full bg-[var(--purple-700)] hover:bg-[var(--purple-600)] text-white font-bold py-2.5 px-4 rounded-lg text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                  className="w-full bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 text-white font-bold py-2.5 px-4 rounded-lg text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   <Play className="w-3.5 h-3.5" /> Start Assessment Simulation
                 </button>
@@ -443,7 +443,7 @@ export default function CandidateWorkspaceSimulator({
             <div className="p-8 flex-1 flex flex-col justify-between space-y-8">
               <div className="space-y-2">
                 <h3 className="text-lg font-bold text-white">System & Hardware Calibration</h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted-foreground">
                   Please calibrate your mic and camera to ensure speech-to-answer responses process with maximum transcription fidelity.
                 </p>
               </div>
@@ -451,10 +451,10 @@ export default function CandidateWorkspaceSimulator({
               {/* Simulation Widgets */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
                 {/* Microphone Widget */}
-                <div className="bg-slate-900/60 border border-slate-700 rounded-xl p-5 flex flex-col justify-between">
+                <div className="bg-muted/40 border border-border/60 rounded-xl p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Mic className={`w-4 h-4 ${micActive ? 'text-emerald-400' : 'text-slate-400'}`} />
+                      <Mic className={`w-4 h-4 ${micActive ? 'text-emerald-400' : 'text-muted-foreground'}`} />
                       <span className="text-xs font-bold">Microphone Channel</span>
                     </div>
                     <button
@@ -468,7 +468,7 @@ export default function CandidateWorkspaceSimulator({
                   </div>
 
                   <div className="space-y-2 py-4">
-                    <div className="text-[10px] text-slate-400 font-semibold uppercase">Real-Time Decibels</div>
+                    <div className="text-[10px] text-muted-foreground font-semibold uppercase">Real-Time Decibels</div>
                     <div className="h-6 w-full bg-slate-950 rounded overflow-hidden p-1 flex items-center gap-0.5">
                       {Array.from({ length: 24 }).map((_, i) => {
                         const active = micActive && (micLevel / 100 * 24) > i;
@@ -490,7 +490,7 @@ export default function CandidateWorkspaceSimulator({
                     </div>
                   </div>
 
-                  <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                  <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
                     {micActive ? (
                       <span className="text-emerald-400 font-semibold flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Signal detected: OK</span>
                     ) : (
@@ -500,10 +500,10 @@ export default function CandidateWorkspaceSimulator({
                 </div>
 
                 {/* Camera Widget */}
-                <div className="bg-slate-900/60 border border-slate-700 rounded-xl p-5 flex flex-col justify-between">
+                <div className="bg-muted/40 border border-border/60 rounded-xl p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Video className={`w-4 h-4 ${camActive ? 'text-indigo-400' : 'text-slate-400'}`} />
+                      <Video className={`w-4 h-4 ${camActive ? 'text-indigo-400' : 'text-muted-foreground'}`} />
                       <span className="text-xs font-bold">Camera Feed</span>
                     </div>
                     <button
@@ -525,7 +525,7 @@ export default function CandidateWorkspaceSimulator({
                           <span className="text-[10px] bg-[#111827]/80 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 font-mono">
                             LIVE FEED (MOCK)
                           </span>
-                          <span className="block text-[9px] text-slate-400 font-mono mt-1">
+                          <span className="block text-[9px] text-muted-foreground font-mono mt-1">
                             Candidate camera active
                           </span>
                         </div>
@@ -538,7 +538,7 @@ export default function CandidateWorkspaceSimulator({
                     )}
                   </div>
 
-                  <div className="text-[10px] text-slate-500">
+                  <div className="text-[10px] text-muted-foreground">
                     Proctoring checks will ensure candidate presence during actual interview flow.
                   </div>
                 </div>
@@ -552,7 +552,7 @@ export default function CandidateWorkspaceSimulator({
                     setCamActive(true);
                     setStep('TEST');
                   }}
-                  className="bg-[var(--purple-700)] hover:bg-[var(--purple-600)] text-white text-xs font-bold py-2 px-5 rounded-lg transition flex items-center gap-1 shadow-sm"
+                  className="bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 text-white text-xs font-bold py-2 px-5 rounded-lg transition flex items-center gap-1 shadow-sm"
                 >
                   Confirm & Proceed <ArrowRight className="w-3.5 h-3.5" />
                 </button>
@@ -564,9 +564,9 @@ export default function CandidateWorkspaceSimulator({
           {step === 'TEST' && currentQuestion && (
             <div className="flex-1 flex flex-col justify-between">
               {/* Question Header Status */}
-              <div className="bg-slate-900/40 border-b border-slate-700 px-6 py-4 flex items-center justify-between text-xs">
+              <div className="bg-muted/40 border-b border-border/60 px-6 py-4 flex items-center justify-between text-xs">
                 <div>
-                  <span className="text-slate-400 font-bold uppercase tracking-widest text-[10px] block">
+                  <span className="text-muted-foreground font-bold uppercase tracking-widest text-[10px] block">
                     {assessment.jobTitle}
                   </span>
                   <span className="font-extrabold text-white text-sm">
@@ -576,8 +576,8 @@ export default function CandidateWorkspaceSimulator({
 
                 <div className="flex items-center gap-4">
                   {/* Timer */}
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 px-3 py-1 rounded-md font-mono text-xs">
-                    <Clock className={`w-3.5 h-3.5 ${questionTimer < 15 ? 'text-red-400 animate-pulse' : 'text-slate-400'}`} />
+                  <div className="flex items-center gap-1.5 bg-muted border border-border/60 px-3 py-1 rounded-md font-mono text-xs">
+                    <Clock className={`w-3.5 h-3.5 ${questionTimer < 15 ? 'text-red-400 animate-pulse' : 'text-muted-foreground'}`} />
                     <span className={questionTimer < 15 ? 'text-red-400 font-bold' : 'text-white'}>
                       {Math.floor(questionTimer / 60)}:{(questionTimer % 60).toString().padStart(2, '0')}
                     </span>
@@ -597,7 +597,7 @@ export default function CandidateWorkspaceSimulator({
                 </div>
 
                 {/* Answer Inputs container */}
-                <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 min-h-[160px] flex flex-col justify-center">
+                <div className="bg-muted/40 border border-border/60 rounded-xl p-5 min-h-[160px] flex flex-col justify-center">
                   
                   {/* MCQ Interface */}
                   {currentQuestion.type === 'MCQ' && currentQuestion.options && (
@@ -632,16 +632,16 @@ export default function CandidateWorkspaceSimulator({
                       
                       {!isRecording && !answers[currentQuestion.id] && (
                         <div className="space-y-4">
-                          <p className="text-xs text-slate-400 max-w-md mx-auto">
+                          <p className="text-xs text-muted-foreground max-w-md mx-auto">
                             This is a speak-to-answer evaluation round. Click start below, speak clearly into your mic, and your answer will automatically transcribe.
                           </p>
                           <button
                             onClick={startRecording}
-                            className="mx-auto w-14 h-14 bg-[var(--purple-700)] hover:bg-[var(--purple-600)] text-white rounded-full flex items-center justify-center shadow-lg transition hover:scale-105 cursor-pointer"
+                            className="mx-auto w-14 h-14 bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 text-white rounded-full flex items-center justify-center shadow-lg transition hover:scale-105 cursor-pointer"
                           >
                             <Mic className="w-6 h-6" />
                           </button>
-                          <span className="text-[10px] text-slate-500 block font-semibold uppercase tracking-widest">
+                          <span className="text-[10px] text-muted-foreground block font-semibold uppercase tracking-widest">
                             Click to start recording
                           </span>
                         </div>
@@ -675,7 +675,7 @@ export default function CandidateWorkspaceSimulator({
                       {!isRecording && answers[currentQuestion.id] && (
                         <div className="text-left space-y-3">
                           <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-slate-400 font-bold uppercase tracking-wider">Voice Transcript Preview (Editable)</span>
+                            <span className="text-muted-foreground font-bold uppercase tracking-wider">Voice Transcript Preview (Editable)</span>
                             <button
                               onClick={() => {
                                 setAnswers(prev => {
@@ -701,7 +701,7 @@ export default function CandidateWorkspaceSimulator({
                             rows={4}
                             placeholder="Type or speak response details..."
                           />
-                          <p className="text-[10px] text-slate-500 italic">
+                          <p className="text-[10px] text-muted-foreground italic">
                             Tip: Feel free to edit the generated speech transcript above to simulate different answer depths.
                           </p>
                         </div>
@@ -722,13 +722,13 @@ export default function CandidateWorkspaceSimulator({
                   <ArrowLeft className="w-3.5 h-3.5" /> Previous Question
                 </button>
 
-                <div className="text-xs text-slate-400 font-mono">
+                <div className="text-xs text-muted-foreground font-mono">
                   {Object.keys(answers).length} of {questions.length} Answered
                 </div>
 
                 <button
                   onClick={handleNextQuestion}
-                  className="px-4 py-2 bg-[var(--purple-700)] hover:bg-[var(--purple-600)] text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-sm"
+                  className="px-4 py-2 bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-sm"
                 >
                   {currentQuestionIndex === questions.length - 1 ? 'Review Submission' : 'Next Question'} <ArrowRight className="w-3.5 h-3.5" />
                 </button>
@@ -741,7 +741,7 @@ export default function CandidateWorkspaceSimulator({
             <div className="p-8 flex-1 flex flex-col justify-between space-y-6">
               <div className="space-y-2">
                 <h3 className="text-lg font-bold text-white">Review Assessment Responses</h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted-foreground">
                   Please review the status of each question prior to submitting your assessment profile for AI analysis.
                 </p>
               </div>
@@ -751,9 +751,9 @@ export default function CandidateWorkspaceSimulator({
                 {questions.map((q, idx) => {
                   const isAnswered = answers[q.id] !== undefined && answers[q.id] !== '';
                   return (
-                    <div key={q.id} className="p-3.5 bg-slate-900/40 border border-slate-800 rounded-lg flex items-center justify-between text-xs">
+                    <div key={q.id} className="p-3.5 bg-muted/40 border border-border/60 rounded-lg flex items-center justify-between text-xs">
                       <div className="space-y-0.5 max-w-[80%]">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Question #{idx + 1} ({q.type})</span>
+                        <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Question #{idx + 1} ({q.type})</span>
                         <p className="font-semibold text-slate-200 truncate">{q.text}</p>
                       </div>
 
@@ -802,7 +802,7 @@ export default function CandidateWorkspaceSimulator({
               
               <div className="space-y-1">
                 <h4 className="text-lg font-bold text-white">Processing Assessment Submission</h4>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                <p className="text-xs text-muted-foreground max-w-md mx-auto">
                   Our simulated AI proctor and grading system is analyzing candidate inputs. Please remain on this screen.
                 </p>
               </div>
@@ -811,44 +811,44 @@ export default function CandidateWorkspaceSimulator({
               <div className="max-w-xs mx-auto w-full space-y-2.5 text-left pt-2">
                 <div className="flex items-center gap-2 text-xs">
                   <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                    evalStep > 0 ? 'bg-emerald-500 text-slate-900 font-bold' : 'bg-slate-800 border border-slate-700 text-slate-400'
+                    evalStep > 0 ? 'bg-emerald-500 text-slate-900 font-bold' : 'bg-slate-800 border border-slate-700 text-muted-foreground'
                   }`}>
                     {evalStep > 0 ? '✓' : '1'}
                   </div>
-                  <span className={evalStep > 0 ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
+                  <span className={evalStep > 0 ? 'text-emerald-400 font-semibold' : 'text-muted-foreground'}>
                     Uploading verbal waveforms...
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
                   <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                    evalStep > 1 ? 'bg-emerald-500 text-slate-900 font-bold' : 'bg-slate-800 border border-slate-700 text-slate-400'
+                    evalStep > 1 ? 'bg-emerald-500 text-slate-900 font-bold' : 'bg-slate-800 border border-slate-700 text-muted-foreground'
                   }`}>
                     {evalStep > 1 ? '✓' : '2'}
                   </div>
-                  <span className={evalStep > 1 ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
+                  <span className={evalStep > 1 ? 'text-emerald-400 font-semibold' : 'text-muted-foreground'}>
                     AI parsing answer contextual keywords...
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
                   <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                    evalStep > 2 ? 'bg-emerald-500 text-slate-900 font-bold' : 'bg-slate-800 border border-slate-700 text-slate-400'
+                    evalStep > 2 ? 'bg-emerald-500 text-slate-900 font-bold' : 'bg-slate-800 border border-slate-700 text-muted-foreground'
                   }`}>
                     {evalStep > 2 ? '✓' : '3'}
                   </div>
-                  <span className={evalStep > 2 ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
+                  <span className={evalStep > 2 ? 'text-emerald-400 font-semibold' : 'text-muted-foreground'}>
                     Generating Strength & Weakness report...
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
                   <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                    evalStep > 3 ? 'bg-emerald-500 text-slate-900 font-bold' : 'bg-slate-800 border border-slate-700 text-slate-400'
+                    evalStep > 3 ? 'bg-emerald-500 text-slate-900 font-bold' : 'bg-slate-800 border border-slate-700 text-muted-foreground'
                   }`}>
                     {evalStep > 3 ? '✓' : '4'}
                   </div>
-                  <span className={evalStep > 3 ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
+                  <span className={evalStep > 3 ? 'text-emerald-400 font-semibold' : 'text-muted-foreground'}>
                     Finalizing overall candidate scorecard...
                   </span>
                 </div>
@@ -865,25 +865,25 @@ export default function CandidateWorkspaceSimulator({
               
               <div>
                 <h4 className="text-xl font-extrabold tracking-tight">Assessment Simulation Complete!</h4>
-                <p className="text-xs text-slate-400 mt-1.5 max-w-sm mx-auto">
+                <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto">
                   Excellent! You have successfully completed the test flow for <span className="font-bold text-white">{candidate.name}</span>. The evaluation has compiled instantly.
                 </p>
               </div>
 
               <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl max-w-md mx-auto w-full text-left space-y-2">
-                <div className="text-xs text-slate-400 font-bold uppercase tracking-wider text-center border-b border-slate-800 pb-2">
+                <div className="text-xs text-muted-foreground font-bold uppercase tracking-wider text-center border-b border-slate-800 pb-2">
                   Simulation Metadata Log
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Evaluation Mode:</span>
+                  <span className="text-muted-foreground">Evaluation Mode:</span>
                   <span className="font-semibold text-indigo-400 font-mono">AI Sandbox Engine</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Questions Answered:</span>
+                  <span className="text-muted-foreground">Questions Answered:</span>
                   <span className="font-semibold text-slate-200">{Object.keys(answers).length} / {questions.length}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Status Output:</span>
+                  <span className="text-muted-foreground">Status Output:</span>
                   <span className="font-bold text-emerald-400">GENERATED</span>
                 </div>
               </div>

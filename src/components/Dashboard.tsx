@@ -5,20 +5,26 @@
 
 import React from 'react';
 import { AssessmentProfile, Candidate } from '../types';
-import { 
-  Cpu, 
-  Users, 
-  UserCheck, 
-  BarChart3, 
-  Briefcase, 
-  Hourglass, 
-  CheckCircle2, 
-  TrendingUp, 
-  ChevronRight,
-  ArrowUpRight,
-  ShieldCheck,
-  Zap
+import {
+  BarChart3,
+  Briefcase,
+  Cpu,
+  CheckCircle2,
+  Hourglass,
+  Zap,
 } from 'lucide-react';
+import {
+  SectionHeader,
+  Panel,
+  PanelTitle,
+  Stat,
+  Pill,
+  Bar,
+  PAButton,
+  IconSquare,
+  ViewMoreButton,
+  EmptyNote,
+} from './ui/primitives';
 
 interface DashboardProps {
   assessments: AssessmentProfile[];
@@ -29,13 +35,13 @@ interface DashboardProps {
   onNavigate: (tab: string) => void;
 }
 
-export default function Dashboard({ 
-  assessments, 
-  candidates, 
+export default function Dashboard({
+  assessments,
+  candidates,
   filterRound = 'ALL',
   filterStatus = 'ALL',
   searchQuery = '',
-  onNavigate 
+  onNavigate
 }: DashboardProps) {
   // Apply active filter state
   const filteredAssessments = assessments.filter(a => {
@@ -76,289 +82,168 @@ export default function Dashboard({
     .slice(0, 4);
 
   return (
-    <div className="space-y-6 text-[var(--ink)] font-sans">
-      
-      {/* ── Section Heading ────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="icon-badge">
-            <BarChart3 className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="eyebrow block">EXECUTIVE OVERVIEW</span>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[var(--ink)] tracking-tight">
-              Performance & Assessment Metrics
-            </h2>
-            <p className="text-xs text-[var(--muted-ink)] mt-0.5">
-              Are candidate evaluation pipelines operating at scale, and are reports generated on schedule?
-            </p>
-          </div>
-        </div>
+    <div className="space-y-6 text-foreground font-sans">
+      <SectionHeader
+        eyebrow="Executive overview"
+        title="Performance & Assessment Metrics"
+        subtitle="Are candidate evaluation pipelines operating at scale, and are reports generated on schedule?"
+        icon={<BarChart3 className="w-5 h-5" />}
+        action={
+          <PAButton onClick={() => onNavigate('assessments')} className="hidden sm:inline-flex">
+            <Zap className="w-4 h-4" /> New Assessment
+          </PAButton>
+        }
+      />
 
-        <button
-          onClick={() => onNavigate('assessments')}
-          className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--purple-700)] text-white hover:bg-[var(--purple-600)] text-xs font-bold transition shadow-xs cursor-pointer"
-        >
-          <Zap className="w-4 h-4 text-purple-200" />
-          New Assessment
-        </button>
+      {/* ── KPI strip: 1 / 2 / 4 ─────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <Stat
+          label="Total assessments"
+          value={assessments.length}
+          unit="profiles"
+          pill={<Pill tone="info">{activeAssessments.length} Active</Pill>}
+          footer="Accepting submissions"
+          action={<ViewMoreButton onClick={() => onNavigate('assessments')}>View profiles</ViewMoreButton>}
+        />
+        <Stat
+          label="Candidate pipeline"
+          value={candidates.length}
+          unit="candidates"
+          pill={<Pill tone="success">{activeCandidates.length} Active</Pill>}
+          footer={`${totalInvitesSent} invite links generated`}
+          action={<ViewMoreButton onClick={() => onNavigate('candidates')}>View directory</ViewMoreButton>}
+        />
+        <Stat
+          label="Evaluated reports"
+          value={reportsGenerated}
+          unit="reports"
+          pill={<Pill tone="success"><CheckCircle2 className="w-3 h-3" /> Ready</Pill>}
+          footer="AI evaluation compiled"
+          action={<ViewMoreButton onClick={() => onNavigate('candidates')}>Inspect</ViewMoreButton>}
+        />
+        <Stat
+          label="Report processing"
+          value={reportsGenerating}
+          unit="in progress"
+          pill={
+            reportsGenerating > 0
+              ? <Pill tone="warning"><Hourglass className="w-3 h-3" /> {reportsGenerating} Active</Pill>
+              : <Pill tone="neutral">Queue Clear</Pill>
+          }
+          footer="Real-time status sync"
+          action={<ViewMoreButton onClick={() => onNavigate('candidates')}>Monitor</ViewMoreButton>}
+        />
       </div>
 
-      {/* ── KPI Blocks Grid (Primary Outcomes & Metrics) ────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        {/* KPI 1: Active Assessments */}
-        <div className="ds-card flex flex-col justify-between space-y-4">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="eyebrow">TOTAL ASSESSMENTS</span>
-              <span className="chip chip-purple">{activeAssessments.length} Active</span>
-            </div>
-            <div className="flex items-baseline gap-2 pt-1">
-              <span className="text-3xl font-extrabold tracking-tight text-[var(--ink)]">
-                {assessments.length}
-              </span>
-              <span className="text-xs text-[var(--muted-ink)] font-semibold">profiles</span>
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--line)] flex items-center justify-between text-xs">
-            <span className="text-[var(--muted-ink)] text-[11px]">Accepting submissions</span>
-            <button
-              onClick={() => onNavigate('assessments')}
-              className="font-bold text-[var(--purple-700)] hover:underline flex items-center gap-0.5 cursor-pointer text-[11px]"
-            >
-              View profiles <ArrowUpRight className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-
-        {/* KPI 2: Scheduled Candidates */}
-        <div className="ds-card flex flex-col justify-between space-y-4">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="eyebrow">CANDIDATE PIPELINE</span>
-              <span className="chip chip-positive">{activeCandidates.length} Active</span>
-            </div>
-            <div className="flex items-baseline gap-2 pt-1">
-              <span className="text-3xl font-extrabold tracking-tight text-[var(--ink)]">
-                {candidates.length}
-              </span>
-              <span className="text-xs text-[var(--muted-ink)] font-semibold">candidates</span>
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--line)] flex items-center justify-between text-xs">
-            <span className="text-[var(--muted-ink)] text-[11px]">{totalInvitesSent} invite links generated</span>
-            <button
-              onClick={() => onNavigate('candidates')}
-              className="font-bold text-[var(--purple-700)] hover:underline flex items-center gap-0.5 cursor-pointer text-[11px]"
-            >
-              View directory <ArrowUpRight className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-
-        {/* KPI 3: Evaluated Reports */}
-        <div className="ds-card flex flex-col justify-between space-y-4">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="eyebrow">EVALUATED REPORTS</span>
-              <span className="chip chip-positive">
-                <CheckCircle2 className="w-3 h-3" /> Ready
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2 pt-1">
-              <span className="text-3xl font-extrabold tracking-tight text-[var(--ink)]">
-                {reportsGenerated}
-              </span>
-              <span className="text-xs text-[var(--muted-ink)] font-semibold">reports</span>
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--line)] flex items-center justify-between text-xs">
-            <span className="text-[var(--muted-ink)] text-[11px]">AI evaluation compiled</span>
-            <button
-              onClick={() => onNavigate('candidates')}
-              className="font-bold text-[var(--purple-700)] hover:underline flex items-center gap-0.5 cursor-pointer text-[11px]"
-            >
-              Inspect <ArrowUpRight className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-
-        {/* KPI 4: Pending / Processing Reports */}
-        <div className="ds-card flex flex-col justify-between space-y-4">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="eyebrow">REPORT PROCESSING</span>
-              {reportsGenerating > 0 ? (
-                <span className="chip chip-warning animate-pulse">
-                  <Hourglass className="w-3 h-3" /> {reportsGenerating} Active
-                </span>
-              ) : (
-                <span className="chip chip-purple">Queue Clear</span>
-              )}
-            </div>
-            <div className="flex items-baseline gap-2 pt-1">
-              <span className="text-3xl font-extrabold tracking-tight text-[var(--ink)]">
-                {reportsGenerating}
-              </span>
-              <span className="text-xs text-[var(--muted-ink)] font-semibold">in progress</span>
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--line)] flex items-center justify-between text-xs">
-            <span className="text-[var(--muted-ink)] text-[11px]">Real-time status sync</span>
-            <button
-              onClick={() => onNavigate('candidates')}
-              className="font-bold text-[var(--purple-700)] hover:underline flex items-center gap-0.5 cursor-pointer text-[11px]"
-            >
-              Monitor <ArrowUpRight className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-
-      </div>
-
-      {/* ── Evidence & Breakdown Grid ───────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Round Distribution Breakdown */}
-        <div className="ds-card lg:col-span-1 space-y-4 flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[var(--purple-50)] text-[var(--purple-700)] flex items-center justify-center font-bold text-xs">
-                <Briefcase className="w-4 h-4" />
-              </div>
+      {/* ── Evidence grid ────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Round distribution */}
+        <Panel className="lg:col-span-1 flex flex-col justify-between gap-4">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5">
+              <IconSquare><Briefcase className="w-4 h-4" /></IconSquare>
               <div>
-                <span className="eyebrow block">DISTRIBUTION</span>
-                <h3 className="text-sm font-bold text-[var(--ink)]">Assessment Round Breakdown</h3>
+                <span className="eyebrow block">Distribution</span>
+                <PanelTitle>Assessment Round Breakdown</PanelTitle>
               </div>
             </div>
 
-            <div className="space-y-3 pt-2">
-              {/* Technical */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs font-semibold text-[var(--ink)]">
-                  <span>TECHNICAL Round</span>
-                  <span className="font-mono text-[var(--purple-700)]">{technicalCount} ({techPct}%)</span>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-semibold">
+                  <span className="text-foreground">Technical Round</span>
+                  <span className="tnum tabular-nums text-accent">{technicalCount} ({techPct}%)</span>
                 </div>
-                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full bg-[var(--purple-600)] rounded-full transition-all" style={{ width: `${techPct}%` }} />
-                </div>
+                <Bar value={techPct} color="var(--chart-2)" countLabel={`${techPct}%`} />
               </div>
-
-              {/* Basic */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs font-semibold text-[var(--ink)]">
-                  <span>BASIC Round</span>
-                  <span className="font-mono text-sky-700">{basicCount} ({basicPct}%)</span>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-semibold">
+                  <span className="text-foreground">Basic Round</span>
+                  <span className="tnum tabular-nums text-accent">{basicCount} ({basicPct}%)</span>
                 </div>
-                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full bg-sky-500 rounded-full transition-all" style={{ width: `${basicPct}%` }} />
-                </div>
+                <Bar value={basicPct} color="var(--chart-1)" countLabel={`${basicPct}%`} />
               </div>
-
-              {/* HR */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs font-semibold text-[var(--ink)]">
-                  <span>HR Screening Round</span>
-                  <span className="font-mono text-emerald-700">{hrCount} ({hrPct}%)</span>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-semibold">
+                  <span className="text-foreground">HR Screening Round</span>
+                  <span className="tnum tabular-nums text-accent">{hrCount} ({hrPct}%)</span>
                 </div>
-                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${hrPct}%` }} />
-                </div>
+                <Bar value={hrPct} color="var(--chart-4)" countLabel={`${hrPct}%`} />
               </div>
             </div>
           </div>
-
-          <div className="pt-3 border-t border-[var(--line)] text-xs text-[var(--muted-ink)] font-medium">
-            Total active registered profiles: <strong className="text-[var(--ink)]">{assessments.length}</strong>
+          <div className="pt-3 border-t border-border/60 text-xs text-muted-foreground">
+            Total active registered profiles: <strong className="text-foreground tnum tabular-nums">{assessments.length}</strong>
           </div>
-        </div>
+        </Panel>
 
-        {/* Recently Created Profiles Table */}
-        <div className="ds-card lg:col-span-2 space-y-4 flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[var(--purple-50)] text-[var(--purple-700)] flex items-center justify-center font-bold text-xs">
-                  <Cpu className="w-4 h-4" />
-                </div>
+        {/* Recent profiles */}
+        <Panel padded={false} className="lg:col-span-2 flex flex-col justify-between overflow-hidden">
+          <div className="p-5 sm:p-6 pb-0 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <IconSquare><Cpu className="w-4 h-4" /></IconSquare>
                 <div>
-                  <span className="eyebrow block">RECENT RECORDS</span>
-                  <h3 className="text-sm font-bold text-[var(--ink)]">Active Assessment Profiles</h3>
+                  <span className="eyebrow block">Recent records</span>
+                  <PanelTitle>Active Assessment Profiles</PanelTitle>
                 </div>
               </div>
-
-              <button
-                onClick={() => onNavigate('assessments')}
-                className="text-xs font-bold text-[var(--purple-700)] hover:underline cursor-pointer"
-              >
-                View all &rarr;
-              </button>
+              <ViewMoreButton onClick={() => onNavigate('assessments')}>View all →</ViewMoreButton>
             </div>
+          </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto border border-[var(--line)] rounded-xl">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-[var(--line)] text-[var(--muted-ink)] font-bold uppercase tracking-wider text-[10px]">
+          <div className="px-5 sm:px-6">
+            <div className="rounded-lg border border-border/60 overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-card sticky top-0 z-10 text-muted-foreground text-xs uppercase tracking-wider font-medium border-b border-border/60">
                   <tr>
                     <th className="py-2.5 px-3">Job Title & ID</th>
                     <th className="py-2.5 px-3">Round</th>
                     <th className="py-2.5 px-3">Created</th>
-                    <th className="py-2.5 px-3">Candidates</th>
+                    <th className="py-2.5 px-3 tnum">Candidates</th>
                     <th className="py-2.5 px-3 text-right">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[var(--line)]">
+                <tbody className="divide-y divide-border/60">
                   {recentAssessments.map(a => {
                     const count = candidates.filter(c => c.assessmentId === a.id).length;
                     return (
-                      <tr key={a.id} className="hover:bg-slate-50/60 transition-colors">
+                      <tr key={a.id} className="transition-opacity duration-200 hover:bg-muted/40">
                         <td className="py-2.5 px-3">
-                          <div className="font-bold text-[var(--ink)]">{a.jobTitle}</div>
-                          <div className="text-[10px] font-mono text-[var(--muted-ink)]">{a.jobId}</div>
+                          <div className="font-semibold text-foreground text-sm">{a.jobTitle}</div>
+                          <div className="text-[10px] uppercase tracking-wide font-mono text-muted-foreground">{a.jobId}</div>
                         </td>
                         <td className="py-2.5 px-3">
-                          <span className="chip chip-purple text-[10px] font-mono uppercase">{a.roundType}</span>
+                          <Pill tone="neutral"><span className="font-mono uppercase text-[10px]">{a.roundType}</span></Pill>
                         </td>
-                        <td className="py-2.5 px-3 font-mono text-[var(--muted-ink)] text-[11px]">
+                        <td className="py-2.5 px-3 font-mono text-muted-foreground text-xs tnum tabular-nums">
                           {new Date(a.createdAt).toLocaleDateString()}
                         </td>
-                        <td className="py-2.5 px-3 font-bold text-[var(--ink)]">
+                        <td className="py-2.5 px-3 font-semibold text-foreground tnum tabular-nums">
                           {count}
                         </td>
                         <td className="py-2.5 px-3 text-right">
-                          <span className={`chip ${a.isActive ? 'chip-positive' : 'chip-negative'}`}>
+                          <Pill tone={a.isActive ? 'success' : 'neutral'}>
                             {a.isActive ? 'Active' : 'Inactive'}
-                          </span>
+                          </Pill>
                         </td>
                       </tr>
                     );
                   })}
-                  {recentAssessments.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-[var(--muted-ink)] italic">
-                        No assessment profiles configured yet.
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
+              {recentAssessments.length === 0 && (
+                <EmptyNote>No assessment profiles configured yet.</EmptyNote>
+              )}
             </div>
           </div>
 
-          <div className="pt-2 flex items-center justify-between text-xs text-[var(--muted-ink)]">
-            <span>Showing top {recentAssessments.length} recently registered profiles</span>
-            <button
-              onClick={() => onNavigate('assessments')}
-              className="font-bold text-[var(--purple-700)] hover:underline cursor-pointer"
-            >
-              Configure profiles &rarr;
-            </button>
+          <div className="p-5 sm:p-6 pt-3 flex items-center justify-between text-xs text-muted-foreground">
+            <span className="tnum tabular-nums">Showing top {recentAssessments.length} recently registered profiles</span>
+            <ViewMoreButton onClick={() => onNavigate('assessments')}>Configure profiles →</ViewMoreButton>
           </div>
-        </div>
-
+        </Panel>
       </div>
-
     </div>
   );
 }

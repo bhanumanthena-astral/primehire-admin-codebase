@@ -64,7 +64,7 @@ async function apiRequest<T = any>(method: string, path: string, body?: any): Pr
     } catch {
       errorJson = { error: errorText };
     }
-    
+
     let msg = `Request failed with status ${response.status}`;
     if (typeof errorJson.detail === 'string') {
       msg = errorJson.detail;
@@ -76,6 +76,22 @@ async function apiRequest<T = any>(method: string, path: string, body?: any): Pr
       msg = errorJson.error;
     } else if (errorJson.details) {
       msg = errorJson.details;
+    }
+
+    // Surface actionable guidance for auth / config failures instead of a
+    // cryptic "401: Invalid Credentials" from the upstream API.
+    const isAuthError =
+      response.status === 401 ||
+      /invalid credentials/i.test(msg) ||
+      errorJson?.type === 'CONFIGURATION_ERROR';
+    if (isAuthError) {
+      const isMissingConfig =
+        errorJson?.type === 'CONFIGURATION_ERROR' || response.status === 500;
+      throw new Error(
+        isMissingConfig
+          ? `${msg} — The server has no PrimeHire x-access-key / x-secret-key configured. Create a .env file (see .env.example: PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY) and restart the server, then retry creating the assessment.`
+          : `PrimeHire authentication failed (401: Invalid Credentials) on ${method} ${path}. The x-access-key / x-secret-key sent by the server were rejected. Verify PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY in the server .env are correct and restart the server, then retry.`
+      );
     }
 
     throw new Error(msg);
