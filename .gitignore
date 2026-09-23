@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+# Python / FastAPI backend
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
