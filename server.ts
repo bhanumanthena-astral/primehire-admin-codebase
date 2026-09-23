@@ -62,14 +62,18 @@ async function startServer() {
     }
   });
 
-  // Proxy to PrimeHire
-  app.all("/api/primehire/*", async (req, res) => {
+  // Proxy to PrimeHire (local-dev mirror of the Cloudflare Pages Function
+  // at functions/api/backend/[[path]].ts). Serves both the current
+  // "/api/backend/*" namespace and the legacy "/api/primehire/*" namespace.
+  app.all(["/api/primehire/*", "/api/backend/*"], async (req, res) => {
     const startTime = Date.now();
 
-    // Extract the relative subpath (e.g. "/assessment" from "/api/primehire/assessment")
-    const subpath = req.path.substring("/api/primehire".length);
+    // Extract the relative subpath (e.g. "/assessment" from "/api/backend/assessment")
+    const prefix = req.path.startsWith("/api/backend") ? "/api/backend" : "/api/primehire";
+    const subpath = req.path.substring(prefix.length);
     const queryString = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
-    const targetUrl = `https://api.placement.vils.ai/primehire/api/v1${subpath}${queryString}`;
+    const backendBase = (process.env.BACKEND_URL || "https://api.placement.vils.ai/primehire/api/v1").replace(/\/+$/, "");
+    const targetUrl = `${backendBase}${subpath}${queryString}`;
 
     // Validate credentials BEFORE proxying so a missing .env produces an
     // actionable error instead of a cryptic upstream "401: Invalid Credentials".
@@ -99,6 +103,16 @@ async function startServer() {
       "x-access-key": accessKey,
       "x-secret-key": secretKey,
     };
+
+    // Forward the caller's Authorization when present (Bearer flows), mirroring
+    // the Cloudflare Pages Function. The Origin override below mirrors
+    // PROXY_ORIGIN for backends that expect a specific origin.
+    if (req.headers.authorization) {
+      headers["Authorization"] = req.headers.authorization as string;
+    }
+    if (process.env.PROXY_ORIGIN) {
+      headers["Origin"] = process.env.PROXY_ORIGIN;
+    }
 
     // Detailed logging for request body
     if (["POST", "PUT", "PATCH"].includes(req.method) && req.body && Object.keys(req.body).length > 0) {

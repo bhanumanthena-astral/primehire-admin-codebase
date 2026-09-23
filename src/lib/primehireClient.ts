@@ -3,7 +3,8 @@ import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, ResponseId
 
 /**
  * PrimeHire v1 API Client Module
- * All calls are proxied through local Express server under "/api/primehire/*" 
+ * All calls go through the same-origin proxy under "/api/backend/*"
+ * (Cloudflare Pages Function in production, Express server in local dev)
  * to secure sensitive credentials.
  */
 
@@ -36,7 +37,7 @@ function keysToSnake(obj: any): any {
 }
 
 async function apiRequest<T = any>(method: string, path: string, body?: any): Promise<T> {
-  const url = `/api/primehire${path}`;
+  const url = `/api/backend${path}`;
   const options: RequestInit = {
     method,
     headers: {
@@ -241,7 +242,7 @@ export const primehireClient = {
    */
   async createAssessment(profile: Omit<AssessmentProfile, 'id' | 'createdAt' | 'deactivatedAt'>): Promise<AssessmentProfile> {
     console.log('[PrimeHire Client] Creating Assessment Profile via Backend API...');
-    console.log('[Endpoint] POST /api/primehire/assessment');
+    console.log('[Endpoint] POST /api/backend/assessment');
     const backendPayload = mapFrontendProfileToBackend(profile);
     const result = await apiRequest<AssessmentProfile>('POST', '/assessment', backendPayload);
     return mapBackendProfileToFrontend(result);

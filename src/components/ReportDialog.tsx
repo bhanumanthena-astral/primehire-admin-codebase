@@ -14,6 +14,7 @@ import {
   User, Mail, Briefcase, Calendar, CheckCircle2, ShieldCheck, Copy, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ReportView from './report/ReportView';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCORE UTILITIES
@@ -641,7 +642,7 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
             </div>
           ) : report ? (
             <>
-              <RealTechnicalReport report={report} candidate={candidate} assessment={assessment} />
+              <ReportView data={report} roundType={assessment?.roundType} />
 
               {/* ── Modal Footer Bar ── */}
               <div className="flex justify-between items-center border-t border-border/60 pt-4 mt-8">
