@@ -1,11 +1,16 @@
 """Candidate write API: create/read/update/delete/bulk, conflict + validation guards."""
 
 import mongomock_motor
+import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from pymongo.errors import DuplicateKeyError
 
 import app.api.candidates as candidates_api
+from app.db.mongodb import INDEXES, ensure_indexes
 from app.main import app
+from app.models.candidate import to_document
+from app.services.candidate_service import CandidateConflict, CandidateService
 
 
 def _fresh_db():
@@ -157,5 +162,96 @@ def test_candidates_mongo_unconfigured_503():
         client = TestClient(app)
         assert client.post("/api/candidates", json=_valid_candidate()).status_code == 503
         assert client.get("/api/candidates/CAND-X").status_code == 503
+    finally:
+        app.dependency_overrides.pop(candidates_api._db, None)
+
+
+def test_pruned_identifiers_allow_many_prelink_candidates():
+    """Regression: explicit nulls must not be stored (they collided on the
+    old sparse unique indexes with E11000 on the second insert)."""
+    doc = to_document({
+        "candidateKey": "CAND-1", "assessmentId": "JOB-1",
+        "name": "A", "email": "a@x.com",
+        "primehire": {"interviewId": None, "responseId": None, "candidateUUID": ""},
+    })
+    assert "primehire" not in doc
+
+    db = _fresh_db()
+    app.dependency_overrides[candidates_api._db] = lambda: db
+    try:
+        client = TestClient(app)
+        keys = set()
+        for i in range(3):
+            res = client.post("/api/candidates",
+                              json=_valid_candidate(email=f"pre{i}@x.com"))
+            assert res.status_code == 201, res.text
+            body = res.json()
+            assert "primehire" not in body  # nothing to collide on
+            keys.add(body["candidateKey"])
+        assert len(keys) == 3
+    finally:
+        app.dependency_overrides.pop(candidates_api._db, None)
+
+
+def test_identifier_indexes_are_partial_not_sparse():
+    specs = dict(
+        (kwargs["name"], (keys, kwargs))
+        for keys, kwargs in INDEXES["candidates"]
+    )
+    for name in ("uniq_interviewId_v2", "uniq_responseId_v2"):
+        keys, kwargs = specs[name]
+        assert kwargs["unique"] is True
+        assert "sparse" not in kwargs
+        assert kwargs["partialFilterExpression"][keys[0][0]]["$type"] == "string"
+
+
+async def test_ensure_indexes_drops_legacy_sparse():
+    db = _fresh_db()
+    await db["candidates"].create_index(
+        [("primehire.interviewId", 1)],
+        unique=True, sparse=True, name="uniq_interviewId",
+    )
+    created = await ensure_indexes(db)
+    assert "uniq_interviewId_v2" in created["candidates"]
+    info = await db["candidates"].index_information()
+    assert "uniq_interviewId" not in info
+    assert "uniq_interviewId_v2" in info
+
+
+async def test_service_maps_duplicate_key_to_conflict():
+    class DupRepo:
+        async def get_by_key(self, key):
+            return None
+
+        async def create(self, doc):
+            raise DuplicateKeyError(
+                "E11000 duplicate key error collection: t.candidates "
+                "index: uniq_interviewId_v2 dup key: { primehire.interviewId: \"iv-1\" }"
+            )
+
+    svc = CandidateService(_fresh_db())
+    svc._repo = DupRepo()
+    with pytest.raises(CandidateConflict, match="already linked"):
+        await svc.create(_valid_candidate())
+
+
+def test_duplicate_real_interview_id_conflicts_end_to_end():
+    db = _fresh_db()
+    app.dependency_overrides[candidates_api._db] = lambda: db
+    try:
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(ensure_indexes(db))
+        client = TestClient(app)
+        first = client.post("/api/candidates", json=_valid_candidate(
+            email="r1@x.com",
+            primehire={"interviewId": "iv-real-1", "responseId": None, "candidateUUID": None},
+        ))
+        assert first.status_code == 201, first.text
+        dup = client.post("/api/candidates", json=_valid_candidate(
+            email="r2@x.com",
+            primehire={"interviewId": "iv-real-1", "responseId": None, "candidateUUID": None},
+        ))
+        assert dup.status_code == 409, dup.text
+        assert dup.json()["detail"]["code"] == "DUPLICATE_KEY"
     finally:
         app.dependency_overrides.pop(candidates_api._db, None)

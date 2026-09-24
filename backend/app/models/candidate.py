@@ -27,6 +27,17 @@ def sanitize(payload: dict[str, Any]) -> dict[str, Any]:
 def to_document(payload: dict[str, Any]) -> dict[str, Any]:
     now = utcnow()
     doc = sanitize(payload)
+    # Prune unset identifiers: explicit nulls would otherwise collide on the
+    # unique PrimeHire identifier indexes (MongoDB indexes explicit nulls,
+    # so two fresh candidates would raise E11000). Missing keys are simply
+    # not indexed. All readers use (doc.get("primehire") or {}).
+    prime = doc.get("primehire")
+    if isinstance(prime, dict):
+        pruned = {k: v for k, v in prime.items() if v not in (None, "")}
+        if pruned:
+            doc["primehire"] = pruned
+        else:
+            doc.pop("primehire", None)
     doc.setdefault("isMock", False)
     doc.setdefault("origin", "primehire")
     doc.setdefault("createdAt", now)

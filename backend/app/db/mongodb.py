@@ -53,8 +53,24 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
         ([("assessmentId", 1)], {"name": "by_assessmentId"}),
         ([("candidateKey", 1)], {"name": "by_candidateKey"}),
         ([("email", 1)], {"name": "by_email"}),
-        ([("primehire.interviewId", 1)], {"unique": True, "sparse": True, "name": "uniq_interviewId"}),
-        ([("primehire.responseId", 1)], {"unique": True, "sparse": True, "name": "uniq_responseId"}),
+        # Partial (not sparse): only real string identifiers are indexed, so
+        # any number of pre-link candidates may coexist. The previous sparse
+        # unique indexes indexed explicit nulls and raised E11000 on the
+        # second insert — see LEGACY_CANDIDATE_INDEXES migration below.
+        ([("primehire.interviewId", 1)], {
+            "unique": True,
+            "partialFilterExpression": {
+                "primehire.interviewId": {"$type": "string", "$ne": ""}
+            },
+            "name": "uniq_interviewId_v2",
+        }),
+        ([("primehire.responseId", 1)], {
+            "unique": True,
+            "partialFilterExpression": {
+                "primehire.responseId": {"$type": "string", "$ne": ""}
+            },
+            "name": "uniq_responseId_v2",
+        }),
     ],
     "reports": [
         ([("interviewId", 1)], {"unique": True, "name": "uniq_interviewId"}),
@@ -70,10 +86,23 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
 }
 
 
+# Sparse unique indexes retired in favor of the partial v2 indexes above.
+# They indexed explicit nulls, so the second pre-link candidate insert
+# raised E11000. Dropped best-effort on startup (missing = already migrated).
+LEGACY_CANDIDATE_INDEXES = ("uniq_interviewId", "uniq_responseId")
+
+
 async def ensure_indexes(db: Any) -> dict[str, list[str]]:
     """Create all indexes (idempotent). Returns {collection: [index names]}."""
     created: dict[str, list[str]] = {}
     for collection, specs in INDEXES.items():
+        if collection == "candidates":
+            for legacy in LEGACY_CANDIDATE_INDEXES:
+                try:
+                    await db[collection].drop_index(legacy)
+                    logger.info("Dropped legacy candidates index %s", legacy)
+                except Exception as exc:  # noqa: BLE001 — absent = migrated
+                    logger.debug("Legacy index %s not dropped (%s)", legacy, type(exc).__name__)
         names: list[str] = []
         for keys, kwargs in specs:
             names.append(await db[collection].create_index(keys, **kwargs))

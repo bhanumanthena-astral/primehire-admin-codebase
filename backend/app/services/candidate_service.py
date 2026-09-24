@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 from typing import Any
 
 from pydantic import ValidationError
+from pymongo.errors import DuplicateKeyError
 
 from ..models.candidate import CandidateRepository
 from ..schemas.candidate import CandidateIn, CandidateUpdate
+
+logger = logging.getLogger(__name__)
 
 _MOCK_INTERVIEW_PREFIX = "int-"
 _MOCK_RESPONSE_PREFIX = "res-"
@@ -74,11 +78,26 @@ class CandidateNotFound(Exception):
 
 
 class CandidateConflict(Exception):
-    """candidateKey already exists (idempotent retry should read, not recreate)."""
+    """A uniqueness constraint was violated (key or PrimeHire identifier)."""
 
-    def __init__(self, candidate_key: str) -> None:
-        super().__init__(f"Candidate '{candidate_key}' already exists.")
+    def __init__(self, candidate_key: str, message: str | None = None) -> None:
+        super().__init__(message or f"Candidate '{candidate_key}' already exists.")
         self.candidate_key = candidate_key
+
+
+def _duplicate_conflict(candidate_key: str, exc: DuplicateKeyError) -> CandidateConflict:
+    text = str(exc)
+    if "interviewId" in text:
+        return CandidateConflict(
+            candidate_key,
+            "This PrimeHire interview is already linked to another candidate.",
+            )
+    if "responseId" in text:
+        return CandidateConflict(
+            candidate_key,
+            "This PrimeHire response is already linked to another candidate.",
+            )
+    return CandidateConflict(candidate_key)
 
 
 def generate_candidate_key() -> str:
@@ -113,7 +132,10 @@ class CandidateService:
             has_demo_payload=bool(payload.get("simulatedReport") or payload.get("answers")),
         ):
             doc["isMock"] = True  # auto-quarantine records with no real linkage
-        return await self._repo.create(doc)
+        try:
+            return await self._repo.create(doc)
+        except DuplicateKeyError as exc:
+            raise _duplicate_conflict(doc.get("candidateKey") or "unknown", exc) from exc
 
     async def create_many(
         self, items: list[dict[str, Any]]
@@ -131,13 +153,17 @@ class CandidateService:
                 errors.append({"index": index, "code": "VALIDATION_ERROR",
                                "message": str(exc).splitlines()[0] if str(exc) else "invalid candidate"})
             except Exception:  # noqa: BLE001 — one row must not abort the batch
+                logger.exception("Candidate bulk row %d failed", index)
                 errors.append({"index": index, "code": "CREATE_FAILED",
                                "message": "Candidate could not be created."})
         return created, errors
 
     async def update(self, candidate_key: str, payload: dict[str, Any]) -> dict[str, Any]:
         data = CandidateUpdate.model_validate(payload)  # rejects password/rowLoading
-        doc = await self._repo.update_by_key(candidate_key, data.to_set_paths())
+        try:
+            doc = await self._repo.update_by_key(candidate_key, data.to_set_paths())
+        except DuplicateKeyError as exc:
+            raise _duplicate_conflict(candidate_key, exc) from exc
         if doc is None:
             raise CandidateNotFound(candidate_key)
         return doc

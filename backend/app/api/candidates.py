@@ -8,6 +8,7 @@ PrimeHire interviews/reports are never touched here.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,6 +22,8 @@ from ..services.candidate_service import (
     CandidateNotFound,
     CandidateService,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -43,6 +46,7 @@ async def create_candidates_bulk(
         items = [item.to_doc() for item in body.items]
         created, errors = await service.create_many(items)
     except Exception:  # noqa: BLE001
+        logger.exception("Bulk candidate import failed")
         raise HTTPException(status_code=500, detail="Bulk import failed.") from None
     return {"items": created, "errors": errors,
             "created": len(created), "failed": len(errors)}
@@ -59,6 +63,7 @@ async def get_candidate(
             "code": "CANDIDATE_NOT_FOUND",
             "message": "No candidate was found for this key."}) from None
     except Exception:  # noqa: BLE001
+        logger.exception("Candidate lookup failed for key %s", candidate_key)
         raise HTTPException(status_code=500, detail="Candidate lookup failed.") from None
 
 
@@ -75,6 +80,7 @@ async def create_candidate(
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except Exception:  # noqa: BLE001
+        logger.exception("Candidate creation failed")
         raise HTTPException(status_code=500, detail="Candidate creation failed.") from None
 
 
@@ -90,9 +96,14 @@ async def update_candidate(
         raise HTTPException(status_code=404, detail={
             "code": "CANDIDATE_NOT_FOUND",
             "message": "No candidate was found for this key."}) from None
+    except CandidateConflict as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": "DUPLICATE_KEY",
+            "message": str(exc)}) from None
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except Exception:  # noqa: BLE001
+        logger.exception("Candidate update failed for key %s", candidate_key)
         raise HTTPException(status_code=500, detail="Candidate update failed.") from None
 
 
@@ -108,5 +119,6 @@ async def delete_candidate(
             "code": "CANDIDATE_NOT_FOUND",
             "message": "No candidate was found for this key."}) from None
     except Exception:  # noqa: BLE001
+        logger.exception("Candidate deletion failed for key %s", candidate_key)
         raise HTTPException(status_code=500, detail="Candidate deletion failed.") from None
     return {"deleted": key}

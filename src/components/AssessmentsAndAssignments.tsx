@@ -1567,14 +1567,14 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
         setCurrentView('DETAIL');
       } else if (items.length > 0) {
         const failedIdx = new Set(errors.map(e => e.index));
-        const failedMsgs = errors.slice(0, 3).map(e => `row ${e.index + 1}: ${e.message}`).join('; ');
+        const failedMsgs = errors.slice(0, 3).map(e => `row ${e.index + 1} [${e.code}]: ${e.message}`).join('; ');
         toast.warning(`Saved ${items.length} to server, ${errors.length} failed (${failedMsgs}). Failed rows kept in review.`);
         // Keep only failed rows in the review list for correction.
         setParsedRows(prev => prev.filter((_, i) => failedIdx.has(i)));
         setValidationErrors([]);
         setUploadedFileName('');
       } else {
-        const failedMsgs = errors.slice(0, 3).map(e => `row ${e.index + 1}: ${e.message}`).join('; ');
+        const failedMsgs = errors.slice(0, 3).map(e => `row ${e.index + 1} [${e.code}]: ${e.message}`).join('; ');
         toast.error(`Save failed — nothing was stored (${failedMsgs}). Review list kept.`);
       }
     } catch (err: any) {
