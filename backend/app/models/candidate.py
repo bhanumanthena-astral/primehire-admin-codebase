@@ -80,3 +80,7 @@ class CandidateRepository:
     ) -> list[dict[str, Any]]:
         cursor = self._col.find({"assessmentId": assessment_id}).skip(skip).limit(limit)
         return [to_public(d) async for d in cursor]
+
+    async def list_all(self, *, limit: int = 50, skip: int = 0) -> list[dict[str, Any]]:
+        cursor = self._col.find({}).skip(skip).limit(limit)
+        return [to_public(d) async for d in cursor]

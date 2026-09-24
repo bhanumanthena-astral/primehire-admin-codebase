@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { fetchAssessments, fetchCandidates } from './lib/mongoApi';
 
 const MODULE_TABS = [
   { id: 'dashboard', label: 'Dashboard Overview', short: 'Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
@@ -135,6 +136,36 @@ export default function App() {
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [reportCandidate, setReportCandidate] = useState<Candidate | null>(null);
   const [reportAssessment, setReportAssessment] = useState<AssessmentProfile | null>(null);
+  // Phase 3C read cutover: true when the API read failed and the UI is
+  // showing localStorage fallback (or empty state in a fresh profile).
+  const [apiDown, setApiDown] = useState(false);
+
+  // Preferred source of truth: FastAPI + MongoDB. localStorage stays as the
+  // temporary fallback (existing hydrate above) until the write cutover.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [asms, cands] = await Promise.all([fetchAssessments(), fetchCandidates()]);
+        if (cancelled) return;
+        handleSetAssessments(asms);
+        handleSetCandidates(cands);
+        setApiDown(false);
+        console.info(`[DataSource] assessments: mongodb (${asms.length})`);
+        console.info(`[DataSource] candidates: mongodb (${cands.length})`);
+      } catch (err) {
+        if (cancelled) return;
+        setApiDown(true);
+        console.warn('[DataSource] assessments: localStorage-fallback (FastAPI unreachable)');
+        console.warn('[DataSource] candidates: localStorage-fallback (FastAPI unreachable)', err);
+        toast.error('Server unreachable — showing locally cached data.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleToggleCandidateStatus = (candidateId: string) => {
     const nextList = candidates.map(c => {
@@ -447,6 +478,13 @@ export default function App() {
       </header>
 
       {/* ── Main: selectable cards + single frosted workspace ── */}
+      {apiDown && (
+        <div className="relative z-10 max-w-7xl w-full mx-auto px-6 pt-4" role="alert">
+          <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-2 text-xs font-semibold text-warning">
+            Server unreachable — showing locally cached data. Changes may not sync until the connection is restored.
+          </div>
+        </div>
+      )}
       <main className="relative z-10 max-w-7xl w-full mx-auto px-6 py-8 space-y-6">
         {/* selectable domain cards */}
         <div role="tablist" aria-label="Placement domains" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

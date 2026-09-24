@@ -38,6 +38,7 @@ export interface AssessmentProfile {
   deactivatedAt: string | null; // ISO 8601
   startDate?: string; // ISO 8601 — assessment schedule window start
   endDate?: string;   // ISO 8601 — assessment schedule window end
+  mongoId?: string;   // MongoDB ObjectId (Phase 3C read cutover); never replaces id/jobId
 }
 
 export interface Candidate {
@@ -83,6 +84,7 @@ export interface Candidate {
   interviewExpired?: boolean;
   rowLoading?: boolean;
   mailStatus?: 'Not Sent' | 'Invite Sent' | 'Reminder Sent' | 'Failed' | 'Sending';
+  mongoId?: string;   // MongoDB ObjectId (Phase 3C read cutover); never replaces id/candidateKey
 }
 
 export interface MailTemplate {
