@@ -430,8 +430,9 @@ export async function mockGenerateLink(
         return c;
       });
 
-      // Sync the rotated candidates to localStorage so the rotated IDs persist across reload
-      localStorage.setItem('primehire_candidates', JSON.stringify(rotatedCandidates));
+      // NOTE: no direct localStorage write for the intermediate rotated
+      // list — the recursive retry's result is persisted by the caller via
+      // onSetCandidates (single cache writer in App).
 
       // Map the candidate IDs to the new rotated ones
       const newCandidateIds = candidateIds.map(oldId => {
@@ -758,7 +759,9 @@ export async function mockGetInterviewStatus(candidateId: LocalCandidateId, stor
     return c;
   });
 
-  localStorage.setItem('primehire_candidates', JSON.stringify(updatedCandidates));
+  // NOTE: no direct localStorage write here — the caller persists via
+  // onSetCandidates (single cache writer in App), and the server is synced
+  // separately. See syncCandidateToServer.
   return updatedCandidates;
 }
 
@@ -864,13 +867,14 @@ export async function mockRegenerateReport(candidateId: LocalCandidateId, storeC
       if (realId) {
         responseId = realId as any;
         // Persist the real response_id on the candidate
+        // NOTE: no direct localStorage write — the caller persists the
+        // returned list via onSetCandidates (single cache writer in App).
         storeCandidates = storeCandidates.map(c => {
           if (c.id === candidateId) {
             return { ...c, responseId: asResponseId(realId) };
           }
           return c;
         });
-        localStorage.setItem('primehire_candidates', JSON.stringify(storeCandidates));
       }
     }
   }
@@ -905,7 +909,9 @@ export async function mockRegenerateReport(candidateId: LocalCandidateId, storeC
     return c;
   });
 
-  localStorage.setItem('primehire_candidates', JSON.stringify(updatedCandidates));
+  // NOTE: no direct localStorage write — the caller persists the returned
+  // list via onSetCandidates (single cache writer in App), and the server
+  // sync happens at the call site. See syncCandidateToServer.
   return updatedCandidates;
 }
 

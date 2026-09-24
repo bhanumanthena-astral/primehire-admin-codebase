@@ -75,6 +75,37 @@ class CandidateRepository:
         )
         return result.modified_count == 1
 
+    async def get_by_key(self, candidate_key: str) -> dict[str, Any] | None:
+        doc = await self._col.find_one({"candidateKey": candidate_key})
+        return to_public(doc) if doc else None
+
+    async def update_by_key(
+        self, candidate_key: str, changes: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Apply pre-sanitized dotted-path $set changes. Returns updated public doc."""
+        safe = {
+            path: value
+            for path, value in changes.items()
+            if path.split(".")[0] not in FORBIDDEN_FIELDS
+        }
+        if not safe:
+            doc = await self._col.find_one({"candidateKey": candidate_key})
+            return to_public(doc) if doc else None
+        safe["updatedAt"] = utcnow()
+        result = await self._col.update_one(
+            {"candidateKey": candidate_key}, {"$set": safe}
+        )
+        if result.matched_count == 0:
+            return None
+        doc = await self._col.find_one({"candidateKey": candidate_key})
+        assert doc is not None
+        return to_public(doc)
+
+    async def delete_by_key(self, candidate_key: str) -> bool:
+        """Delete the Mongo document only. Never touches PrimeHire."""
+        result = await self._col.delete_one({"candidateKey": candidate_key})
+        return result.deleted_count == 1
+
     async def list_by_assessment(
         self, assessment_id: str, *, limit: int = 50, skip: int = 0
     ) -> list[dict[str, Any]]:

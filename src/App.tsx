@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { fetchAssessments, fetchCandidates } from './lib/mongoApi';
+import { fetchAssessments, fetchCandidates, updateCandidate } from './lib/mongoApi';
 
 const MODULE_TABS = [
   { id: 'dashboard', label: 'Dashboard Overview', short: 'Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
@@ -167,17 +167,29 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleToggleCandidateStatus = (candidateId: string) => {
-    const nextList = candidates.map(c => {
-      if (c.id === candidateId) {
-        const nextStatus: Candidate['status'] = c.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-        return { ...c, status: nextStatus };
+  // Server-confirmed status change. The server write goes first; the local
+  // state only changes when MongoDB confirms (or when the candidate was
+  // never persisted, in which case the change is explicitly local-only).
+  const handleToggleCandidateStatus = async (candidateId: string) => {
+    const target = candidates.find(c => c.id === candidateId);
+    if (!target) return;
+    const nextStatus: Candidate['status'] = target.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      const updated = await updateCandidate(candidateId, { status: nextStatus });
+      handleSetCandidates(prev => prev.map(c =>
+        c.id === candidateId ? { ...updated, candidateStatus: updated.status } : c
+      ));
+      toast.success(`Candidate ${updated.name} status set to ${updated.status} (saved to server)`);
+    } catch (err: any) {
+      if (!target.mongoId) {
+        handleSetCandidates(prev => prev.map(c =>
+          c.id === candidateId ? { ...c, status: nextStatus, candidateStatus: nextStatus } : c
+        ));
+        toast.warning(`Candidate ${target.name} status set to ${nextStatus} locally only — never saved to server.`);
+      } else {
+        toast.error(`Save failed (${err?.message || err}) — status not changed.`);
       }
-      return c;
-    });
-    setCandidates(nextList);
-    const target = nextList.find(c => c.id === candidateId);
-    toast.success(`Candidate ${target?.name} status set to ${target?.status}`);
+    }
   };
 
   const handleOpenCandidateReport = (candidate: Candidate, assessment: AssessmentProfile) => {

@@ -12,6 +12,7 @@ from .api.health import router as health_router
 from .api.migration import router as migration_router
 from .api.reports import router as reports_router
 from .api.directory import router as directory_router
+from .api.candidates import router as candidates_router
 from .config import settings
 from .db.mongodb import ensure_indexes, get_database
 
@@ -50,3 +51,4 @@ app.include_router(health_router, prefix="/api")
 app.include_router(migration_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(directory_router, prefix="/api")
+app.include_router(candidates_router, prefix="/api")

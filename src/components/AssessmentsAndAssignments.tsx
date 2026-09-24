@@ -8,7 +8,6 @@ import { AssessmentProfile, Question, Candidate, MailTemplate, RoundType, Questi
 import { 
   mockCreateAssessment, 
   mockToggleAssessmentActive, 
-  mockAddCandidatesToAssessment,
   mockGenerateLink,
   mockRegenerateLink,
   mockRescheduleInterview,
@@ -20,6 +19,12 @@ import {
   generateId,
   renderTemplate
 } from '../mockData';
+import {
+  createCandidatesBulk,
+  updateCandidate,
+  deleteCandidate,
+  syncCandidateToServer,
+} from '../lib/mongoApi';
 import { asJobId, asLocalCandidateId, JobId, LocalCandidateId, generate32BitId } from '../lib/primehireIds';
 import { primehireClient } from '../lib/primehireClient';
 import { 
@@ -726,6 +731,30 @@ export default function AssessmentsAndAssignments({
     }
   };
 
+  // =========================================================================
+  // SERVER PERSISTENCE (candidate write path: React -> FastAPI -> MongoDB).
+  // Local state updates first for responsiveness; these helpers then mirror
+  // the fresh state to the server. Failures are reported, never silent.
+  // =========================================================================
+  const pushStatusToServer = async (ids: string[], status: 'ACTIVE' | 'INACTIVE') => {
+    const targets = candidates.filter(c => ids.includes(c.id) && c.mongoId);
+    if (targets.length === 0) return;
+    const results = await Promise.allSettled(
+      targets.map(c => updateCandidate(c.id, { status })),
+    );
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) {
+      toast.warning(`Server sync failed for ${failed} candidate(s) — showing local change only.`);
+    }
+  };
+
+  const pushCandidatesToServer = async (list: Candidate[]): Promise<number> => {
+    const targets = list.filter(c => c.mongoId);
+    if (targets.length === 0) return 0;
+    const results = await Promise.allSettled(targets.map(c => syncCandidateToServer(c)));
+    return results.filter(r => r.status === 'rejected' || r.value === 'failed').length;
+  };
+
   const handleGenerateCandidateLink = async (candId: LocalCandidateId) => {
     if (!activeAssessment) return;
     const cand = candidates.find(c => c.id === candId);
@@ -741,6 +770,10 @@ export default function AssessmentsAndAssignments({
       const updated = await mockGenerateLink([candId], candidates, activeAssessment.roundType, activeAssessment.jobId);
       onSetCandidates(updated);
       toast.success('Evaluation link and password generated successfully.');
+      const failed = await pushCandidatesToServer(updated.filter(c => c.id === candId));
+      if (failed > 0) {
+        toast.warning('Link created, but server sync failed — the link may not appear in other browsers.');
+      }
     } catch (err: any) {
       // Revert loading state
       onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: false } : c));
@@ -800,6 +833,9 @@ export default function AssessmentsAndAssignments({
       const updated = await mockRescheduleInterview(rescheduleCandId, candidates, startIso, endIso);
       onSetCandidates(updated);
       toast.success('Interview rescheduled successfully! New schedule window applied.');
+      if (await pushCandidatesToServer(updated.filter(c => c.id === rescheduleCandId)) > 0) {
+        toast.warning('Rescheduled, but server sync failed — the change may not appear in other browsers.');
+      }
       setRescheduleCandId(null);
       setRescheduleStartTime('');
       setRescheduleEndTime('');
@@ -836,6 +872,9 @@ export default function AssessmentsAndAssignments({
       const updated = await mockRegenerateReport(candId, candidates);
       onSetCandidates(updated);
       toast.success('Report regeneration requested successfully! Status is now Analyzing.');
+      if (await pushCandidatesToServer(updated.filter(c => c.id === candId)) > 0) {
+        toast.warning('Regeneration requested, but server sync failed — status may not appear in other browsers.');
+      }
     } catch (err: any) {
       toast.error('Failed to regenerate report: ' + err.message);
     }
@@ -853,6 +892,9 @@ export default function AssessmentsAndAssignments({
       const updated = await mockRegenerateLink(candId, candidates, activeAssessment.roundType, activeAssessment.jobId);
       onSetCandidates(updated);
       toast.success('Previous link invalidated. Issued fresh credentials.');
+      if (await pushCandidatesToServer(updated.filter(c => c.id === candId)) > 0) {
+        toast.warning('Link reissued, but server sync failed — the new link may not appear in other browsers.');
+      }
     } catch (err: any) {
       toast.error('Regeneration failed: ' + err.message);
     }
@@ -866,7 +908,9 @@ export default function AssessmentsAndAssignments({
       const updated = await mockGetInterviewStatus(candId, candidates);
       onSetCandidates(updated);
       const target = updated.find(c => c.id === candId);
-      if (target?.submittedDate) {
+      if (await pushCandidatesToServer(updated.filter(c => c.id === candId)) > 0) {
+        toast.warning('Status synced from PrimeHire, but saving it to the server failed.');
+      } else if (target?.submittedDate) {
         toast.success(`Synced successfully! Assessment completed: ${target.submittedDate}`);
       } else {
         toast.info('Interview not completed yet.');
@@ -958,6 +1002,17 @@ export default function AssessmentsAndAssignments({
         return c;
       }));
       toast.success(`Invitation email transmitted successfully to ${target.name}.`);
+      const inviteSynced: Candidate = {
+        ...target,
+        rowLoading: false,
+        inviteSent: true,
+        inviteSentAt: nowIso,
+        lastInviteSentAt: nowIso,
+        mailStatus: 'Invite Sent' as const,
+      };
+      if (await syncCandidateToServer(inviteSynced) === 'failed') {
+        toast.warning('Invite sent, but server sync failed — invite state may not appear in other browsers.');
+      }
     } catch (err: any) {
       onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: false, mailStatus: 'Failed' } : c));
       toast.error(`Failed to send invite: ${err.message}`);
@@ -1013,6 +1068,16 @@ export default function AssessmentsAndAssignments({
         return c;
       }));
       toast.success(`Reminder email transmitted successfully to ${target.name}.`);
+      const reminderSynced: Candidate = {
+        ...target,
+        rowLoading: false,
+        lastReminderSentAt: nowIso,
+        reminderCount: (target.reminderCount || 0) + 1,
+        mailStatus: 'Reminder Sent' as const,
+      };
+      if (await syncCandidateToServer(reminderSynced) === 'failed') {
+        toast.warning('Reminder sent, but server sync failed — reminder state may not appear in other browsers.');
+      }
     } catch (err: any) {
       onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: false, mailStatus: 'Failed' } : c));
       toast.error(`Failed to send reminder: ${err.message}`);
@@ -1043,6 +1108,9 @@ export default function AssessmentsAndAssignments({
         toast.success(`Generated links for ${activeSelectedIds.length} Active candidate(s). Inactive candidates were skipped.`);
       } else {
         toast.success('All of the links generated.');
+      }
+      if (await pushCandidatesToServer(updated.filter(c => activeSelectedIds.includes(c.id))) > 0) {
+        toast.warning('Links created, but server sync failed for some candidates.');
       }
       setSelectedCandidateIds([]);
     } catch (err: any) {
@@ -1080,6 +1148,7 @@ export default function AssessmentsAndAssignments({
 
     let successCount = 0;
     let failCount = 0;
+    let inviteSyncFailCount = 0;
 
     const promises = targetCands.map(async (cand) => {
       try {
@@ -1101,6 +1170,15 @@ export default function AssessmentsAndAssignments({
           }
           return c;
         }));
+        const synced: Candidate = {
+          ...cand,
+          rowLoading: false,
+          inviteSent: true,
+          inviteSentAt: nowIso,
+          lastInviteSentAt: nowIso,
+          mailStatus: 'Invite Sent' as const,
+        };
+        if (await syncCandidateToServer(synced) === 'failed') inviteSyncFailCount++;
       } catch (err: any) {
         console.error(`Bulk invite fail for ${cand.email}:`, err);
         failCount++;
@@ -1124,6 +1202,9 @@ export default function AssessmentsAndAssignments({
     }
     if (failCount > 0) {
       toast.error(`Failed to dispatch invitations for ${failCount} candidate(s).`);
+    }
+    if (inviteSyncFailCount > 0) {
+      toast.warning(`Server sync failed for ${inviteSyncFailCount} invited candidate(s).`);
     }
     setSelectedCandidateIds([]);
   };
@@ -1161,6 +1242,7 @@ export default function AssessmentsAndAssignments({
 
     let successCount = 0;
     let failCount = 0;
+    let reminderSyncFailCount = 0;
 
     const promises = targetCands.map(async (cand) => {
       try {
@@ -1181,6 +1263,14 @@ export default function AssessmentsAndAssignments({
           }
           return c;
         }));
+        const synced: Candidate = {
+          ...cand,
+          rowLoading: false,
+          lastReminderSentAt: nowIso,
+          reminderCount: (cand.reminderCount || 0) + 1,
+          mailStatus: 'Reminder Sent' as const,
+        };
+        if (await syncCandidateToServer(synced) === 'failed') reminderSyncFailCount++;
       } catch (err: any) {
         console.error(`Bulk reminder fail for ${cand.email}:`, err);
         failCount++;
@@ -1204,6 +1294,9 @@ export default function AssessmentsAndAssignments({
     }
     if (failCount > 0) {
       toast.error(`Failed to dispatch reminders for ${failCount} candidate(s).`);
+    }
+    if (reminderSyncFailCount > 0) {
+      toast.warning(`Server sync failed for ${reminderSyncFailCount} reminded candidate(s).`);
     }
     setSelectedCandidateIds([]);
   };
@@ -1267,21 +1360,49 @@ export default function AssessmentsAndAssignments({
     setDoubleConfirmCandId(id);
   };
 
-  const handleFinalDeleteCandidate = (id: string) => {
+  // Server-first delete: the Mongo document is removed (PrimeHire
+  // interviews/reports are never touched). Local state only changes on
+  // server success — a failed delete keeps the candidate with an error.
+  const handleFinalDeleteCandidate = async (id: string) => {
+    const target = candidates.find(c => c.id === id);
+    if (target?.mongoId) {
+      try {
+        await deleteCandidate(id);
+      } catch (err: any) {
+        toast.error(`Delete failed on server (${err?.message || err}) — candidate kept.`);
+        return;
+      }
+    }
     onSetCandidates(prev => prev.filter(c => c.id !== id));
-    toast.success('Candidate registration deleted successfully.');
+    toast.success(
+      target?.mongoId
+        ? 'Candidate registration deleted successfully (server).'
+        : 'Candidate removed locally (was never saved to server).',
+    );
     setDeleteConfirmCandId(null);
     setDoubleConfirmCandId(null);
   };
 
-  const handleBulkDeleteCandidates = () => {
+  const handleBulkDeleteCandidates = async () => {
     if (selectedCandidateIds.length === 0) {
       toast.error('Select candidates to delete.');
       return;
     }
-    onSetCandidates(prev => prev.filter(c => !selectedCandidateIds.includes(c.id)));
-    toast.success(`Deleted ${selectedCandidateIds.length} candidates.`);
-    setSelectedCandidateIds([]);
+    const targets = candidates.filter(c => selectedCandidateIds.includes(c.id));
+    const persisted = targets.filter(c => c.mongoId);
+    const results = await Promise.allSettled(persisted.map(c => deleteCandidate(c.id)));
+    const failedIds = new Set(
+      persisted.filter((_, i) => results[i].status === 'rejected').map(c => c.id),
+    );
+    const removed = targets.filter(c => !failedIds.has(c.id)).length;
+    onSetCandidates(prev => prev.filter(c => !selectedCandidateIds.includes(c.id) || failedIds.has(c.id)));
+    if (failedIds.size > 0) {
+      toast.error(`Server delete failed for ${failedIds.size} candidate(s) — kept locally.`);
+      setSelectedCandidateIds(prev => prev.filter(id => failedIds.has(id)));
+    } else {
+      toast.success(`Deleted ${removed} candidates (server).`);
+      setSelectedCandidateIds([]);
+    }
   };
 
   // =========================================================================
@@ -1422,17 +1543,42 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
         };
       });
 
-      const added = await mockAddCandidatesToAssessment(selectedAssessmentId!, formatted);
-      onSetCandidates(prev => [...prev, ...added]);
-      toast.success(`Dispatched ${added.length} candidates into assignment pipeline.`);
-      
-      // Cleanup Upload view
-      setParsedRows([]);
-      setValidationErrors([]);
-      setUploadedFileName('');
-      setCurrentView('DETAIL');
+      // Server-first persistence: React -> FastAPI POST /api/candidates/bulk
+      // -> MongoDB. Nothing is added locally until the server confirms it,
+      // so a failed save can never look like a success in another browser.
+      const payloads = formatted.map(f => ({
+        assessmentId: selectedAssessmentId!,
+        name: f.name,
+        email: f.email,
+        phone: f.phone,
+        startTime: f.startTime,
+        endTime: f.endTime,
+      }));
+      const { items, errors } = await createCandidatesBulk(payloads);
+      if (items.length > 0) {
+        onSetCandidates(prev => [...prev, ...items]);
+      }
+      if (errors.length === 0) {
+        toast.success(`Dispatched ${items.length} candidates into assignment pipeline (saved to server).`);
+        // Cleanup Upload view
+        setParsedRows([]);
+        setValidationErrors([]);
+        setUploadedFileName('');
+        setCurrentView('DETAIL');
+      } else if (items.length > 0) {
+        const failedIdx = new Set(errors.map(e => e.index));
+        const failedMsgs = errors.slice(0, 3).map(e => `row ${e.index + 1}: ${e.message}`).join('; ');
+        toast.warning(`Saved ${items.length} to server, ${errors.length} failed (${failedMsgs}). Failed rows kept in review.`);
+        // Keep only failed rows in the review list for correction.
+        setParsedRows(prev => prev.filter((_, i) => failedIdx.has(i)));
+        setValidationErrors([]);
+        setUploadedFileName('');
+      } else {
+        const failedMsgs = errors.slice(0, 3).map(e => `row ${e.index + 1}: ${e.message}`).join('; ');
+        toast.error(`Save failed — nothing was stored (${failedMsgs}). Review list kept.`);
+      }
     } catch (err: any) {
-      toast.error('Import failed: ' + err.message);
+      toast.error('Save failed: ' + (err?.message || err) + ' — nothing was stored. Review list kept.');
     }
   };
 
@@ -2514,6 +2660,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     if (selectedCandidateIds.length === 0) { toast.error('Please select at least one student first.'); return; }
                     onSetCandidates(prev => prev.map(c => selectedCandidateIds.includes(c.id) ? { ...c, status: 'INACTIVE', candidateStatus: 'INACTIVE' } : c));
                     toast.success(`Successfully deactivated ${selectedCandidateIds.length} selected student(s).`);
+                    void pushStatusToServer(selectedCandidateIds, 'INACTIVE');
                     setSelectedCandidateIds([]);
                   }}
                   disabled={selectedCandidateIds.length === 0}
@@ -2534,6 +2681,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     if (selectedCandidateIds.length === 0) { toast.error('Please select at least one student first.'); return; }
                     onSetCandidates(prev => prev.map(c => selectedCandidateIds.includes(c.id) ? { ...c, status: 'ACTIVE', candidateStatus: 'ACTIVE' } : c));
                     toast.success(`Successfully activated ${selectedCandidateIds.length} selected student(s).`);
+                    void pushStatusToServer(selectedCandidateIds, 'ACTIVE');
                     setSelectedCandidateIds([]);
                   }}
                   disabled={selectedCandidateIds.length === 0}
@@ -3066,6 +3214,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                         setOpenMenuCandId(null);
                                         onSetCandidates(prev => prev.map(cand => cand.id === c.id ? { ...cand, status: 'ACTIVE', candidateStatus: 'ACTIVE' } : cand));
                                         toast.success(`Candidate ${c.name} is now Activated`);
+                                        void pushStatusToServer([c.id], 'ACTIVE');
                                       }}
                                       disabled={isActive}
                                       className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
@@ -3085,6 +3234,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                         setOpenMenuCandId(null);
                                         onSetCandidates(prev => prev.map(cand => cand.id === c.id ? { ...cand, status: 'INACTIVE', candidateStatus: 'INACTIVE' } : cand));
                                         toast.success(`Candidate ${c.name} is now Deactivated`);
+                                        void pushStatusToServer([c.id], 'INACTIVE');
                                       }}
                                       disabled={!isActive}
                                       className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${

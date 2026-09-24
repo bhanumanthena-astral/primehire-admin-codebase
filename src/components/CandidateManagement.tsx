@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Candidate, AssessmentProfile } from '../types';
 import { mockGetInterviewStatus, mockResetCandidatePassword, mockRegenerateReport } from '../mockData';
+import { syncCandidateToServer } from '../lib/mongoApi';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
@@ -267,7 +268,9 @@ export default function CandidateManagement({
       const updated = await mockGetInterviewStatus(candId as any, candidates);
       onSetCandidates(updated);
       const target = updated.find(c => c.id === candId);
-      if (target?.submittedDate) {
+      if (target && (await syncCandidateToServer(target)) === 'failed') {
+        toast.warning('Status synced from PrimeHire, but saving it to the server failed.');
+      } else if (target?.submittedDate) {
         toast.success(`Synced! Assessment completed: ${target.submittedDate}`);
       } else {
         toast.info('Interview not completed yet.');
@@ -304,6 +307,10 @@ export default function CandidateManagement({
       const updated = await mockRegenerateReport(candId as any, candidates);
       onSetCandidates(updated);
       toast.success('Report regeneration requested successfully!');
+      const regenTarget = updated.find(c => c.id === candId);
+      if (regenTarget && (await syncCandidateToServer(regenTarget)) === 'failed') {
+        toast.warning('Regeneration requested, but server sync failed.');
+      }
     } catch (err: any) {
       toast.error('Failed to regenerate report: ' + err.message);
     }

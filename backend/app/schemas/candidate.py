@@ -65,3 +65,74 @@ class CandidateIn(BaseModel):
 
     def to_doc(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=False)
+
+
+class PrimehireIdsPatch(BaseModel):
+    interviewId: str | None = None
+    responseId: str | None = None
+    candidateUUID: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
+class SyncStatePatch(BaseModel):
+    submittedDate: str | None = None
+    assessmentStatus: str | None = None
+    reportStatus: Literal["GENERATING", "GENERATED", "FAILED"] | None = None
+    inviteSent: bool | None = None
+    inviteSentAt: str | None = None
+    lastInviteSentAt: str | None = None
+    lastReminderSentAt: str | None = None
+    reminderCount: int | None = None
+    mailStatus: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
+class CandidateUpdate(BaseModel):
+    """Partial update. Only provided fields are $set (nested objects merged)."""
+
+    assessmentId: str | None = None
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    startTime: str | None = None
+    endTime: str | None = None
+    link: str | None = None
+    assignedDate: str | None = None
+    status: Literal["ACTIVE", "INACTIVE"] | None = None
+    primehire: PrimehireIdsPatch | None = None
+    syncState: SyncStatePatch | None = None
+
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_forbidden(cls, data: Any) -> Any:
+        if isinstance(data, dict) and ("password" in data or "rowLoading" in data):
+            raise ValueError("password/rowLoading must never be sent to the API")
+        return data
+
+    def to_set_paths(self) -> dict[str, Any]:
+        """Flatten provided fields to dotted $set paths (skips None sub-fields)."""
+        paths: dict[str, Any] = {}
+        for field in (
+            "assessmentId", "name", "email", "phone", "startTime", "endTime",
+            "link", "assignedDate", "status",
+        ):
+            value = getattr(self, field)
+            if value is not None:
+                paths[field] = value
+        for nested in ("primehire", "syncState"):
+            group = getattr(self, nested)
+            if group is not None:
+                for sub, value in group.model_dump(exclude_unset=True).items():
+                    if value is not None:
+                        paths[f"{nested}.{sub}"] = value
+        return paths
+
+
+class CandidatesBulkIn(BaseModel):
+    items: list[CandidateIn] = Field(min_length=1, max_length=500)
+
+    model_config = {"extra": "forbid"}
