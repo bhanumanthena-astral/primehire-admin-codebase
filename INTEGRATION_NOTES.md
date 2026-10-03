@@ -59,3 +59,27 @@ PRIMEHIRE_ACCESS_KEY=your_access_key
 PRIMEHIRE_SECRET_KEY=your_secret_key
 ```
 Once configured, the BFF proxy will immediately direct live candidate submissions, assessment profiles, and scoring to the cloud endpoint.
+
+---
+
+## 5. Local run order (FastAPI + Express)
+
+The React app calls FastAPI **same-origin** (`/api/assessments`, `/api/candidates`,
+`/api/users`, `/api/jobs`, …). The Express dev server (`npm run dev`, port 3000)
+forwards every `/api/*` route it doesn't handle itself to FastAPI
+(`FASTAPI_URL`, default `http://127.0.0.1:8000`). Without FastAPI running,
+those calls 404 at Express and the UI falls back to locally cached data with
+a "Server unreachable" banner.
+
+Start both, in this order:
+
+```powershell
+# Terminal 1 — FastAPI (uses the in-memory fallback DB when MongoDB is unreachable)
+.\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --port 8000
+
+# Terminal 2 — Express + Vite
+npm run dev
+```
+
+Then open `http://localhost:3000` and sign in. `GET /api/health` is served
+locally by Express; everything else under `/api/*` must reach FastAPI.

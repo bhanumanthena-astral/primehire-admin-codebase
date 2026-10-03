@@ -1,0 +1,243 @@
+/* Elite HR Login — refined to match reference composition.
+   Warm neutral tokens only (no blue). CSS-only motion, very restrained. */
+
+.elite-page {
+  background: #f3eee3;
+  font-family: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #201a15;
+}
+
+/* ── Card: lightweight, 430px, soft shadow ── */
+.elite-card {
+  background: #ffffff;
+  border-radius: 30px;
+  border: 1px solid rgba(32, 26, 21, 0.06);
+  box-shadow:
+    0 1px 2px rgba(32, 26, 21, 0.04),
+    0 20px 48px -28px rgba(32, 26, 21, 0.22);
+}
+
+/* ── Inputs: white / warm-neutral, never blue ── */
+.elite-input {
+  background: #ffffff;
+  border: 1px solid #e7dfcd;
+  border-radius: 8px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.elite-input::placeholder {
+  color: #a8a094;
+}
+.elite-input:focus {
+  border-color: #e0b36a !important;
+  box-shadow: 0 0 0 3px rgba(238, 186, 110, 0.18);
+  outline: none;
+}
+/* kill the global blue focus ring inside this page */
+.elite-page input:focus-visible,
+.elite-page button:focus-visible,
+.elite-page a:focus-visible {
+  outline: none !important;
+}
+.elite-page .elite-input:focus-visible {
+  border-color: #e0b36a !important;
+  box-shadow: 0 0 0 3px rgba(238, 186, 110, 0.18) !important;
+  border-radius: 8px;
+}
+.elite-input-error {
+  border-color: #e0605e !important;
+}
+.elite-input-error:focus {
+  border-color: #e0605e !important;
+  box-shadow: 0 0 0 3px rgba(224, 96, 94, 0.12) !important;
+}
+
+/* ── Primary: soft warm peach, dark text, no gradient ── */
+.elite-btn-primary {
+  background: #fdc68c;
+  color: #2b2118;
+  border: 1px solid rgba(160, 110, 50, 0.22);
+  box-shadow: 0 1px 2px rgba(32, 26, 21, 0.07);
+  transition: transform 0.16s ease, box-shadow 0.2s ease, background-color 0.18s ease;
+}
+.elite-btn-primary:hover:not(:disabled) {
+  background: #fabb74;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -10px rgba(200, 135, 60, 0.55);
+}
+.elite-btn-primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+  box-shadow: 0 1px 3px rgba(32, 26, 21, 0.12);
+}
+.elite-btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+/* ── Social: compact white chips ── */
+.elite-btn-social {
+  background: #ffffff;
+  border: 1px solid #ece4d2;
+  border-radius: 8px;
+  transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.16s ease;
+}
+.elite-btn-social:hover {
+  border-color: #ddd2b8;
+  background: #fffdf7;
+  transform: translateY(-1px);
+}
+.elite-btn-social:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ── Stage: one art-directed row ── */
+.elite-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 56px;
+}
+.elite-ground {
+  position: absolute;
+  left: -24px;
+  right: -24px;
+  bottom: 52px;
+  height: 1px;
+  background: rgba(32, 26, 21, 0.18);
+  z-index: 0;
+}
+.elite-col-side {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+/* ── Entrance ── */
+@keyframes elite-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes elite-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.elite-anim-card { animation: elite-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.elite-anim-header { animation: elite-fade 0.5s ease both; }
+.elite-anim-side { animation: elite-fade 0.8s ease 0.2s both; }
+.elite-anim-footer { animation: elite-fade 0.7s ease 0.35s both; }
+
+@keyframes elite-rise-soft {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.elite-stagger > * { animation: elite-rise-soft 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.elite-stagger > *:nth-child(1) { animation-delay: 0.12s; }
+.elite-stagger > *:nth-child(2) { animation-delay: 0.18s; }
+.elite-stagger > *:nth-child(3) { animation-delay: 0.24s; }
+.elite-stagger > *:nth-child(4) { animation-delay: 0.3s; }
+.elite-stagger > *:nth-child(5) { animation-delay: 0.36s; }
+.elite-stagger > *:nth-child(6) { animation-delay: 0.42s; }
+
+/* ── Alive illustration: extremely subtle ── */
+@keyframes elite-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+@keyframes elite-head {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  50% { transform: rotate(1.2deg) translateY(-1px); }
+}
+@keyframes elite-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.08); }
+}
+@keyframes elite-type-a {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(-1.2px, 0.6px) rotate(-0.5deg); }
+}
+@keyframes elite-type-b {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(1.2px, -0.6px) rotate(0.5deg); }
+}
+@keyframes elite-hair {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(1.5deg); }
+}
+.elite-breathe {
+  animation: elite-breathe 4.5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.elite-head-move {
+  animation: elite-head 6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 70% 80%;
+}
+.elite-blink {
+  animation: elite-blink 4.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.elite-arm-a {
+  animation: elite-type-a 2.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 80% 20%;
+}
+.elite-arm-b {
+  animation: elite-type-b 2.8s ease-in-out 0.35s infinite;
+  transform-box: fill-box;
+  transform-origin: 80% 20%;
+}
+.elite-hair-move {
+  animation: elite-hair 5.5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 20% 10%;
+}
+
+/* ── Decor drift (barely noticeable) ── */
+@keyframes elite-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes elite-float-x {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(3px, -4px); }
+}
+.elite-float { animation: elite-float 7s ease-in-out infinite; }
+.elite-float-slow { animation: elite-float 9.5s ease-in-out infinite; }
+.elite-float-x { animation: elite-float-x 8s ease-in-out infinite; }
+.elite-delay-1 { animation-delay: 0.8s; }
+.elite-delay-2 { animation-delay: 1.6s; }
+
+@keyframes elite-spin {
+  to { transform: rotate(360deg); }
+}
+.elite-spin { animation: elite-spin 0.8s linear infinite; }
+
+.elite-squiggle {
+  fill: none;
+  stroke: #201a15;
+  stroke-width: 1;
+  stroke-linecap: round;
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .elite-anim-card,
+  .elite-anim-header,
+  .elite-anim-side,
+  .elite-anim-footer,
+  .elite-stagger > *,
+  .elite-breathe,
+  .elite-head-move,
+  .elite-blink,
+  .elite-arm-a,
+  .elite-arm-b,
+  .elite-hair-move,
+  .elite-float,
+  .elite-float-slow,
+  .elite-float-x {
+    animation: none !important;
+  }
+}

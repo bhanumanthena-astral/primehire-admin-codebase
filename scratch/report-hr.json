@@ -1,0 +1,36 @@
+{
+  "_note": "Fixture derived from the master-prompt spec: HR overall blocks all null, 10 questions attempted=true, is_result_generated=false, video URLs present, no transcripts.",
+  "interview_details": {
+    "job_id": "JOB-SPEC-HR",
+    "candidate_id": "CAND-SPEC-HR",
+    "round_type": "HR",
+    "submitted_at": "2026-09-21T11:00:00Z"
+  },
+  "status": "PENDING",
+  "faceapi_violations": {
+    "ideal_environment": 0,
+    "multiple_faces_detected": 0,
+    "tab_switching": 1
+  },
+  "report": {
+    "overall_result": {
+      "personality_insights": null,
+      "communication_analysis": null,
+      "interview_analysis": null,
+      "hr_competency_analysis": null,
+      "vils_competency_analysis": null
+    },
+    "question_wise_result": [
+      { "id": "hq1", "question": "Introduce yourself and walk me through your background.", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq1.mp4" },
+      { "id": "hq2", "question": "Why do you want to join our company?", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq2.mp4" },
+      { "id": "hq3", "question": "Describe a challenging situation you handled at work.", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq3.mp4" },
+      { "id": "hq4", "question": "How do you handle disagreements with teammates?", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq4.mp4" },
+      { "id": "hq5", "question": "Where do you see yourself in five years?", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq5.mp4" },
+      { "id": "hq6", "question": "What are your greatest strengths?", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq6.mp4" },
+      { "id": "hq7", "question": "What is a weakness you are working on?", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq7.mp4" },
+      { "id": "hq8", "question": "Describe a time you showed leadership.", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq8.mp4" },
+      { "id": "hq9", "question": "How do you prioritize work under pressure?", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq9.mp4" },
+      { "id": "hq10", "question": "Do you have any questions for us?", "is_attempted": true, "is_result_generated": false, "message": "This response cannot be evaluated at this time.", "video_url": "https://cdn.example.com/v/hq10.mp4" }
+    ]
+  }
+}

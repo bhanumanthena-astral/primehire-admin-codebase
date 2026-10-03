@@ -4,7 +4,7 @@ import { initialsFromId, shortId, formatDate, getGrade } from '../../utils/norma
 import type { NormalizedReport, Insights } from '../../utils/normalizeReport';
 
 const roundStyles: Record<string, { bg: string; color: string; label: string }> = {
-  TECHNICAL: { bg: '#eef2ff', color: '#4338ca', label: 'Technical Round' },
+  TECHNICAL: { bg: '#eff6ff', color: '#1d4ed8', label: 'Technical Round' },
   BASIC: { bg: '#ecfeff', color: '#0e7490', label: 'Basic Round' },
   HR: { bg: '#fdf2f8', color: '#be185d', label: 'HR Round' },
   UNKNOWN: { bg: '#f1f5f9', color: '#475569', label: 'Interview Round' },

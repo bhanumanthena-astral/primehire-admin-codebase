@@ -14,7 +14,7 @@ import {
   User, Mail, Briefcase, Calendar, CheckCircle2, ShieldCheck, Copy, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
-import ReportView from './report/ReportView';
+import ReportShell from './report/ReportShell';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCORE UTILITIES
@@ -75,7 +75,7 @@ function ExecutiveScoreCard({
   score: number;
   icon: React.ReactNode;
   subtitle?: string;
-  accent?: 'emerald' | 'sky' | 'indigo' | 'amber';
+  accent?: 'emerald' | 'sky' | 'cyan' | 'amber';
 }) {
   const { grade, color, bg, border, label: gradeLabel } = getGrade(score);
 
@@ -134,7 +134,7 @@ function VideoPlayer({ url, questionNum }: { url: string; questionNum: number })
       </div>
       <div className="bg-gradient-primary border-t border-primary-foreground/15 px-3.5 py-2 flex items-center justify-between text-xs text-primary-foreground/80 font-mono">
         <div className="flex items-center gap-2">
-          <Video className="w-3.5 h-3.5 text-sky-400" />
+          <Video className="w-3.5 h-3.5 text-amber-400" />
           <span>Question {questionNum} Video Recording</span>
         </div>
         <span className="text-[10px] text-muted-foreground bg-slate-800 px-2 py-0.5 rounded font-mono">WebM Stream</span>
@@ -246,7 +246,7 @@ function RealTechnicalReport({
               score={techScore}
               icon={<Brain className="w-4 h-4" />}
               subtitle="Domain knowledge & correctness"
-              accent="indigo"
+              accent="cyan"
             />
             <ExecutiveScoreCard
               label="Communication Index"
@@ -298,7 +298,7 @@ function RealTechnicalReport({
                 if (expandedQ) setExpandedQ(null);
                 else setExpandedQ(questions[0]?.id || 'q-0');
               }}
-              className="text-xs font-bold text-accent hover:text-sky-700 hover:underline cursor-pointer"
+              className="text-xs font-bold text-accent hover:text-amber-700 hover:underline cursor-pointer"
             >
               {expandedQ ? 'Collapse All' : 'Expand All'}
             </button>
@@ -337,7 +337,7 @@ function RealTechnicalReport({
                     <div className="flex items-start gap-3">
                       {/* Q Index */}
                       <div className="shrink-0 flex flex-col items-center gap-1 pt-0.5">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-primary text-white flex items-center justify-center text-xs font-black">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-primary text-primary-foreground flex items-center justify-center text-xs font-black">
                           Q{idx + 1}
                         </div>
                         {isResultGenerated && (
@@ -434,7 +434,7 @@ function RealTechnicalReport({
                           {qTech && (
                             <div className="bg-card border border-border/60 rounded-xl p-3.5 space-y-2 shadow-2xs">
                               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                                <Brain className="w-3.5 h-3.5 text-indigo-600" /> Technical Accuracy Analysis
+                                <Brain className="w-3.5 h-3.5 text-amber-700" /> Technical Accuracy Analysis
                               </span>
                               <ScoreBar label="Technical Score" score={qTech.overallScore ?? qTech.overall_score ?? 0} />
                             </div>
@@ -574,7 +574,7 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
             
             {/* Candidate Metadata Summary */}
             <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-xl bg-gradient-primary text-white flex items-center justify-center font-black text-lg shadow-sm shrink-0">
+              <div className="w-11 h-11 rounded-xl bg-gradient-primary text-primary-foreground flex items-center justify-center font-black text-lg shadow-sm shrink-0">
                 {candidate.name.charAt(0).toUpperCase()}
               </div>
               <div>
@@ -642,7 +642,14 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
             </div>
           ) : report ? (
             <>
-              <ReportView data={report} roundType={assessment?.roundType} />
+              <ReportShell
+                candidate={candidate}
+                assessment={assessment}
+                data={report}
+                onClose={onClose}
+                onRegenerate={handleRegenerate}
+                regenerating={regenerating}
+              />
 
               {/* ── Modal Footer Bar ── */}
               <div className="flex justify-between items-center border-t border-border/60 pt-4 mt-8">

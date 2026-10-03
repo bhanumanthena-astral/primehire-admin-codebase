@@ -72,11 +72,149 @@ export function renderTemplate(template: MailTemplate, candidate: Candidate, ass
   return { subject, body };
 }
 
+// User-provided HR Round Evaluation Report JSON for Arjun
+export const ARJUN_REPORT_PAYLOAD = {
+  interview_details: {
+    job_id: '16bad52933015c512d107e92af421a6fdcca700d',
+    round_type: 'HR',
+    candidate_id: '16bad5e0d92ecf29917536249feece93d5b61543',
+    submitted_at: '2026-09-30 14:22:51.057179',
+  },
+  faceapi_violations: {
+    ideal_environment: 7,
+    multiple_faces_detected: 0,
+    tab_switching: 0,
+  },
+  report: {
+    overall_result: {
+      personality_insights: null,
+      communication_analysis: null,
+      interview_analysis: null,
+      hr_competency_analysis: null,
+      vils_competency_analysis: null,
+    },
+    question_wise_result: [
+      {
+        id: '16bad52d9f452695b07ef309de1e2c741f020946',
+        question: 'To get started, could you tell me a little about yourself and your journey so far?',
+        type: 'SPEAK_TO_ANSWER' as const,
+        video_url: 'https://prod-websocket-video-files.objectstore.e2enetworks.net/0fa5a084-06a6-460d-b858-cb4e9bdc3039.webm',
+        result: null,
+        is_result_generated: false,
+        message: 'This response cannot be evaluated. It can be due to factors like insufficient data, background noise or network issue etc',
+      },
+      {
+        id: '16bad52d8137871b20500fcc05ab317b2e94f52f',
+        question: "Thanks for sharing that. I'd love to know more about you as a person—what are some of your interests or hobbies?",
+        type: 'SPEAK_TO_ANSWER' as const,
+        video_url: 'https://prod-websocket-video-files.objectstore.e2enetworks.net/a5a908aa-c8f7-40aa-8477-e90f71c5eb98.webm',
+        result: null,
+        is_result_generated: false,
+        message: 'This response cannot be evaluated. It can be due to factors like insufficient data, background noise or network issue etc',
+      },
+      {
+        id: '16bad52de42670dbefe505412237bfcaf50360ae',
+        question: 'Moving on, what would you say are some of your key strengths?',
+        type: 'SPEAK_TO_ANSWER' as const,
+        video_url: 'https://prod-websocket-video-files.objectstore.e2enetworks.net/4b6211d3-0b53-474f-8e38-b7216d3e5b05.webm',
+        result: null,
+        is_result_generated: false,
+        message: 'This response cannot be evaluated. It can be due to factors like insufficient data, background noise or network issue etc',
+      },
+      {
+        id: '16bad52daa2e60a6e00d863eb2f115fe7310a6b9',
+        question: 'That\'s interesting. Could you share an experience where you worked closely with a team?',
+        type: 'SPEAK_TO_ANSWER' as const,
+        video_url: 'https://prod-websocket-video-files.objectstore.e2enetworks.net/80d7d4ed-140b-4cf0-965d-806fa4b21cf6.webm',
+        result: null,
+        is_result_generated: false,
+        message: 'This response cannot be evaluated. It can be due to factors like insufficient data, background noise or network issue etc',
+      },
+      {
+        id: '16bad52da4a48a9e6be5e5e6b27c351d7b5bf9b4',
+        question: 'Now, let\'s talk about challenges. Can you tell me about a situation where you faced a difficult task or obstacle and how you handled it?',
+        type: 'SPEAK_TO_ANSWER' as const,
+        video_url: 'https://prod-websocket-video-files.objectstore.e2enetworks.net/8e6e8a54-e6fe-4f45-a1e6-b25bff6f2ab6.webm',
+        result: null,
+        is_result_generated: false,
+        message: 'This response cannot be evaluated. It can be due to factors like insufficient data, background noise or network issue etc',
+      },
+      {
+        id: '16bad52d812c001501aa5054ab677198773b238f',
+        question: 'Everyone is motivated by different things. What keeps you motivated and helps you perform at your best?',
+        type: 'SPEAK_TO_ANSWER' as const,
+        video_url: 'https://prod-websocket-video-files.objectstore.e2enetworks.net/1764fa4f-e120-44b9-a43f-4eec4bef61b2.webm',
+        result: null,
+        is_result_generated: false,
+        message: 'This response cannot be evaluated. It can be due to factors like insufficient data, background noise or network issue etc',
+      },
+      {
+        id: '16bad52d4403e3f94d54eb3bdcc0edd8ff37373f',
+        question: 'Let\'s move on to adaptability. Can you share an example of a time when you had to learn something new or adjust to a change?',
+        type: 'SPEAK_TO_ANSWER' as const,
+        video_url: 'https://prod-websocket-video-files.objectstore.e2enetworks.net/1f7085bd-e07c-4157-a6f1-7237236b7d3b.webm',
+        result: null,
+        is_result_generated: false,
+        message: 'This response cannot be evaluated. It can be due to factors like insufficient data, background noise or network issue etc',
+      },
+      {
+        id: '16bad52d202214da65ae5231744020c3ba313660',
+        question: 'Thinking about your ideal workplace, what kind of environment or team culture helps you thrive?',
+        type: 'SPEAK_TO_ANSWER' as const,
+        video_url: 'https://prod-websocket-video-files.objectstore.e2enetworks.net/7e289336-b145-4cff-86af-16c683bba224.webm',
+        result: null,
+        is_result_generated: false,
+        message: 'This response cannot be evaluated. It can be due to factors like insufficient data, background noise or network issue etc',
+      },
+    ],
+  },
+};
+
+export const ARJUN_ASSESSMENT: AssessmentProfile = {
+  id: '16bad52933015c512d107e92af421a6fdcca700d',
+  jobId: '16bad52933015c512d107e92af421a6fdcca700d' as JobId,
+  jobTitle: 'HR & Cultural Alignment Evaluation',
+  jobDescription: 'Evaluation round assessing cultural alignment, teamwork, motivation, and adaptability.',
+  language: 'English',
+  roundType: 'HR',
+  questions: ARJUN_REPORT_PAYLOAD.report.question_wise_result.map((q) => ({
+    id: q.id,
+    text: q.question,
+    type: 'SPEAK_TO_ANSWER' as const,
+    maxDuration: 120,
+  })),
+  isActive: true,
+  createdAt: '2026-09-30T10:00:00.000Z',
+  deactivatedAt: null,
+};
+
+export const ARJUN_CANDIDATE: Candidate = {
+  id: '16bad5e0d92ecf29917536249feece93d5b61543' as LocalCandidateId,
+  assessmentId: '16bad52933015c512d107e92af421a6fdcca700d',
+  name: 'Arjun',
+  email: 'arjun@example.com',
+  phone: '+91 98765 43210',
+  startTime: '2026-09-30T14:00:00.000Z',
+  endTime: '2026-09-30T15:00:00.000Z',
+  link: 'https://primehire.app/interview/16bad5e0d92ecf29917536249feece93d5b61543',
+  password: null,
+  assignedDate: '2026-09-30T10:00:00.000Z',
+  submittedDate: '30 Sep 2026, 02:22:51 pm (GMT+5:30)',
+  status: 'ACTIVE',
+  reportStatus: 'GENERATED',
+  interviewId: 'int-16bad5e0d92ecf29917536249feece93d5b61543' as InterviewId,
+  responseId: '16bad5e0d92ecf29917536249feece93d5b61543' as ResponseId,
+  linkGenerated: true,
+  assessmentStatus: 'COMPLETED',
+  mailStatus: 'Invite Sent',
+  simulatedReport: ARJUN_REPORT_PAYLOAD,
+};
+
 // Initial Assessment Profiles
-export const INITIAL_ASSESSMENTS: AssessmentProfile[] = [];
+export const INITIAL_ASSESSMENTS: AssessmentProfile[] = [ARJUN_ASSESSMENT];
 
 // Initial Candidates
-export const INITIAL_CANDIDATES: Candidate[] = [];
+export const INITIAL_CANDIDATES: Candidate[] = [ARJUN_CANDIDATE];
 
 const delay = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -770,7 +908,7 @@ export async function mockGetInterviewStatus(candidateId: LocalCandidateId, stor
  * REAL ENDPOINT: GET /interview/{id}/report
  */
 export async function mockGetReport(candidateId: LocalCandidateId, storeCandidates?: Candidate[]) {
-  const candidate = storeCandidates?.find(c => c.id === candidateId);
+  const candidate = storeCandidates?.find(c => c.id === candidateId) || INITIAL_CANDIDATES.find(c => c.id === candidateId);
   
   if (candidate?.simulatedReport) {
     return {

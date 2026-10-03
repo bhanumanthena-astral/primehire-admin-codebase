@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { getGrade, relevancyColor } from '../../utils/normalizeReport';
+import { formatScore } from '../../utils/reportMetrics';
 import type { NormalizedQuestion } from '../../utils/normalizeReport';
 
 export default function QuestionList({
@@ -36,7 +37,7 @@ export default function QuestionList({
               key={q.key}
               onClick={() => onSelect(i)}
               className={`w-full text-left p-3 rounded-xl border transition-colors ${
-                isActive ? 'border-indigo-300 bg-indigo-50' : 'border-slate-100 hover:bg-slate-50'
+                isActive ? 'border-amber-400 bg-amber-50/80 shadow-xs ring-1 ring-amber-300' : 'border-slate-100 hover:bg-slate-50'
               }`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -52,23 +53,25 @@ export default function QuestionList({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 tnum">
                   {q.isGenerated ? (
                     <>
-                      <span className="text-sm font-bold text-slate-800">
-                        {q.obtainedScore}/{q.maxScore}
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700 whitespace-nowrap">
+                        {formatScore(q.obtainedScore)} / {q.maxScore}
                       </span>
                       <span
-                        className="text-xs font-bold h-6 w-6 rounded-md flex items-center justify-center"
+                        className="flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-xs font-bold"
                         style={{ background: grade.bg, color: grade.color }}
                       >
                         {grade.letter}
                       </span>
                     </>
                   ) : (
-                    <span className="text-[10px] text-slate-400 italic">Not scored</span>
+                    <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-400 italic whitespace-nowrap">
+                      Pending eval
+                    </span>
                   )}
-                  <ChevronRight size={14} className="text-slate-300" />
+                  <ChevronRight size={14} className="text-slate-300 shrink-0" />
                 </div>
               </div>
             </button>

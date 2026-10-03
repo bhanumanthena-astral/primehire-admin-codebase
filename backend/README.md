@@ -33,6 +33,30 @@ With a URI, startup ensures all indexes and health reports `"connected"`/`"unrea
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests -v
 ```
 
+## Background worker (Phase 2 Slice B)
+
+Resume uploads only validate, store, and enqueue. Parsing, LLM scoring, and
+job matching run in the worker — it must be running or batches stay `processing`:
+
+```powershell
+.\backend\.venv\Scripts\python.exe backend\cli.py worker --poll-seconds 5
+```
+
+Phase 2 env additions (`backend/.env`, see `backend/.env.example`):
+`LLM_PROVIDER`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (empty = LLM
+disabled → deterministic scores + visible flag), `LLM_CONCURRENCY`,
+`OUTBOX_ENCRYPTION_KEY`, `ZEPTOMAIL_API_KEY`, `EMAIL_FROM_ADDRESS`,
+`UPLOAD_MAX_MB`, `UPLOAD_BATCH_MAX`, `UPLOAD_MAX_UNCOMPRESSED_MB`,
+`CLAMAV_ENABLED`, `RETENTION_DAYS`.
+
+Slice C email/upstream safety (`backend/.env`, see `backend/.env.example`):
+`EMAIL_DRY_RUN` (default true — records without sending; production refuses
+true), `EMAIL_TEST_RECIPIENT_ALLOWLIST` (required outside production when
+dry-run is off), `EMAIL_FROM_NAME`, `ASSESSMENT_SYNC_BATCH`,
+`ASSESSMENT_SYNC_INTERVAL_S`. Real sends need `ZEPTOMAIL_API_KEY`,
+`EMAIL_FROM_ADDRESS`, `OUTBOX_ENCRYPTION_KEY`, plus `PRIMEHIRE_*` for
+interview creation. Test with your own addresses only.
+
 ## Security policy
 
 Candidate-portal `password` is never accepted, stored, or returned

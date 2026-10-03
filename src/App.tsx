@@ -3,73 +3,82 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { INITIAL_ASSESSMENTS, INITIAL_CANDIDATES, INITIAL_TEMPLATES } from './mockData';
 import { AssessmentProfile, Candidate, MailTemplate } from './types';
 import Dashboard from './components/Dashboard';
 import AssessmentsAndAssignments from './components/AssessmentsAndAssignments';
 import CandidateManagement from './components/CandidateManagement';
+import JobsPage from './components/JobsPage';
+import ResumeUploadPage from './components/ResumeUploadPage';
+import ApplicantsPage from './components/ApplicantsPage';
+import ApplicantProfilePage from './components/ApplicantProfilePage';
+import DiagnosticsPage from './components/DiagnosticsPage';
 import MailTemplates from './components/MailTemplates';
 import ReportDialog from './components/ReportDialog';
 import { Toaster } from '@/components/ui/sonner';
 import {
-  FrostedDetailPanel,
   ModeToggle,
-  Pill,
 } from './components/ui/primitives';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider, useAuth } from './lib/authContext';
+import { PrivateRoute } from './components/auth/PrivateRoute';
+import { ImpersonationBanner } from './components/auth/ImpersonationBanner';
+import { LoginPage } from './pages/LoginPage';
+import { UsersManagementPage } from './pages/UsersManagementPage';
 import {
   LayoutDashboard,
   Users,
   Mail,
   Briefcase,
+  ClipboardList,
+  Upload,
+  UserSearch,
   Menu,
   X,
-  Zap,
-  SlidersHorizontal,
-  RotateCcw,
+  Shield,
+  LogOut,
   Search,
+  RotateCcw,
+  SlidersHorizontal,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { fetchAssessments, fetchCandidates, updateCandidate } from './lib/mongoApi';
 
 const MODULE_TABS = [
-  { id: 'dashboard', label: 'Dashboard Overview', short: 'Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
-  { id: 'candidates', label: 'Candidate Directory', short: 'Candidates', icon: Users, desc: 'Pipeline, reports & credentials' },
-  { id: 'assessments', label: 'Assessments & Profiles', short: 'Assessments', icon: Briefcase, desc: 'Profiles, scheduling & links' },
-  { id: 'templates', label: 'Mail Templates', short: 'Templates', icon: Mail, desc: 'Invites & reminder sequences' },
+  { id: 'dashboard', label: 'Overview', short: 'Overview', icon: LayoutDashboard },
+  { id: 'jobs', label: 'Jobs', short: 'Jobs', icon: Briefcase },
+  { id: 'candidates', label: 'Candidates', short: 'Candidates', icon: Users },
+  { id: 'resumes', label: 'Resume Upload', short: 'Resume Upload', icon: Upload },
+  { id: 'applicants', label: 'Applicants', short: 'Applicants', icon: UserSearch },
+  { id: 'applicant', label: 'Applicant Profile', short: 'Applicant', icon: UserSearch },
+  { id: 'assessments', label: 'Assessments & Profiles', short: 'Assessments', icon: ClipboardList },
+  { id: 'templates', label: 'Mail Templates', short: 'Templates', icon: Mail },
 ];
 
-function useCompactHeader() {
-  const [compact, setCompact] = useState(false);
-  const rafRef = useRef<number | null>(null);
-  useEffect(() => {
-    const onScroll = () => {
-      if (rafRef.current) return;
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        const y = window.scrollY;
-        setCompact((prev) => {
-          if (!prev && y > 72) return true;
-          if (prev && y < 32) return false;
-          return prev;
-        });
-      });
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-  return compact;
-}
+const NAV_SECTIONS: { heading: string | null; ids: string[] }[] = [
+  { heading: null, ids: ['dashboard'] },
+  { heading: 'Hiring', ids: ['jobs', 'candidates', 'resumes', 'applicants'] },
+  { heading: 'Recruitment', ids: ['assessments', 'templates'] },
+  { heading: 'Administration', ids: ['users', 'diagnostics'] },
+];
 
-export default function App() {
+function AdminDashboard() {
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [openApplicantId, setOpenApplicantId] = useState<string | null>(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const compact = useCompactHeader();
+
+  const canManageUsers = user?.role === 'super_admin' || user?.role === 'admin';
+  const availableTabs = [
+    ...MODULE_TABS,
+    ...(canManageUsers
+      ? [{ id: 'users', label: 'Team & Access', short: 'Team', icon: Shield, desc: 'Manage users, roles & invites' },
+         { id: 'diagnostics', label: 'Diagnostics', short: 'Ops', icon: SlidersHorizontal, desc: 'Outbox & worker health' }]
+      : []),
+  ];
 
   // Global Filter State (preserved across navigation views)
   const [filterRound, setFilterRound] = useState<string>('ALL');
@@ -79,26 +88,41 @@ export default function App() {
   const [assessments, setAssessments] = useState<AssessmentProfile[]>(() => {
     try {
       const stored = localStorage.getItem('primehire_assessments');
+      let loaded: AssessmentProfile[] = [];
       if (stored) {
-        let parsed = JSON.parse(stored) as AssessmentProfile[];
+        const parsed = JSON.parse(stored) as AssessmentProfile[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter(a => a && a.id && a.jobId);
+          loaded = parsed.filter(a => a && a.id && a.jobId);
         }
       }
-      return INITIAL_ASSESSMENTS;
+      for (const initAsm of INITIAL_ASSESSMENTS) {
+        if (!loaded.some(a => a.id === initAsm.id)) {
+          loaded.unshift(initAsm);
+        }
+      }
+      return loaded.length > 0 ? loaded : INITIAL_ASSESSMENTS;
     } catch { return INITIAL_ASSESSMENTS; }
   });
 
   const [candidates, setCandidates] = useState<Candidate[]>(() => {
     try {
       const stored = localStorage.getItem('primehire_candidates');
+      let loaded: Candidate[] = [];
       if (stored) {
-        let parsed = JSON.parse(stored) as Candidate[];
+        const parsed = JSON.parse(stored) as Candidate[];
         if (Array.isArray(parsed)) {
-          return parsed.filter(c => c && c.id && c.assessmentId);
+          loaded = parsed.filter(c => c && c.id && c.assessmentId);
         }
       }
-      return INITIAL_CANDIDATES;
+      for (const initCand of INITIAL_CANDIDATES) {
+        const idx = loaded.findIndex(c => c.id === initCand.id);
+        if (idx === -1) {
+          loaded.unshift(initCand);
+        } else {
+          loaded[idx] = { ...initCand, ...loaded[idx], simulatedReport: initCand.simulatedReport };
+        }
+      }
+      return loaded.length > 0 ? loaded : INITIAL_CANDIDATES;
     } catch { return INITIAL_CANDIDATES; }
   });
 
@@ -148,8 +172,23 @@ export default function App() {
       try {
         const [asms, cands] = await Promise.all([fetchAssessments(), fetchCandidates()]);
         if (cancelled) return;
-        handleSetAssessments(asms);
-        handleSetCandidates(cands);
+        const mergedAsms = [...asms];
+        for (const initAsm of INITIAL_ASSESSMENTS) {
+          if (!mergedAsms.some(a => a.id === initAsm.id)) {
+            mergedAsms.unshift(initAsm);
+          }
+        }
+        const mergedCands = [...cands];
+        for (const initCand of INITIAL_CANDIDATES) {
+          const idx = mergedCands.findIndex(c => c.id === initCand.id);
+          if (idx === -1) {
+            mergedCands.unshift(initCand);
+          } else {
+            mergedCands[idx] = { ...initCand, ...mergedCands[idx], simulatedReport: initCand.simulatedReport };
+          }
+        }
+        handleSetAssessments(mergedAsms);
+        handleSetCandidates(mergedCands);
         setApiDown(false);
         console.info(`[DataSource] assessments: mongodb (${asms.length})`);
         console.info(`[DataSource] candidates: mongodb (${cands.length})`);
@@ -215,351 +254,260 @@ export default function App() {
     }
   };
 
-  // Context Header Info per module
-  const getModuleContext = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return {
-          title: 'Executive Portal Dashboard',
-          subtitle: 'Operational decision-support overview for assessment throughput, candidate evaluations, and performance metrics.',
-        };
-      case 'candidates':
-        return {
-          title: 'Candidate Directory & Pipeline',
-          subtitle: 'Centralized directory monitoring candidate evaluation statuses, reports, and credential access.',
-        };
-      case 'assessments':
-        return {
-          title: 'Assessment Profiles & Scheduling',
-          subtitle: 'Manage evaluation question sets, configure test bounds, and provision interview access links.',
-        };
-      case 'templates':
-        return {
-          title: 'Email Templates & Communications',
-          subtitle: 'Configure automated invite and reminder email templates with dynamic merge variables.',
-        };
-      default:
-        return {
-          title: 'Dashboard Overview',
-          subtitle: 'Manage candidate assessment pipeline.',
-        };
-    }
+  const activeMeta = availableTabs.find(t => t.id === activeTab);
+  const hasActiveFilters = filterRound !== 'ALL' || filterStatus !== 'ALL' || searchQuery;
+
+  const tabCount = (id: string): number | null => {
+    if (id === 'candidates') return candidates.length;
+    if (id === 'assessments' || id === 'jobs') return assessments.length;
+    if (id === 'templates') return templates.length;
+    return null;
   };
 
-  const moduleContext = getModuleContext();
-  const hasActiveFilters = filterRound !== 'ALL' || filterStatus !== 'ALL' || searchQuery;
+  const goTab = (id: string) => {
+    setActiveTab(id);
+    setIsMobileNavOpen(false);
+  };
+
+  const sidebarNav = (
+    <div className="flex h-full flex-col">
+      {/* brand */}
+      <div className="px-5 pt-6 pb-5">
+        <div className="flex items-center gap-2.5">
+          <span
+            aria-hidden
+            className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary text-sm font-black text-primary-foreground shadow-[var(--shadow-card)]"
+          >
+            EH
+          </span>
+          <span className="text-[19px] font-extrabold tracking-tight text-foreground">Elite HR</span>
+        </div>
+        <div className="mt-2.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          Hiring Intelligence
+        </div>
+        <div className="mt-3 h-px bg-border" aria-hidden />
+      </div>
+
+      {/* nav */}
+      <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3 pb-4">
+        {NAV_SECTIONS.map((section) => {
+          const items = availableTabs.filter(t => section.ids.includes(t.id));
+          if (items.length === 0) return null;
+          return (
+            <div key={section.heading ?? 'top'} className="mb-1">
+              {section.heading && (
+                <div className="px-3 pb-1.5 pt-4 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                  {section.heading}
+                </div>
+              )}
+              <ul className="space-y-0.5">
+                {items.map(({ id, label, icon: Icon }) => {
+                  const isActive = activeTab === id;
+                  const count = tabCount(id);
+                  return (
+                    <li key={id}>
+                      <button
+                        onClick={() => goTab(id)}
+                        aria-current={isActive ? 'page' : undefined}
+                        className={cn(
+                          'group flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition-all duration-150 cursor-pointer',
+                          isActive
+                            ? 'bg-[var(--primary-soft)] text-foreground shadow-[var(--shadow-card)]'
+                            : 'text-muted-foreground hover:bg-[var(--sidebar-accent)] hover:text-foreground'
+                        )}
+                      >
+                        <Icon
+                          className={cn(
+                            'h-[17px] w-[17px] shrink-0 transition-colors',
+                            isActive ? 'text-[var(--accent)]' : 'text-muted-foreground group-hover:text-foreground'
+                          )}
+                        />
+                        <span className="flex-1 truncate text-left">{label}</span>
+                        {count !== null && (
+                          <span
+                            className={cn(
+                              'rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+                              isActive
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground'
+                            )}
+                          >
+                            {count}
+                          </span>
+                        )}
+                        {isActive && <ChevronRight className="h-3.5 w-3.5 text-[var(--accent)]" />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </nav>
+
+      {/* user card */}
+      <div className="border-t border-border p-3">
+        <div className="flex items-center gap-2.5 rounded-[12px] border border-border bg-card px-3 py-2.5 shadow-[var(--shadow-card)]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-black text-primary-foreground">
+            {user?.name ? user.name.slice(0, 2).toUpperCase() : 'SU'}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[12.5px] font-bold text-foreground">{user?.name || 'Administrator'}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground capitalize">
+              {(user?.role || 'admin').replace('_', ' ')}
+            </div>
+          </div>
+          <button
+            onClick={logout}
+            title="Sign out"
+            aria-label="Sign out"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-[var(--destructive-soft)] hover:text-[var(--destructive)] cursor-pointer"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-app text-foreground font-sans antialiased">
-      {/* fixed radial glows behind content */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(60rem 40rem at 15% 30%, oklch(0.55 0.2 285 / 0.12), transparent 70%)',
-          }}
-        />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(50rem 34rem at 85% 65%, oklch(0.7 0.17 150 / 0.10), transparent 70%)',
-          }}
-        />
-      </div>
+      {/* ── Sidebar (desktop) ─────────────────────────────── */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] border-r border-border bg-[var(--sidebar)] lg:block">
+        {sidebarNav}
+      </aside>
 
-      {/* ── Collapsing purple header ─────────────────────────── */}
-      <header className="sticky top-0 z-30 bg-gradient-primary shadow-[var(--shadow-glow)] text-primary-foreground">
-        <div className="max-w-7xl mx-auto px-6">
-          {/* top row: brand + mode + mobile toggle */}
+      {/* ── Sidebar drawer (mobile / tablet) ───────────────── */}
+      {isMobileNavOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
           <div
-            className={cn(
-              'flex items-center justify-between gap-4 transition-all duration-[300ms] ease-out',
-              compact ? 'py-2.5 gap-3' : 'py-4 gap-4'
-            )}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div
-                className={cn(
-                  'rounded-xl bg-primary-foreground/10 border border-primary-foreground/15 backdrop-blur flex items-center justify-center text-primary-foreground font-extrabold transition-all duration-[300ms] ease-out shrink-0',
-                  compact ? 'w-8 h-8 scale-95' : 'w-10 h-10 scale-100'
-                )}
-              >
-                <Zap className={cn('transition-all duration-[300ms] ease-out', compact ? 'w-4 h-4' : 'w-5 h-5')} />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      'font-semibold tracking-tight truncate transition-all duration-[300ms] ease-out',
-                      compact ? 'text-base' : 'text-lg leading-[1.6rem]'
-                    )}
-                  >
-                    PrimeHire Analytics
-                  </span>
-                  <span className="inline-flex items-center rounded-full border border-primary-foreground/25 bg-primary-foreground/10 backdrop-blur px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
-                    v1.0
-                  </span>
-                </div>
-                {/* collapsible eyebrow — never unmounted */}
-                <div
-                  className={cn(
-                    'overflow-hidden transition-all duration-[300ms] ease-out',
-                    compact ? 'max-h-0 opacity-0' : 'max-h-6 opacity-100'
-                  )}
-                >
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
-                    Placement Analytics · Assignment Portal
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2.5 shrink-0">
-              <div className="hidden sm:flex items-center gap-2.5 pr-1">
-                <div className="w-8 h-8 rounded-full bg-primary-foreground/15 border border-primary-foreground/20 flex items-center justify-center font-bold text-xs">
-                  PV
-                </div>
-                <div className="text-left hidden lg:block">
-                  <div className="font-semibold text-xs leading-tight">PNS Varma</div>
-                  <div className="text-[10px] uppercase tracking-wide text-primary-foreground/70 font-medium">Administrator</div>
-                </div>
-              </div>
-              <ModeToggle />
-              <button
-                onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
-                aria-label="Toggle navigation"
-                className="md:hidden p-2 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 hover:bg-primary-foreground/20 transition cursor-pointer"
-              >
-                {isMobileNavOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-              </button>
-            </div>
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setIsMobileNavOpen(false)}
+            aria-hidden
+          />
+          <div className="absolute inset-y-0 left-0 w-[280px] border-r border-border bg-[var(--sidebar)] shadow-xl">
+            <button
+              onClick={() => setIsMobileNavOpen(false)}
+              aria-label="Close navigation"
+              className="absolute right-3 top-4 rounded-lg p-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            {sidebarNav}
           </div>
+        </div>
+      )}
 
-          {/* collapsible title block — never unmounted */}
-          <div
-            className={cn(
-              'overflow-hidden transition-all duration-[300ms] ease-out',
-              compact ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
-            )}
-          >
-            <div className="pb-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
-                PrimeHire Agent Module
-              </div>
-              <h1 className="text-[1.875rem] leading-[2.25rem] font-semibold tracking-tight text-white">
-                {moduleContext.title}
-              </h1>
-              <p className="text-xs sm:text-sm text-primary-foreground/85 max-w-2xl font-medium leading-relaxed">
-                {moduleContext.subtitle}
-              </p>
-            </div>
-          </div>
-
-          {/* compact title (visible only when collapsed, kept mounted for animation) */}
-          <div
-            aria-hidden={!compact}
-            className={cn(
-              'overflow-hidden transition-all duration-[300ms] ease-out',
-              compact ? 'max-h-10 opacity-100 pb-2' : 'max-h-0 opacity-0'
-            )}
-          >
-            <div className="text-sm font-semibold tracking-tight truncate text-white">{moduleContext.title}</div>
-          </div>
-
-          {/* desktop module pills */}
-          <nav aria-label="Modules" className="hidden md:flex items-center gap-2 pb-3 overflow-x-auto no-scrollbar">
-            {MODULE_TABS.map(({ id, short, icon: Icon }) => {
-              const isActive = activeTab === id;
-              return (
+      {/* ── Main column ───────────────────────────────────── */}
+      <div className="lg:pl-[264px]">
+        {/* slim top bar */}
+        <header className="sticky top-0 z-20 border-b border-border bg-[var(--sidebar)]/90 backdrop-blur">
+          <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
+            <button
+              onClick={() => setIsMobileNavOpen(true)}
+              aria-label="Open navigation"
+              className="rounded-lg border border-border bg-card p-2 text-muted-foreground shadow-[var(--shadow-card)] transition-colors hover:text-foreground lg:hidden cursor-pointer"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+            <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-[12.5px] sm:flex">
+              <span className="font-semibold text-muted-foreground">Hiring</span>
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+              <span className="truncate font-bold text-foreground">{activeMeta?.label ?? 'Overview'}</span>
+            </nav>
+            <div className="relative ml-auto w-full max-w-[220px] sm:max-w-[260px]">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <input
+                type="text"
+                aria-label="Search candidates"
+                placeholder="Search candidates…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="ehr-input w-full py-2 pl-8 pr-8 text-[12.5px]"
+              />
+              {searchQuery && (
                 <button
-                  key={id}
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveTab(id)}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border backdrop-blur transition-all duration-200 cursor-pointer whitespace-nowrap',
-                    isActive
-                      ? 'bg-primary-foreground text-primary border-primary-foreground shadow-[var(--shadow-glow)]'
-                      : 'border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20'
-                  )}
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground cursor-pointer"
                 >
-                  <Icon className="w-3.5 h-3.5" />
-                  {short}
+                  <X className="h-3.5 w-3.5" />
                 </button>
-              );
-            })}
-            <span className="ml-auto hidden lg:inline-flex items-center rounded-full border border-primary-foreground/25 bg-primary-foreground/10 px-2.5 py-1 text-[11px] font-medium tabular-nums">
-              {assessments.length} assessments · {candidates.length} candidates
-            </span>
-          </nav>
+              )}
+            </div>
+            <ModeToggle />
+            <div className="hidden items-center gap-2 md:flex" aria-label="Signed in user">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-[10px] font-black text-primary-foreground">
+                {user?.name ? user.name.slice(0, 2).toUpperCase() : 'SU'}
+              </div>
+              <div className="leading-tight">
+                <div className="max-w-[120px] truncate text-[12px] font-bold text-foreground">
+                  {user?.name || 'Administrator'}
+                </div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground capitalize">
+                  {(user?.role || 'admin').replace('_', ' ')}
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
 
-          {/* filter row — on-brand glass */}
-          <div
-            className={cn(
-              'flex flex-wrap items-center gap-2 transition-all duration-[300ms] ease-out',
-              compact ? 'pb-2.5' : 'pb-4'
-            )}
-          >
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70 mr-1">
-              <SlidersHorizontal className="w-3.5 h-3.5" /> Filters
+        {/* slim filter toolbar */}
+        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-1 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+              <SlidersHorizontal className="h-3.5 w-3.5" /> Filters
             </span>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 backdrop-blur px-3 py-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-foreground/70">Round</span>
+            <label className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 shadow-[var(--shadow-card)]">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Round</span>
               <select
                 aria-label="Round filter"
                 value={filterRound}
                 onChange={(e) => setFilterRound(e.target.value)}
-                className="bg-transparent text-xs font-semibold text-primary-foreground focus:outline-none cursor-pointer [&>option]:text-foreground"
+                className="cursor-pointer bg-transparent text-xs font-bold text-foreground focus:outline-none"
               >
                 <option value="ALL">All Rounds</option>
                 <option value="BASIC">BASIC</option>
                 <option value="TECHNICAL">TECHNICAL</option>
                 <option value="HR">HR</option>
               </select>
-            </div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 backdrop-blur px-3 py-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-foreground/70">Report</span>
+            </label>
+            <label className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 shadow-[var(--shadow-card)]">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Report</span>
               <select
                 aria-label="Report filter"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-transparent text-xs font-semibold text-primary-foreground focus:outline-none cursor-pointer [&>option]:text-foreground"
+                className="cursor-pointer bg-transparent text-xs font-bold text-foreground focus:outline-none"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="GENERATED">Evaluated / Generated</option>
                 <option value="GENERATING">Generating</option>
                 <option value="PENDING">Pending / No Report</option>
               </select>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-primary-foreground/60" />
-              <input
-                type="text"
-                aria-label="Search candidates"
-                placeholder="Search candidate or title..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-56 rounded-full border border-primary-foreground/15 bg-primary-foreground/5 backdrop-blur pl-8 pr-8 py-1.5 text-xs text-primary-foreground placeholder:text-primary-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary-foreground/40"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  aria-label="Clear search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-primary-foreground/70 hover:text-primary-foreground cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+            </label>
             {hasActiveFilters && (
               <button
                 onClick={() => { setFilterRound('ALL'); setFilterStatus('ALL'); setSearchQuery(''); }}
-                className="inline-flex items-center gap-1 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 hover:bg-primary-foreground/20 px-3 py-1.5 text-[11px] font-semibold cursor-pointer transition"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-[11px] font-bold text-muted-foreground shadow-[var(--shadow-card)] transition-colors hover:text-foreground"
               >
-                <RotateCcw className="w-3 h-3" /> Reset
+                <RotateCcw className="h-3 w-3" /> Reset
               </button>
             )}
           </div>
+        </div>
 
-          {/* mobile nav */}
-          {isMobileNavOpen && (
-            <div className="md:hidden pb-3 grid grid-cols-2 gap-2">
-              {MODULE_TABS.map(({ id, label, icon: Icon }) => {
-                const isActive = activeTab === id;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => { setActiveTab(id); setIsMobileNavOpen(false); }}
-                    aria-pressed={isActive}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-2.5 rounded-2xl text-xs font-semibold border backdrop-blur cursor-pointer transition',
-                      isActive
-                        ? 'bg-primary-foreground text-primary border-primary-foreground'
-                        : 'border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground'
-                    )}
-                  >
-                    <Icon className="w-4 h-4" /> {label}
-                  </button>
-                );
-              })}
+        {apiDown && (
+          <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6" role="alert">
+            <div className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning-soft)] px-4 py-2 text-xs font-semibold text-[var(--warning)]">
+              Server unreachable — showing locally cached data. Changes may not sync until the connection is restored.
             </div>
-          )}
-        </div>
-      </header>
-
-      {/* ── Main: selectable cards + single frosted workspace ── */}
-      {apiDown && (
-        <div className="relative z-10 max-w-7xl w-full mx-auto px-6 pt-4" role="alert">
-          <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-2 text-xs font-semibold text-warning">
-            Server unreachable — showing locally cached data. Changes may not sync until the connection is restored.
           </div>
-        </div>
-      )}
-      <main className="relative z-10 max-w-7xl w-full mx-auto px-6 py-8 space-y-6">
-        {/* selectable domain cards */}
-        <div role="tablist" aria-label="Placement domains" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {MODULE_TABS.map(({ id, label, desc, icon: Icon }) => {
-            const isActive = activeTab === id;
-            const count = id === 'dashboard'
-              ? `${assessments.length} profiles`
-              : id === 'candidates'
-                ? `${candidates.length} records`
-                : id === 'assessments'
-                  ? `${assessments.length} active`
-                  : `${templates.length} templates`;
-            return (
-              <div key={id} className="relative">
-                <button
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-pressed={isActive}
-                  onClick={() => setActiveTab(id)}
-                  className={cn(
-                    'w-full text-left rounded-2xl border p-5 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer',
-                    isActive
-                      ? 'border-primary bg-card shadow-[var(--shadow-card)] -translate-y-0.5'
-                      : 'border-border/70 bg-card shadow-[var(--shadow-card)] hover:-translate-y-0.5 hover:border-primary/40'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div
-                      className={cn(
-                        'w-10 h-10 rounded-xl flex items-center justify-center border shrink-0',
-                        isActive
-                          ? 'bg-gradient-primary text-primary-foreground border-transparent'
-                          : 'bg-accent/10 text-accent border-accent/15'
-                      )}
-                    >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    {isActive && (
-                      <span className="w-5 h-5 rounded-full bg-gradient-primary text-primary-foreground flex items-center justify-center shrink-0 text-[10px] font-bold">
-                        ✓
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-sm font-semibold text-foreground">{label}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
-                    <div className="mt-2">
-                      <Pill tone={isActive ? 'info' : 'neutral'}>{count}</Pill>
-                    </div>
-                  </div>
-                </button>
-                {isActive && (
-                  <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-primary" aria-hidden>
-                    <div className="w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-primary" />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        )}
 
-        {/* single frosted workspace per screen */}
-        <FrostedDetailPanel panelKey={activeTab}>
+        {/* content */}
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
           {activeTab === 'dashboard' && (
             <Dashboard
               assessments={assessments}
@@ -570,6 +518,15 @@ export default function App() {
               onNavigate={(tab) => setActiveTab(tab)}
             />
           )}
+          {activeTab === 'jobs' && <JobsPage />}
+          {activeTab === 'resumes' && <ResumeUploadPage />}
+          {activeTab === 'applicants' && (
+            <ApplicantsPage onOpen={(id) => { setOpenApplicantId(id); setActiveTab('applicant'); }} />
+          )}
+          {activeTab === 'applicant' && openApplicantId && (
+            <ApplicantProfilePage applicantId={openApplicantId} onBack={() => setActiveTab('applicants')} />
+          )}
+          {activeTab === 'diagnostics' && <DiagnosticsPage />}
           {activeTab === 'candidates' && (
             <CandidateManagement
               candidates={candidates}
@@ -598,8 +555,9 @@ export default function App() {
               onSaveTemplate={handleSaveMailTemplate}
             />
           )}
-        </FrostedDetailPanel>
-      </main>
+          {activeTab === 'users' && <UsersManagementPage />}
+        </main>
+      </div>
 
       {/* Candidate Evaluation Report Workspace */}
       <ReportDialog
@@ -613,5 +571,26 @@ export default function App() {
 
       <Toaster position="bottom-right" />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/*"
+            element={
+              <PrivateRoute>
+                <ImpersonationBanner />
+                <AdminDashboard />
+              </PrivateRoute>
+            }
+          />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

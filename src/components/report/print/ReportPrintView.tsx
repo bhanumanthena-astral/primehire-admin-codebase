@@ -50,7 +50,7 @@ export default function ReportPrintView({
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          borderBottom: '2px solid #4f46e5',
+          borderBottom: '2px solid #0891b2',
           paddingBottom: 14,
           marginBottom: 20,
         }}
@@ -76,8 +76,8 @@ export default function ReportPrintView({
             color="#0891b2"
           />
         )}
-        {overall.confidenceScore !== null && <Box label="Confidence" value={overall.confidenceScore} color="#9333ea" />}
-        <Box label="Questions" value={questions.length} color="#7c3aed" />
+        {overall.confidenceScore !== null && <Box label="Confidence" value={overall.confidenceScore} color="#0891b2" />}
+        <Box label="Questions" value={questions.length} color="#0891b2" />
       </div>
 
       <p style={{ fontSize: 12, background: '#f8fafc', padding: 12, borderRadius: 8, fontStyle: 'italic', marginBottom: 20 }}>
@@ -91,7 +91,7 @@ export default function ReportPrintView({
             <PolarGrid stroke="#e2e8f0" />
             <RA dataKey="metric" tick={{ fill: '#475569', fontSize: 9 }} />
             <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} />
-            <Radar dataKey="value" stroke="#4f46e5" fill="#4f46e5" fillOpacity={0.3} strokeWidth={2} />
+            <Radar dataKey="value" stroke="#0891b2" fill="#0891b2" fillOpacity={0.3} strokeWidth={2} />
           </RadarChart>
         </div>
         <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
@@ -147,7 +147,7 @@ export default function ReportPrintView({
                 </td>
                 <td style={cell}>
                   {q.videoUrl ? (
-                    <a href={q.videoUrl} style={{ color: '#4f46e5' }}>
+                    <a href={q.videoUrl} style={{ color: '#0891b2' }}>
                       ▶ Watch Recording
                     </a>
                   ) : (
@@ -161,9 +161,9 @@ export default function ReportPrintView({
       </table>
 
       <div style={{ display: 'flex', gap: 12, breakInside: 'avoid' }}>
-        <InsightCol title="Strengths" items={insights.strengths} color="#16a34a" />
-        <InsightCol title="Areas for Improvement" items={insights.improvements} color="#dc2626" />
-        <InsightCol title="Recommendations" items={insights.recommendations} color="#2563eb" />
+        <InsightCol title="Strength Signals" items={insights.strengths} color="#16a34a" />
+        <InsightCol title="Risk Signals & Flags" items={insights.improvements} color="#dc2626" />
+        <InsightCol title="Recruiter Verification Prompts" items={insights.recommendations} color="#0284c7" />
       </div>
 
       <div

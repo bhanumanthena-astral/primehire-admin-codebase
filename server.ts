@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
 
 dotenv.config();
 
@@ -19,6 +20,21 @@ async function startServer() {
 
   // Proxy to ZeptoMail
   app.post("/api/send-email", async (req, res) => {
+    // JWT Authentication guard
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Missing or invalid authorization header" });
+    }
+    const token = authHeader.substring(7);
+    const jwtSecret = process.env.JWT_SECRET;
+    if (jwtSecret) {
+      try {
+        jwt.verify(token, jwtSecret, { audience: "primehire", issuer: "primehire" });
+      } catch {
+        return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
+      }
+    }
+
     const { toEmail, toName, subject, htmlBody } = req.body;
     
     const apiKey = process.env.ZEPTOMAIL_API_KEY;
@@ -59,6 +75,37 @@ async function startServer() {
     } catch (error: any) {
       console.error("[Email Proxy Error] Failed to transmit email:", error.message);
       res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Proxy to the local FastAPI backend (auth + future /api/* routes).
+  // Forwards to FASTAPI_URL (default http://127.0.0.1:8000). Cookies are
+  // forwarded so the httpOnly refresh-token flow works same-origin.
+  app.all("/api/auth/*", async (req, res) => {
+    const fastApiBase = (process.env.FASTAPI_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+    const queryString = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
+    const targetUrl = `${fastApiBase}${req.path}${queryString}`;
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (req.headers.authorization) headers["Authorization"] = req.headers.authorization as string;
+      if (req.headers.cookie) headers["Cookie"] = req.headers.cookie as string;
+      const options: RequestInit = { method: req.method, headers };
+      if (["POST", "PUT", "PATCH"].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
+        options.body = JSON.stringify(req.body);
+      }
+      const response = await fetch(targetUrl, options);
+      const setCookie = response.headers.get("set-cookie");
+      if (setCookie) res.setHeader("set-cookie", setCookie);
+      const text = await response.text();
+      res.status(response.status);
+      try {
+        res.json(JSON.parse(text));
+      } catch {
+        res.send(text);
+      }
+    } catch (error: any) {
+      console.error("[Auth Proxy Error] FastAPI unreachable:", error.message);
+      res.status(502).json({ detail: "FastAPI backend unreachable. Start it on :8000." });
     }
   });
 
@@ -114,13 +161,6 @@ async function startServer() {
       headers["Origin"] = process.env.PROXY_ORIGIN;
     }
 
-    // Detailed logging for request body
-    if (["POST", "PUT", "PATCH"].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
-      console.log(`[Request Payload] ↓↓↓`);
-      console.log(JSON.stringify(req.body, null, 2));
-      console.log(`[Request Payload] ↑↑↑`);
-    }
-
     try {
       const options: RequestInit = {
         method: req.method,
@@ -134,11 +174,10 @@ async function startServer() {
       const response = await fetch(targetUrl, options);
       const elapsed = Date.now() - startTime;
       
-      // Log response status code
+      // Metadata-only logging (§2.6 of ENGINEERING_STANDARDS)
       const statusIcon = response.ok ? '✓' : '✗';
-      console.log(`[Response] ${statusIcon} ${response.status} ${response.statusText} (${elapsed}ms)`);
+      console.log(`[Proxy] ${statusIcon} ${req.method} ${subpath} -> ${response.status} (${elapsed}ms)`);
       
-      // Attempt to read the response body as JSON
       const contentType = response.headers.get("content-type") || "";
       let responseBody: any;
       
@@ -153,11 +192,6 @@ async function startServer() {
         }
       }
 
-      // Detailed response logging
-      console.log(`[Response Body] ↓↓↓`);
-      console.log(JSON.stringify(responseBody, null, 2));
-      console.log(`[Response Body] ↑↑↑`);
-
       if (response.status === 401) {
         console.error(
           `[Auth Hint] Upstream PrimeHire API returned 401 Invalid Credentials. ` +
@@ -165,8 +199,6 @@ async function startServer() {
           `and restart the server. Request: ${req.method} ${subpath}`
         );
       }
-
-      console.log(`${'='.repeat(70)}\n`);
 
       res.status(response.status).json(responseBody);
     } catch (error: any) {
@@ -178,6 +210,60 @@ async function startServer() {
         error: "Failed to proxy request to PrimeHire API",
         details: error.message,
       });
+    }
+  });
+
+  // Generic FastAPI passthrough for every other /api/* route
+  // (assessments, candidates, users, jobs, resumes, ...). Registered AFTER
+  // the specific handlers above so /api/health, /api/send-email,
+  // /api/auth/* and /api/primehire|backend/* keep their behavior.
+  // Forwards auth + cookies (httpOnly refresh flow) and streams raw
+  // bodies so multipart resume uploads and file downloads also work.
+  app.all("/api/*", async (req, res) => {
+    const fastApiBase = (process.env.FASTAPI_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+    const queryString = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
+    const targetUrl = `${fastApiBase}${req.path}${queryString}`;
+    try {
+      const headers: Record<string, string> = {};
+      if (req.headers.authorization) headers["Authorization"] = req.headers.authorization as string;
+      if (req.headers.cookie) headers["Cookie"] = req.headers.cookie as string;
+      const contentType = req.headers["content-type"] as string | undefined;
+      if (contentType) headers["Content-Type"] = contentType;
+
+      let body: string | undefined;
+      let streamBody = false;
+      if (!["GET", "HEAD"].includes(req.method)) {
+        if (req.body && Object.keys(req.body).length > 0) {
+          body = JSON.stringify(req.body);
+        } else if (contentType && !contentType.includes("application/json")) {
+          // express.json() leaves non-JSON streams (e.g. multipart) unread.
+          streamBody = true;
+        }
+      }
+      const options: RequestInit & { duplex?: "half" } = { method: req.method, headers };
+      if (body !== undefined) {
+        options.body = body;
+      } else if (streamBody) {
+        options.body = req as unknown as BodyInit;
+        options.duplex = "half";
+      }
+      const response = await fetch(targetUrl, options);
+      const getSetCookie = (response.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie;
+      const setCookies = typeof getSetCookie === "function" ? getSetCookie.call(response.headers) : [];
+      if (setCookies && setCookies.length > 0) {
+        res.setHeader("set-cookie", setCookies);
+      } else {
+        const singleCookie = response.headers.get("set-cookie");
+        if (singleCookie) res.setHeader("set-cookie", singleCookie);
+      }
+      const upstreamType = response.headers.get("content-type");
+      const buf = Buffer.from(await response.arrayBuffer());
+      res.status(response.status);
+      if (upstreamType) res.setHeader("content-type", upstreamType);
+      res.send(buf);
+    } catch (error: any) {
+      console.error("[API Proxy Error] FastAPI unreachable:", error.message);
+      res.status(502).json({ detail: "FastAPI backend unreachable. Start it on :8000." });
     }
   });
 

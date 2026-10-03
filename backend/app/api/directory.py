@@ -13,8 +13,9 @@ from ..config import settings
 from ..db.mongodb import get_database
 from ..models.assessment import AssessmentRepository
 from ..models.candidate import CandidateRepository
+from ..security.deps import require_permission
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_permission("resumes.upload"))])
 
 
 def _db() -> Any:

@@ -1,0 +1,166 @@
+{
+  "_note": "Fixture derived from the master-prompt spec examples (Technical=44/55/51, comm 66/52/51/52, Q scores 40/30/20/60/30/60/20/60, proctoring 3/3/0). For pipeline verification only.",
+  "interview_details": {
+    "job_id": "JOB-SPEC",
+    "candidate_id": "CAND-SPEC-1",
+    "round_type": "TECHNICAL",
+    "submitted_at": "2026-09-20T10:00:00Z"
+  },
+  "status": "GENERATED",
+  "faceapi_violations": {
+    "ideal_environment": 3,
+    "multiple_faces_detected": 3,
+    "tab_switching": 0
+  },
+  "report": {
+    "overall_result": {
+      "technical_analysis": { "overall_score": 44 },
+      "communication_analysis": {
+        "overall_score": 55,
+        "fluency": 66,
+        "grammar": 52,
+        "pronunciation": 51,
+        "vocabulary": 52
+      },
+      "interview_analysis": { "confidence_score": 51 }
+    },
+    "question_wise_result": [
+      {
+        "id": "q1",
+        "question": "What is the difference between variable declaration and definition in C?",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "weightage": 10,
+        "obtained_score": 40,
+        "video_url": "https://cdn.example.com/v/q1.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "Declaration introduces the variable while definition allocates storage for it.",
+          "technical_analysis": { "overall_score": 42 },
+          "communication_analysis": { "overall_score": 58, "fluency": 66, "grammar": 55, "pronunciation": 52, "vocabulary": 54 },
+          "interview_analysis": { "confidence_score": 50 },
+          "relevancy": "High"
+        }
+      },
+      {
+        "id": "q2",
+        "question": "Explain the main function and its return values in C.",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "weightage": 10,
+        "obtained_score": 30,
+        "video_url": "https://cdn.example.com/v/q2.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "Main is the entry point of a C program.",
+          "technical_analysis": { "overall_score": 31 },
+          "communication_analysis": { "overall_score": 52, "fluency": 60, "grammar": 50, "pronunciation": 49, "vocabulary": 50 },
+          "interview_analysis": { "confidence_score": 48 },
+          "relevancy": "Medium"
+        }
+      },
+      {
+        "id": "q3",
+        "question": "How do malloc, calloc and realloc differ?",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "weightage": 15,
+        "obtained_score": 20,
+        "video_url": "https://cdn.example.com/v/q3.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "They allocate memory dynamically.",
+          "technical_analysis": { "overall_score": 22 },
+          "communication_analysis": { "overall_score": 50, "fluency": 62, "grammar": 48, "pronunciation": 47, "vocabulary": 49 },
+          "interview_analysis": { "confidence_score": 45 },
+          "relevancy": "High"
+        }
+      },
+      {
+        "id": "q4",
+        "question": "Compare while and do-while loops with an example.",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "weightage": 10,
+        "obtained_score": 60,
+        "video_url": "https://cdn.example.com/v/q4.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "Do-while executes the body at least once.",
+          "technical_analysis": { "overall_score": 61 },
+          "communication_analysis": { "overall_score": 57, "fluency": 68, "grammar": 54, "pronunciation": 53, "vocabulary": 53 },
+          "interview_analysis": { "confidence_score": 55 },
+          "relevancy": "Medium"
+        }
+      },
+      {
+        "id": "q5",
+        "question": "Where are stack and heap memory used?",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "weightage": 10,
+        "obtained_score": 30,
+        "video_url": "https://cdn.example.com/v/q5.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "Stack holds local variables, heap holds dynamic allocation.",
+          "technical_analysis": { "overall_score": 33 },
+          "communication_analysis": { "overall_score": 53, "fluency": 64, "grammar": 51, "pronunciation": 50, "vocabulary": 51 },
+          "interview_analysis": { "confidence_score": 49 },
+          "relevancy": "High"
+        }
+      },
+      {
+        "id": "q6",
+        "question": "What does a pointer store in C?",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "weightage": 15,
+        "obtained_score": 60,
+        "video_url": "https://cdn.example.com/v/q6.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "A pointer stores the memory address of another variable.",
+          "technical_analysis": { "overall_score": 62 },
+          "communication_analysis": { "overall_score": 59, "fluency": 70, "grammar": 56, "pronunciation": 54, "vocabulary": 55 },
+          "interview_analysis": { "confidence_score": 58 },
+          "relevancy": "High"
+        }
+      },
+      {
+        "id": "q7",
+        "question": "What is a dangling pointer and how do you avoid it?",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "weightage": 15,
+        "obtained_score": 20,
+        "video_url": "https://cdn.example.com/v/q7.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "A pointer to freed memory.",
+          "technical_analysis": { "overall_score": 21 },
+          "communication_analysis": { "overall_score": 51, "fluency": 63, "grammar": 49, "pronunciation": 48, "vocabulary": 48 },
+          "interview_analysis": { "confidence_score": 46 },
+          "relevancy": "Medium"
+        }
+      },
+      {
+        "id": "q8",
+        "question": "How do you pass structures to functions in C?",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "weightage": 15,
+        "obtained_score": 60,
+        "video_url": "https://cdn.example.com/v/q8.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "By value or by pointer to the structure.",
+          "technical_analysis": { "overall_score": 60 },
+          "communication_analysis": { "overall_score": 56, "fluency": 67, "grammar": 53, "pronunciation": 52, "vocabulary": 52 },
+          "interview_analysis": { "confidence_score": 54 },
+          "relevancy": "High"
+        }
+      }
+    ]
+  }
+}

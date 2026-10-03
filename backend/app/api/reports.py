@@ -14,8 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..config import settings
 from ..db.mongodb import get_database
 from ..models.report import ReportRepository
+from ..security.deps import require_permission
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_permission("resumes.upload"))])
 
 _MOCK_PREFIX = "int-"
 

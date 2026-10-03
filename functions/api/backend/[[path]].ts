@@ -18,6 +18,7 @@ interface ProxyEnv {
   PRIMEHIRE_SECRET_KEY?: string;
   ALLOWED_ORIGINS?: string;
   PROXY_ORIGIN?: string;
+  JWT_SECRET?: string;
   [key: string]: string | undefined;
 }
 
@@ -61,6 +62,40 @@ function corsHeaders(origin: string | null): Headers {
   return headers;
 }
 
+async function verifyJwt(token: string, secret: string): Promise<boolean> {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const [headerB64, payloadB64, signatureB64] = parts;
+
+    const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) return false;
+    if (payload.iss && payload.iss !== 'primehire') return false;
+    if (payload.aud && payload.aud !== 'primehire') return false;
+
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+
+    const sigStr = atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/'));
+    const sigBytes = new Uint8Array(sigStr.length);
+    for (let i = 0; i < sigStr.length; i++) {
+      sigBytes[i] = sigStr.charCodeAt(i);
+    }
+
+    const data = enc.encode(`${headerB64}.${payloadB64}`);
+    return await crypto.subtle.verify('HMAC', key, sigBytes, data);
+  } catch {
+    return false;
+  }
+}
+
 function jsonResponse(body: unknown, status: number, origin: string | null): Response {
   const headers = corsHeaders(origin);
   headers.set('Content-Type', 'application/json');
@@ -95,6 +130,21 @@ export async function onRequest(context: ProxyContext): Promise<Response> {
       return jsonResponse({ error: 'Invalid path', status: 400 }, 400, corsOrigin);
     }
   }
+
+  // Check auth for non-health routes if JWT_SECRET is configured
+  const subpath = segments.join('/');
+  if (subpath !== 'health' && env.JWT_SECRET) {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return jsonResponse({ error: 'Missing or invalid authorization header', status: 401 }, 401, corsOrigin);
+    }
+    const token = authHeader.substring(7);
+    const valid = await verifyJwt(token, env.JWT_SECRET);
+    if (!valid) {
+      return jsonResponse({ error: 'Unauthorized: Invalid or expired token', status: 401 }, 401, corsOrigin);
+    }
+  }
+
   const base = (env.BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '');
   const query = new URL(request.url).search;
   const suffix = segments.join('/');

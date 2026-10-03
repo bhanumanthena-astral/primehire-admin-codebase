@@ -6,18 +6,18 @@ import type { Insights } from '../../utils/normalizeReport';
 export default function InsightPanels({ insights, delay = 0 }: { insights: Insights; delay?: number }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-      <Panel icon={CheckCircle2} iconColor="#16a34a" title="Strengths" items={insights.strengths} delay={delay} />
+      <Panel icon={CheckCircle2} iconColor="#16a34a" title="Strength Signals" items={insights.strengths} delay={delay} />
       <Panel
         icon={AlertTriangle}
-        iconColor="#dc2626"
-        title="Areas for Improvement"
+        iconColor="#e11d48"
+        title="Risk Signals & Flags"
         items={insights.improvements}
         delay={delay + 0.1}
       />
       <Panel
         icon={Lightbulb}
-        iconColor="#2563eb"
-        title="Recommendations"
+        iconColor="#0284c7"
+        title="Recruiter Verification Prompts"
         items={insights.recommendations}
         delay={delay + 0.2}
       />

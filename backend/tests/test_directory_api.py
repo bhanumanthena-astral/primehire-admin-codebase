@@ -5,12 +5,13 @@ from fastapi.testclient import TestClient
 
 import app.api.directory as directory_api
 from app.main import app
+from tests.conftest import auth_headers
 
 
 def _client(db):
     app.dependency_overrides[directory_api._db] = lambda: db
     try:
-        yield TestClient(app)
+        yield TestClient(app, headers=auth_headers())
     finally:
         app.dependency_overrides.pop(directory_api._db, None)
 
@@ -38,7 +39,7 @@ def test_list_assessments_paginated():
     _seed(db)
     app.dependency_overrides[directory_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         full = client.get("/api/assessments")
         assert full.status_code == 200
         assert full.json()["total"] == 2 and len(full.json()["items"]) == 2
@@ -54,7 +55,7 @@ def test_list_candidates_all_and_filtered():
     _seed(db)
     app.dependency_overrides[directory_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         all_c = client.get("/api/candidates")
         assert all_c.json()["total"] == 3
         filt = client.get("/api/candidates?assessment_id=JOB-1")
@@ -72,7 +73,7 @@ def test_directory_mongo_failure_5xx():
 
     app.dependency_overrides[directory_api._db] = lambda: Broken()
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         assert client.get("/api/assessments").status_code == 500
         assert client.get("/api/candidates").status_code == 500
     finally:

@@ -62,7 +62,7 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                   <GaugeCard
                     icon={Brain}
-                    iconColor="#4f46e5"
+                    iconColor="#0891b2"
                     title="Technical Proficiency"
                     subtitle="Domain knowledge & problem solving"
                     score={overall.overallScore}
@@ -83,7 +83,7 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
                   {overall.confidenceScore !== null && (
                     <GaugeCard
                       icon={Activity}
-                      iconColor="#9333ea"
+                      iconColor="#0891b2"
                       title="Interview Presence"
                       subtitle="Confidence & delivery"
                       score={overall.confidenceScore}

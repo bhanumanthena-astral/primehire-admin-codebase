@@ -1852,7 +1852,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       disabled={!asm.isActive}
                       className={`flex-1 text-center text-xs font-bold py-2 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer ${
                         asm.isActive
-                          ? 'bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 text-white shadow-xs'
+                          ? 'bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 text-primary-foreground shadow-xs'
                           : 'bg-gray-100 text-gray-400 border border-border/70 cursor-not-allowed'
                       }`}
                     >
@@ -2120,7 +2120,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       {/* 1. TECHNICAL + SPEAK_TO_ANSWER -> Reference Answer */}
                       {formRoundType === 'TECHNICAL' && q.type === 'SPEAK_TO_ANSWER' && (
                         <div className="space-y-1.5 border-t border-slate-100 pt-3.5">
-                          <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase flex items-center gap-1">
+                          <label className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase flex items-center gap-1">
                             <Sparkles className="w-3 h-3" /> Expected Reference Answer <span className="text-destructive">*</span>
                           </label>
                           <Textarea
@@ -2162,7 +2162,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                   options: [...currentOpts, `Option ${letter}`]
                                 });
                               }}
-                              className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center gap-0.5"
+                              className="text-[10px] font-semibold text-amber-600 hover:underline flex items-center gap-0.5"
                             >
                               + Add MCQ Row
                             </button>
@@ -2281,7 +2281,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   <button
                     onClick={handleCreateAssessmentSubmit}
                     disabled={isSavingAssessment || (formRoundType !== 'HR' && totalWeightageSum !== 100)}
-                    className={`w-full py-2.5 rounded text-xs font-semibold text-center text-white transition flex items-center justify-center gap-2 ${
+                    className={`w-full py-2.5 rounded text-xs font-semibold text-center text-primary-foreground transition flex items-center justify-center gap-2 ${
                       isSavingAssessment
                         ? 'bg-gradient-primary opacity-70 cursor-wait'
                         : formRoundType === 'HR' || totalWeightageSum === 100
@@ -2448,7 +2448,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     LinkedIn-Style Pipeline Filters
                   </span>
                   {filterRound !== 'ALL' && (
-                    <span className="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-semibold border border-sky-100">
+                    <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-semibold border border-amber-100">
                       Active Filter Cascade
                     </span>
                   )}
@@ -2579,7 +2579,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               {/* Informational Guidance bar */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pt-1.5 border-t border-border/70/60 text-[11px] text-muted-foreground font-medium">
                 <div className="flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                  <Info className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                   <span>
                     Current Assessment Type: <strong className="text-foreground uppercase">{activeAssessment.roundType}</strong>.
                     {filterRound !== 'ALL' && filterRound !== activeAssessment.roundType && (
@@ -2610,7 +2610,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   onClick={() => setCurrentView('UPLOAD')}
                   className="flex items-center gap-1.5 bg-muted/40 hover:bg-muted border border-border/70 text-foreground text-xs font-semibold px-3 py-2 rounded-lg transition"
                 >
-                  <UserPlus className="w-4 h-4 text-blue-500" /> Create Assignment (CSV Upload)
+                  <UserPlus className="w-4 h-4 text-amber-500" /> Create Assignment (CSV Upload)
                 </button>
               </div>
             </div>
@@ -2715,7 +2715,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 <button
                   onClick={handleBulkGenerateLinks}
                   disabled={selectedCandidateIds.length === 0}
-                  className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-lg border transition cursor-pointer text-white ${
+                  className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-lg border transition cursor-pointer text-primary-foreground ${
                     selectedCandidateIds.length > 0
                       ? 'bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 border-transparent shadow-xs'
                       : 'bg-muted text-muted-foreground border-border/70 cursor-not-allowed opacity-50'
@@ -2761,7 +2761,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       disabled={!isReminderEnabled}
                       className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-lg border transition cursor-pointer"
                       style={isReminderEnabled ? {
-                        background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', color: '#7c3aed',
+                        background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)', color: '#0891b2',
                         boxShadow: '0 2px 6px rgba(139,92,246,0.15)',
                       } : {
                         background: 'rgba(100,116,139,0.06)', border: '1px solid rgba(100,116,139,0.15)', color: '#94a3b8', cursor: 'not-allowed', opacity: 0.5,
@@ -2928,7 +2928,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                   onClick={() => handleRegenerateCandidateLink(c.id)}
                                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition border ${
                                     isActive
-                                      ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-200 cursor-pointer'
+                                      ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200 cursor-pointer'
                                       : 'text-muted-foreground bg-muted/40 border-border/70 cursor-not-allowed opacity-60'
                                   }`}
                                   title={isActive ? "Previous link will be invalidated and fresh credentials issued." : "Disabled: Candidate must be Active to regenerate link."}
@@ -2958,8 +2958,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         <TableCell className="px-3 py-3.5 text-center">
                           {c.rowLoading ? (
                             <div className="flex flex-col items-center justify-center gap-1">
-                              <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#6366f1' }} />
-                              <span className="text-[9px] font-bold" style={{ color: '#6366f1' }}>Sending...</span>
+                              <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#0891b2' }} />
+                              <span className="text-[9px] font-bold" style={{ color: '#0891b2' }}>Sending...</span>
                             </div>
                           ) : (
                             <div className="flex flex-col gap-1.5 max-w-[120px] mx-auto">
@@ -2997,7 +2997,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                 style={reminderEnabled ? {
                                   background: 'rgba(139,92,246,0.08)',
                                   border: '1px solid rgba(139,92,246,0.25)',
-                                  color: '#7c3aed',
+                                  color: '#0891b2',
                                 } : {
                                   background: 'rgba(100,116,139,0.05)',
                                   border: '1px solid rgba(100,116,139,0.12)',
@@ -3029,7 +3029,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               className={`text-[9px] font-bold px-2 py-1 rounded border transition select-none ${
                                 isCompleted
                                   ? 'bg-slate-150 border-border/70 text-muted-foreground cursor-not-allowed'
-                                  : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700 cursor-pointer'
+                                  : 'bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-700 cursor-pointer'
                               }`}
                               title={isCompleted ? 'Assessment completed' : 'Simulate candidate completing assessment instantly'}
                             >
@@ -3057,7 +3057,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                             switch (mailStatusValue) {
                               case 'Sending':
                                 return (
-                                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1 animate-pulse bg-indigo-50 border border-indigo-200 text-indigo-600">
+                                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1 animate-pulse bg-amber-50 border border-amber-200 text-amber-600">
                                     <Loader2 className="w-3 h-3 animate-spin" /> Sending
                                   </span>
                                 );
@@ -3069,7 +3069,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                 );
                               case 'Reminder Sent':
                                 return (
-                                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1 bg-violet-50 border border-violet-200 text-violet-700">
+                                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-700">
                                     <Bell className="w-3 h-3" /> Reminded ({c.reminderCount || 1})
                                   </span>
                                 );
@@ -3318,7 +3318,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                           : 'text-slate-300 bg-muted/40 cursor-not-allowed'
                                       }`}
                                     >
-                                      <RefreshCw className={`w-3.5 h-3.5 ${c.submittedDate ? 'text-blue-500' : 'text-slate-300'}`} />
+                                      <RefreshCw className={`w-3.5 h-3.5 ${c.submittedDate ? 'text-amber-500' : 'text-slate-300'}`} />
                                       Regenerate Report
                                     </button>
                                   </div>
@@ -3374,9 +3374,9 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               <form onSubmit={handleAddManualCandidate} className="bg-card border border-border/70 rounded-xl p-5 space-y-3.5 shadow-xs">
                 <div className="border-b border-slate-100 dark:border-slate-850 pb-2 flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                    <UserPlus className="w-3.5 h-3.5 text-blue-500" /> Manual Student Registration
+                    <UserPlus className="w-3.5 h-3.5 text-amber-500" /> Manual Student Registration
                   </h3>
-                  <span className="text-[9px] bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 px-1.5 py-0.5 rounded-sm font-bold">
+                  <span className="text-[9px] bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300 px-1.5 py-0.5 rounded-sm font-bold">
                     Quick Add
                   </span>
                 </div>
@@ -3473,7 +3473,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   type="submit"
                   disabled={(!manualStartTime.trim() || !manualEndTime.trim()) && !timeConsent}
                   title={(!manualStartTime.trim() || !manualEndTime.trim()) && !timeConsent ? 'Tick the consent box to enable when Start/End time is empty' : 'Add student to list'}
-                  className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-lg transition shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
+                  className="w-full flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-2 rounded-lg transition shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-600"
                 >
                   <UserPlus className="w-3.5 h-3.5" /> Add Student to List
                 </button>
@@ -3500,11 +3500,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 }}
                 className={`border-2 border-dashed rounded-xl p-8 text-center transition flex flex-col items-center justify-center min-h-[220px] ${
                   isDragging 
-                    ? 'border-blue-500 bg-blue-50/10' 
+                    ? 'border-amber-500 bg-amber-50/10' 
                     : 'border-border/70 bg-card hover:bg-muted/40/50'
                 }`}
               >
-                <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-full mb-3">
+                <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-full mb-3">
                   <Upload className="w-6 h-6" />
                 </div>
                 <span className="text-xs font-semibold text-foreground dark:text-slate-100">Drag and drop candidate list here</span>
@@ -3524,8 +3524,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               </div>
 
               {/* Sample loader card */}
-              <div className="bg-gradient-to-br from-indigo-50/30 to-blue-50/30 p-5 rounded-xl border border-indigo-100/40 dark:border-slate-850 space-y-3">
-                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1">
+              <div className="bg-gradient-to-br from-amber-50/30 to-amber-50/30 p-5 rounded-xl border border-amber-100/40 dark:border-slate-850 space-y-3">
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1">
                   <Sparkles className="w-4 h-4 animate-pulse" /> Sandbox Template Generator
                 </span>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
@@ -3533,7 +3533,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 </p>
                 <button
                   onClick={triggerSampleTemplateCSV}
-                  className="w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold py-2 rounded-lg transition"
+                  className="w-full text-center bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold py-2 rounded-lg transition"
                 >
                   Load Sample Candidate CSV
                 </button>
@@ -3666,7 +3666,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       className={`px-5 py-2 rounded-lg text-xs font-semibold text-white transition ${
                         validationErrors.some(e => e.type === 'red')
                           ? 'bg-slate-300 cursor-not-allowed dark:bg-slate-800 dark:text-muted-foreground'
-                          : 'bg-blue-600 hover:bg-blue-700 shadow-xs cursor-pointer'
+                          : 'bg-amber-600 hover:bg-amber-700 shadow-xs cursor-pointer'
                       }`}
                     >
                       Confirm and Load Candidates

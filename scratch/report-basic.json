@@ -1,0 +1,53 @@
+{
+  "_note": "BASIC smoke fixture. The master prompt supplied no BASIC example values, so scores below are synthetic pipeline-test values only (never displayed as real data).",
+  "interview_details": {
+    "job_id": "JOB-SPEC-BASIC",
+    "candidate_id": "CAND-SPEC-BASIC",
+    "round_type": "BASIC",
+    "submitted_at": "2026-09-22T09:30:00Z"
+  },
+  "status": "GENERATED",
+  "faceapi_violations": {
+    "ideal_environment": 0,
+    "multiple_faces_detected": 0,
+    "tab_switching": 0
+  },
+  "report": {
+    "overall_score": 71,
+    "communication_analysis": {
+      "overall_score": 74,
+      "fluency": 78,
+      "grammar": 72,
+      "pronunciation": 70,
+      "vocabulary": 69
+    },
+    "question_wise_result": [
+      {
+        "id": "bq1",
+        "question": "Introduce yourself briefly.",
+        "type": "SPEAK_TO_ANSWER",
+        "max_score": 100,
+        "obtained_score": 75,
+        "video_url": "https://cdn.example.com/v/bq1.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "I am a recent graduate interested in software development.",
+          "communication_analysis": { "overall_score": 76, "fluency": 80, "grammar": 74, "pronunciation": 72, "vocabulary": 70 }
+        }
+      },
+      {
+        "id": "bq2",
+        "question": "Read the following paragraph aloud.",
+        "type": "READ_ALOUD",
+        "max_score": 100,
+        "obtained_score": 68,
+        "video_url": "https://cdn.example.com/v/bq2.mp4",
+        "is_result_generated": true,
+        "result": {
+          "transcript": "Reading passage transcript.",
+          "communication_analysis": { "overall_score": 70, "fluency": 75, "grammar": 70, "pronunciation": 68, "vocabulary": 66 }
+        }
+      }
+    ]
+  }
+}

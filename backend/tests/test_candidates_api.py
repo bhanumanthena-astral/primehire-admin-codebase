@@ -11,6 +11,7 @@ from app.db.mongodb import INDEXES, ensure_indexes
 from app.main import app
 from app.models.candidate import to_document
 from app.services.candidate_service import CandidateConflict, CandidateService
+from tests.conftest import auth_headers
 
 
 def _fresh_db():
@@ -34,7 +35,7 @@ def test_create_assigns_key_and_quarantines_mock():
     db = _fresh_db()
     app.dependency_overrides[candidates_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         res = client.post("/api/candidates", json=_valid_candidate())
         assert res.status_code == 201, res.text
         doc = res.json()
@@ -50,7 +51,7 @@ def test_create_duplicate_key_conflicts():
     db = _fresh_db()
     app.dependency_overrides[candidates_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         first = client.post("/api/candidates", json=_valid_candidate(candidateKey="CAND-X1"))
         assert first.status_code == 201, first.text
         dup = client.post("/api/candidates", json=_valid_candidate(candidateKey="CAND-X1"))
@@ -64,7 +65,7 @@ def test_create_rejects_password_and_row_loading():
     db = _fresh_db()
     app.dependency_overrides[candidates_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         assert client.post("/api/candidates",
                            json=_valid_candidate(password="x")).status_code == 422
         assert client.post("/api/candidates",
@@ -77,7 +78,7 @@ def test_get_update_delete_roundtrip():
     db = _fresh_db()
     app.dependency_overrides[candidates_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         created = client.post("/api/candidates", json=_valid_candidate()).json()
         key = created["candidateKey"]
 
@@ -113,7 +114,7 @@ def test_bulk_partial_success():
     db = _fresh_db()
     app.dependency_overrides[candidates_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         # Malformed rows are rejected at request validation (whole-body 422).
         bad_schema = client.post("/api/candidates/bulk", json={"items": [
             _valid_candidate(email="one@example.com"),
@@ -145,7 +146,7 @@ def test_bulk_empty_and_oversize_rejected():
     db = _fresh_db()
     app.dependency_overrides[candidates_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         assert client.post("/api/candidates/bulk", json={"items": []}).status_code == 422
         big = {"items": [_valid_candidate(email=f"u{i}@x.com") for i in range(501)]}
         assert client.post("/api/candidates/bulk", json=big).status_code == 422
@@ -159,7 +160,7 @@ def test_candidates_mongo_unconfigured_503():
 
     app.dependency_overrides[candidates_api._db] = _boom
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         assert client.post("/api/candidates", json=_valid_candidate()).status_code == 503
         assert client.get("/api/candidates/CAND-X").status_code == 503
     finally:
@@ -179,7 +180,7 @@ def test_pruned_identifiers_allow_many_prelink_candidates():
     db = _fresh_db()
     app.dependency_overrides[candidates_api._db] = lambda: db
     try:
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         keys = set()
         for i in range(3):
             res = client.post("/api/candidates",
@@ -241,7 +242,7 @@ def test_duplicate_real_interview_id_conflicts_end_to_end():
     try:
         import asyncio
         asyncio.get_event_loop().run_until_complete(ensure_indexes(db))
-        client = TestClient(app)
+        client = TestClient(app, headers=auth_headers())
         first = client.post("/api/candidates", json=_valid_candidate(
             email="r1@x.com",
             primehire={"interviewId": "iv-real-1", "responseId": None, "candidateUUID": None},

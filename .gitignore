@@ -11,3 +11,5 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+# Local resume uploads (runtime data, may contain PII — never commit)
+backend/storage/

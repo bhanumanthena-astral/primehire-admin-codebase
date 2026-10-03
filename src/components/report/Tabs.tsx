@@ -10,12 +10,12 @@ export default function Tabs({ active, onChange }: { active: string; onChange: (
           key={tab}
           onClick={() => onChange(tab)}
           className="relative px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
-          style={{ color: active === tab ? '#4338ca' : '#64748b' }}
+          style={{ color: active === tab ? '#0e7490' : '#64748b' }}
         >
           {active === tab && (
             <motion.div
               layoutId="tab-highlight"
-              className="absolute inset-0 bg-indigo-50 rounded-lg"
+              className="absolute inset-0 bg-amber-50 rounded-lg"
               transition={{ type: 'spring', duration: 0.4 }}
             />
           )}

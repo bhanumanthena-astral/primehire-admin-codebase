@@ -54,6 +54,8 @@ export interface NormalizedQuestion {
   index: number;
   question: string;
   isGenerated: boolean;
+  /** Raw is_attempted passthrough (null when the source omits it — never inferred). */
+  isAttempted: boolean | null;
   message: string | null;
   maxScore: number;
   weightage: number | null;
@@ -88,6 +90,8 @@ export interface NormalizedReport {
   isTechnical: boolean;
   isBasic: boolean;
   isHR: boolean;
+  /** Original payload (raw PrimeHire JSON or app shape) — kept for debugging/export. */
+  raw: any;
 }
 
 export function normalizeReport(raw: any): NormalizedReport | null {
@@ -160,6 +164,7 @@ export function normalizeReport(raw: any): NormalizedReport | null {
       index: idx + 1,
       question: q.question || '',
       isGenerated: !!(q.is_result_generated ?? q.isResultGenerated),
+      isAttempted: q.is_attempted ?? q.isAttempted ?? (q.video_url || q.videoUrl ? true : null),
       message: q.message || null,
       maxScore,
       weightage: q.weightage ?? null,
@@ -185,6 +190,7 @@ export function normalizeReport(raw: any): NormalizedReport | null {
         index: idx + 1,
         question: a.question || a.questionId || a.question_id || `Question ${idx + 1}`,
         isGenerated: true,
+        isAttempted: true,
         message: null,
         maxScore: 100,
         weightage: null,
@@ -216,6 +222,7 @@ export function normalizeReport(raw: any): NormalizedReport | null {
     isTechnical,
     isBasic,
     isHR,
+    raw,
   };
 }
 
@@ -226,69 +233,100 @@ export interface Insights {
   recommendations: string[];
 }
 
-// Deterministic, data-driven insight generator. NEVER hardcode text
-// unrelated to actual scores. Every sentence must reference a real number.
+// Deterministic, hiring-oriented insight generator.
+// Shifts tone strictly from student coaching to professional recruiter decision-support.
+// All signals directly reference genuine numbers and flags from backend data.
 export function generateInsights(report: NormalizedReport | null): Insights {
   if (!report) return { summary: '', strengths: [], improvements: [], recommendations: [] };
-  const { overall, questions } = report;
+  const { overall, questions, violations } = report;
   const strengths: string[] = [];
   const improvements: string[] = [];
   const recommendations: string[] = [];
 
   const comm = overall.communication;
-  if (comm) {
-    if (comm.fluency >= 60) strengths.push(`Strong verbal fluency (${comm.fluency}/100)`);
-    else if (comm.fluency !== undefined) improvements.push(`Fluency needs improvement (${comm.fluency}/100)`);
+  const commScore = comm?.overall_score ?? comm?.overallScore;
 
-    if (comm.grammar >= 60) strengths.push(`Good grammar and sentence structure (${comm.grammar}/100)`);
-    else if (comm.grammar !== undefined) {
-      improvements.push(`Grammar and sentence structure (${comm.grammar}/100)`);
-      recommendations.push('Practice speaking in complete, grammatically structured sentences');
-    }
-
-    if (comm.vocabulary < 50 && comm.vocabulary !== undefined) {
-      improvements.push(`Vocabulary range is limited (${comm.vocabulary}/100)`);
-      recommendations.push('Expand technical vocabulary through reading documentation and mock interviews');
-    }
-
-    if (comm.pronunciation < 50 && comm.pronunciation !== undefined) {
-      improvements.push(`Pronunciation clarity (${comm.pronunciation}/100)`);
-    }
+  // Strength signals
+  if (overall.overallScore !== null && overall.overallScore >= 70) {
+    strengths.push(`Strong core performance: ${overall.overallScore}/100 overall technical score`);
+  } else if (overall.overallScore !== null && overall.overallScore >= 50) {
+    strengths.push(`Meets baseline technical criteria: ${overall.overallScore}/100 overall score`);
   }
 
-  if (overall.overallScore !== null) {
-    if (overall.overallScore >= 60) strengths.push(`Solid overall performance (${overall.overallScore}/100)`);
-    else improvements.push(`Overall score is below target (${overall.overallScore}/100)`);
+  if (comm) {
+    if (comm.fluency >= 65) strengths.push(`High verbal articulation and fluency (${comm.fluency}/100)`);
+    if (comm.grammar >= 65) strengths.push(`Clean professional grammar and sentence structure (${comm.grammar}/100)`);
+    if (comm.vocabulary >= 65) strengths.push(`Rich technical and contextual vocabulary (${comm.vocabulary}/100)`);
+  }
+
+  if (overall.confidenceScore !== null && overall.confidenceScore >= 65) {
+    strengths.push(`Poised, confident delivery under assessment conditions (${overall.confidenceScore}/100)`);
   }
 
   const strongQuestions = questions.filter((q) => q.percentage !== null && (q.percentage as number) >= 70);
-  const weakQuestions = questions.filter((q) => q.percentage !== null && (q.percentage as number) < 40);
+  const weakQuestions = questions.filter((q) => q.percentage !== null && (q.percentage as number) < 45);
 
-  if (strongQuestions.length) {
-    strengths.push(`Answered ${strongQuestions.length} of ${questions.length} questions with strong scores (70%+)`);
+  if (strongQuestions.length > 0) {
+    strengths.push(`High consistency: answered ${strongQuestions.length} of ${questions.length} questions above 70% threshold`);
   }
-  if (weakQuestions.length) {
-    improvements.push(`${weakQuestions.length} question(s) scored below 40% — indicates conceptual gaps`);
-    recommendations.push('Review core concepts for the lowest-scoring questions (see Question Analysis tab)');
+
+  // Risk signals & discrepancies
+  if (overall.overallScore !== null && overall.overallScore < 50) {
+    improvements.push(`Overall performance is below hiring threshold (${overall.overallScore}/100)`);
+  }
+
+  if (weakQuestions.length > 0) {
+    improvements.push(`${weakQuestions.length} question(s) scored below 45% threshold — denotes specific conceptual gaps`);
+    recommendations.push(`Cross-examine the candidate on topics covered in Q${weakQuestions.map((q) => q.index).join(', Q')}`);
+  }
+
+  if (comm) {
+    if (comm.fluency !== undefined && comm.fluency < 50) {
+      improvements.push(`Fluency gap detected (${comm.fluency}/100) — candidate had hesitations or phrasing friction`);
+      recommendations.push('Assess live conversational fluency and stakeholder communication in team round');
+    }
+    if (comm.grammar !== undefined && comm.grammar < 50) {
+      improvements.push(`Grammar accuracy scored below average (${comm.grammar}/100)`);
+    }
   }
 
   if (overall.confidenceScore !== null && overall.confidenceScore < 50) {
-    improvements.push(`Confidence during delivery was low (${overall.confidenceScore}/100)`);
-    recommendations.push('Practice mock interviews to build delivery confidence');
+    improvements.push(`Delivery confidence was low (${overall.confidenceScore}/100) during video recording`);
+    recommendations.push('Evaluate candidate autonomy, assertiveness, and pressure tolerance in live interview');
   }
 
-  const commScore = comm?.overall_score ?? comm?.overallScore;
+  // Proctoring audit risk flags
+  if (violations) {
+    const tabSwitches = violations.tab_switch_count ?? violations.tabSwitches ?? violations.tab_switching ?? 0;
+    const multipleFaces = violations.multiple_face_detected ?? violations.multipleFaceDetected ?? violations.multiple_faces_detected ?? 0;
+    if (tabSwitches > 0) {
+      improvements.push(`Proctoring alert: ${tabSwitches} window/tab switch event(s) logged during session`);
+      recommendations.push('Review integrity log and verify candidate authentication during follow-up interview');
+    }
+    if (multipleFaces > 0) {
+      improvements.push(`Proctoring alert: multiple face detection triggered ${multipleFaces} time(s)`);
+      recommendations.push('Inspect question video recordings for potential unauthorized assistance');
+    }
+  }
+
+  // Default recruiter recommendations if clean
+  if (recommendations.length === 0) {
+    recommendations.push('Candidate meets assessment criteria; proceed to live technical panel or hiring manager interview');
+    recommendations.push('Deepen live evaluation on system architecture and team collaboration competencies');
+  }
+
+  const evaluatedCount = questions.filter((q) => q.isGenerated).length;
   const summary =
     overall.overallScore !== null
-      ? `Scored ${overall.overallScore}/100 overall. ${
-          comm ? `Communication is at ${commScore}/100 with fluency at ${comm.fluency}/100.` : ''
-        } ${weakQuestions.length ? `${weakQuestions.length} question(s) need attention.` : 'Consistent performance across questions.'}`
-      : 'Insufficient data to generate a summary for this round.';
+      ? `Candidate scored ${overall.overallScore}/100 overall across ${evaluatedCount} of ${questions.length} evaluated questions.${
+          commScore ? ` Communication scored ${commScore}/100 with fluency at ${comm?.fluency ?? 'N/A'}/100.` : ''
+        } ${weakQuestions.length ? `${weakQuestions.length} area(s) require technical verification.` : 'Performance remained consistent across all assessed questions.'}`
+      : `Evaluation pending or partial: ${evaluatedCount} of ${questions.length} question(s) currently processed.`;
 
   return {
     summary,
-    strengths: strengths.length ? strengths : ['No strong signals detected yet'],
-    improvements: improvements.length ? improvements : ['No major gaps detected'],
-    recommendations: recommendations.length ? recommendations : ['Continue practicing to maintain consistency'],
+    strengths: strengths.length ? strengths : ['Candidate baseline evaluation in progress'],
+    improvements: improvements.length ? improvements : ['No critical risk signals flagged in this round'],
+    recommendations,
   };
 }

@@ -57,17 +57,7 @@ export interface Candidate {
   reportStatus: ReportStatus | null;
   lastInviteSentAt?: string; // For tracking resend behavior and invite-sent state
   answers?: Record<string, string>; // questionId -> candidate's answer text or selected MCQ option
-  simulatedReport?: {
-    overallScore: number;
-    strengths: string[];
-    weaknesses: string[];
-    answersFeedback: Array<{
-      questionId: string;
-      score: number;
-      maxScore: number;
-      feedback: string;
-    }>;
-  };
+  simulatedReport?: any;
   
   // Custom Recruiter Mailing State Fields
   interviewId?: InterviewId | null;

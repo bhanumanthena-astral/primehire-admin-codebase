@@ -23,9 +23,11 @@ from ..services.candidate_service import (
     CandidateService,
 )
 
+from ..security.deps import require_permission
+
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_permission("resumes.upload"))])
 
 
 def _db() -> Any:

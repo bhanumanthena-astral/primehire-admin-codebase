@@ -8,7 +8,7 @@ from app.models.report import ReportRepository, to_document as report_doc
 
 async def test_ensure_indexes_covers_all_collections(db):
     created = await ensure_indexes(db)
-    assert set(created) == {"assessments", "candidates", "reports", "templates"}
+    assert set(created) == set(INDEXES.keys())
     for coll, specs in INDEXES.items():
         assert len(created[coll]) == len(specs), coll
 

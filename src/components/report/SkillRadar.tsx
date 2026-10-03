@@ -27,7 +27,7 @@ export default function SkillRadar({ overall, delay = 0 }: { overall: Normalized
           <PolarGrid stroke="#e2e8f0" />
           <PolarAngleAxis dataKey="metric" tick={{ fill: '#475569', fontSize: 12 }} />
           <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: '#cbd5e1', fontSize: 10 }} />
-          <Radar dataKey="value" stroke="#4f46e5" fill="#4f46e5" fillOpacity={0.25} strokeWidth={2} />
+          <Radar dataKey="value" stroke="#0891b2" fill="#0891b2" fillOpacity={0.25} strokeWidth={2} />
         </RadarChart>
       </ResponsiveContainer>
     </motion.div>

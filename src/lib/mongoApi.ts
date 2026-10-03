@@ -1,4 +1,5 @@
 import { AssessmentProfile, Candidate } from '../types';
+import { authFetch } from './authFetch';
 
 /**
  * FastAPI read client (Phase 3C read cutover).
@@ -12,7 +13,7 @@ import { AssessmentProfile, Candidate } from '../types';
  */
 
 const API_BASE = (
-  (import.meta as any).env?.VITE_API_URL as string | undefined || 'http://localhost:8000'
+  (import.meta as any).env?.VITE_API_URL as string | undefined || ''
 ).replace(/\/+$/, '');
 
 export function isApiConfigured(): boolean {
@@ -20,7 +21,7 @@ export function isApiConfigured(): boolean {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await authFetch(`${API_BASE}${path}`);
   if (!res.ok) {
     throw new Error(await apiErrorMessage(res, `GET ${path}`));
   }
@@ -47,7 +48,7 @@ async function apiErrorMessage(res: Response, fallback: string): Promise<string>
 }
 
 async function sendJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await authFetch(`${API_BASE}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),

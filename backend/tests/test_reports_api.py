@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 import app.api.reports as reports_api
 from app.main import app
+from tests.conftest import auth_headers
 
 STORED = {
     "interviewId": "real-iv-1",
@@ -56,7 +57,7 @@ def test_existing_report_200_and_lookup():
     asyncio.get_event_loop().run_until_complete(db["reports"].insert_one(dict(STORED)))
     app.dependency_overrides[reports_api._db] = lambda: db
     try:
-        res = TestClient(app).get("/api/reports/real-iv-1")
+        res = TestClient(app, headers=auth_headers()).get("/api/reports/real-iv-1")
     finally:
         app.dependency_overrides.pop(reports_api._db, None)
     assert res.status_code == 200  # 1/2/3
@@ -86,7 +87,7 @@ def test_primehire_never_called_on_hit(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", _boom)  # 4
     try:
-        res = TestClient(app).get("/api/reports/real-iv-1")
+        res = TestClient(app, headers=auth_headers()).get("/api/reports/real-iv-1")
     finally:
         app.dependency_overrides.pop(reports_api._db, None)
     assert res.status_code == 200
@@ -96,7 +97,7 @@ def test_not_found_404():
     db = mongomock_motor.AsyncMongoMockClient()["t"]
     app.dependency_overrides[reports_api._db] = lambda: db
     try:
-        res = TestClient(app).get("/api/reports/does-not-exist")
+        res = TestClient(app, headers=auth_headers()).get("/api/reports/does-not-exist")
     finally:
         app.dependency_overrides.pop(reports_api._db, None)
     assert res.status_code == 404  # 5
@@ -107,7 +108,7 @@ def test_mock_id_400():
     db = mongomock_motor.AsyncMongoMockClient()["t"]
     app.dependency_overrides[reports_api._db] = lambda: db
     try:
-        res = TestClient(app).get("/api/reports/int-abc123")
+        res = TestClient(app, headers=auth_headers()).get("/api/reports/int-abc123")
     finally:
         app.dependency_overrides.pop(reports_api._db, None)
     assert res.status_code == 400  # 6
@@ -126,7 +127,7 @@ def test_missing_optionals_and_nulls():
     asyncio.get_event_loop().run_until_complete(db["reports"].insert_one(partial))
     app.dependency_overrides[reports_api._db] = lambda: db
     try:
-        res = TestClient(app).get("/api/reports/real-iv-2")
+        res = TestClient(app, headers=auth_headers()).get("/api/reports/real-iv-2")
     finally:
         app.dependency_overrides.pop(reports_api._db, None)
     assert res.status_code == 200  # 11
@@ -141,7 +142,7 @@ def test_mongo_failure_controlled_5xx():
 
     app.dependency_overrides[reports_api._db] = lambda: Broken()
     try:
-        res = TestClient(app).get("/api/reports/real-iv-1")
+        res = TestClient(app, headers=auth_headers()).get("/api/reports/real-iv-1")
     finally:
         app.dependency_overrides.pop(reports_api._db, None)
     assert res.status_code == 500  # 12
@@ -162,7 +163,7 @@ def test_candidate_report_relationship():
     loop.run_until_complete(db["reports"].insert_one(stored))
     app.dependency_overrides[reports_api._db] = lambda: db
     try:
-        res = TestClient(app).get("/api/reports/real-iv-1")
+        res = TestClient(app, headers=auth_headers()).get("/api/reports/real-iv-1")
     finally:
         app.dependency_overrides.pop(reports_api._db, None)
     assert res.status_code == 200  # 14
