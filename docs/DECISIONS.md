@@ -813,3 +813,133 @@ Built 2026-10-03. STOPPED for review — Slice B not started.
   frontend `npm run dev` (set `VITE_API_URL=http://localhost:8000`);
   login → Jobs → create job → Upload → tick consent → upload PDF/DOCX →
   see per-file parsed rows; without consent upload is blocked (400 + UI).
+
+
+## Pipeline amendment - Step 0 plan (awaiting "go"; no code yet)
+
+Context: Phase 2 Slices A-C committed (`phase2-slice-c`), tree clean,
+suites green (387 backend, 82.7%, 10 Vitest). This amendment replaces
+hardcoded `ROUND1_*`/`ROUND2_*`/`HR_ROUND` with data-driven pipelines.
+Two slices (P1 model+refactor, P2 admin UI + outstanding Phase 2 items),
+then Phase 3. STOP after each slice.
+
+### Collections / indexes
+
+- `pipeline_templates` (new, per org): `templateKey` (slug, immutable once
+  used), `name`, `description`, `version` (int, bump on edit),
+  `rounds[]`, `isDefault`, `isArchived`, timestamps.
+  Index: `uniq_org_templateKey` UNIQUE on `(orgId, templateKey)`.
+- Round (embedded, validated): `roundKey` (stable slug), `name` (free
+  text), `type` (`technical|managerial|hr|custom`), `order` (contiguous),
+  `parallelGroup?`, `required` (default true),
+  `interviewerEligibility {roles[], skills[]}`,
+  `scorecard {key, competencies[{key,label,anchors}]}` (inline, versioned
+  with the template; a full `review_templates` collection lands in Phase
+  4), `defaultDurationMinutes` (45), `defaultMode`, `bufferMinutes` (10),
+  `fieldPolicyOverride?`, `passRule` (`all|any|majority|lead_decides`,
+  default `all`), `visibilityOfPriorRounds` (`none|all|selected[]`),
+  `hideDecisionUntilOwnScorecard` (default true),
+  `questionSourceRounds[]` + `generateQuestions` (hr rounds),
+  `allowSlotNomination` (default false).
+  Constraints: 1-8 rounds; contiguous order/groups; keys immutable once
+  the template has been used.
+- `jobs`: add `pipelineTemplateKey` + `pipelineVersion` (copied at job
+  creation; changing a job's template re-instantiates only not-started
+  rounds, audited, with dry-run preview).
+- `applications`: add `rounds[]` (`{roundKey, instanceId, name, type,
+  status, interviewId?, reviewIds[], decision?, startedAt?, completedAt?,
+  skippedReason?, addedAdHoc?}`) + `currentRoundKeys[]`.
+  Index: `by_org_round` on `(orgId, currentRoundKeys)` for tracker columns.
+- Stage enum: drop `ROUND1_*`, `ROUND2_*`, `HR_ROUND`; add `INTERVIEWING`
+  (early/terminal stages unchanged). `transition_stage()` keeps coarse
+  moves; new `advance_round(application, roundKey, outcome, actor,
+  reason?)` owns round moves (`advance|hold|reject|repeat|no_show`),
+  parallel `passRule` evaluation, activation of next rounds, and
+  `stage_history` entries carrying `roundKey` + `instanceId`.
+- Migration `003_pipeline_templates`: seed "Technical + Managerial + HR"
+  (default) and "Full-stack: Frontend + Backend (parallel) + Managerial +
+  HR" (example); map live apps (`ROUND1_*` to `INTERVIEWING` round 0,
+  `ROUND2_*` to round 1, `HR_ROUND` to the hr round), keeping old history
+  entries and appending new metadata; dry-run + backup reminder (Atlas
+  snapshot still pending - operator action before any real-DB migration).
+
+### Conflicts with standards / existing code
+
+- `VALID_TRANSITIONS` (`models/hiring.py`) loses all `ROUND*` edges;
+  `schemas/hiring.py::Stage` shrinks; transition-table tests updated.
+- Frontend hardcodes stages in two places: `stepsForStage()` (interview
+  aggregate) and the profile stage-action `<select>` - both become
+  data-driven from `application.rounds` (the stepper component already
+  is; P1 feeds it rounds).
+- `advance_round` and `transition_stage` must never disagree: coarse
+  `INTERVIEWING` enter/exit only via `advance_round`; no direct writes to
+  `currentStage` outside `transitions.py` (test asserts this).
+- Phase 2 surfaces untouched: upload, score, SHORTLISTED/TALENT_POOL,
+  ASSESSMENT_* flow keeps working throughout.
+
+### How Phases 3-6 read through this (recorded for those prompts)
+
+- P3: interviewer profiles match `interviewerEligibility`; interviews
+  carry `roundKey`+`instanceId`; assign dialog per current round(s);
+  visibility = strictest(role default, profile, round override).
+- P4: review forms/scores from round `scorecard`; decisions map to generic
+  outcomes via `advance_round`; anti-anchoring per round settings.
+- P5: hr-type rounds own question generation (`questionSourceRounds`);
+  comparison groups scorecards by round name/type; offers trigger from the
+  pipeline end state.
+- P6: rejection records `rejectedAtRound`; pool shows "rejected at: round".
+- P7: funnel/time-in-stage per `roundKey` and round `type`.
+
+### Slice P1 (model + refactor + migration + tests)
+
+Amendment Steps 0-2 + Step 4: `pipeline_templates` model/API (minimal
+CRUD behind `pipelines.manage`), `advance_round`, stage-enum swap,
+migration 003, stepper fed from rounds, tests (instantiation on entering
+`INTERVIEWING`, sequential flows, parallel groups under each passRule,
+hold/reject/repeat/no-show, ad-hoc insert/skip with reasons, derived
+`currentRoundKeys`, old-stage migration dry-run, `pipelines.manage` +
+`applications.manage_rounds` permission checks, org isolation,
+authz-matrix updates). STOP.
+
+### Slice P2 (admin UI + outstanding Phase 2 items)
+
+Amendment Step 3 (pipeline builder with per-round drawer,
+parallel-group controls, validation, live roadmap preview,
+duplicate/archive; job-form template dropdown with preview; tracker
+columns from rounds) plus:
+- Admin Tracker: per-job Kanban from pipeline rounds + universal coarse
+  view, drop-off % from `stage_history`, alert chips (assessment pending
+  >3d, needs review, failed parses/emails). Read-only; changes only via
+  guarded actions.
+- Talent Pool basic list (below-threshold + rejected: job, score, tags,
+  date, eligibility; no re-matching yet - Phase 6).
+- Org Settings page (super_admin only): LLM provider/model, score
+  weights, autoSendAssessment, sync interval, consent notice text,
+  retention days. Typed schema, every change audited.
+- Report contract fixtures from `scratch/report-*.json` structure with
+  synthetic values only. Verified PII-free (no name/email/phone keys,
+  empty `candidate_id`); SAFE to derive. `scratch/login.json` DOES look
+  like real credentials (email + 20-char password) and is committed -
+  rotate that password and delete the file (owner action; history rewrite
+  not done unilaterally).
+- Playwright smoke (login, create job, upload 2 synthetic resumes with
+  mocked backend/LLM, one shortlisted + one pooled, dry-run send, status
+  chip) wired into CI.
+- README + docs/DEPLOYMENT.md updates for all of Phase 2 (worker, env
+  vars, dry-run, allowlist, backup before migrations).
+
+### Risks
+
+- Stage-enum swap ripples through transition tests, the profile stage
+  `<select>`, and any stage-string comparisons. Mitigation: P1 keeps the
+  app bootable after each commit; full suite per step.
+- Parallel `passRule` semantics are the subtlest logic; per-variant tests.
+- Template-version migration of ACTIVE applications is the only
+  data-risky op: dry-run preview + explicit reason + audit; the likely
+  case (no live interview-stage apps) only seeds.
+- Unexplained mid-slice revert of `src/App.tsx` (found at Slice C start,
+  rewired, committed). Watch for recurrence: if any file changes without
+  an edit record, stop and investigate before continuing. No second
+  session is running from this side.
+
+**WAITING for your "go" for Slice P1.**
