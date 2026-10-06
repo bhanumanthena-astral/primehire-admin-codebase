@@ -943,3 +943,808 @@ columns from rounds) plus:
   session is running from this side.
 
 **WAITING for your "go" for Slice P1.**
+
+---
+
+## Jobs module rebuild — Step 0 (awaiting "go")
+
+Source: the Jobs-module spec text in the user message ("Elite HR PRD - #Phase2.md"
+was named as source of truth, but that file is NOT present anywhere in the
+workspace — searched `**/*.md`, `*PRD*`, `*Phase2*`, `scratch/`). Step 0 and
+all slices below are built from the message spec; if the real file surfaces
+and conflicts with it, the file wins and the plan is re-cut.
+
+### Existing implementation (inspected, will be reused — §32)
+- Backend `api/hiring.py`: POST/GET/PUT `/jobs` (+`/{job_id}`), audit-logged
+  (`job.create`/`job.update`); create/update gated `jobs.manage`, reads gated
+  `resumes.upload`. NO delete/archive/close/reopen endpoints.
+- Model `models/hiring.py`: `jobId` = server uuid4 (already immutable/permanent),
+  user-supplied unique-per-org `jobKey`; NO company/department/positions/
+  keywords-txn/dates/assignee/workMode/location/status-lifecycle fields.
+- Schemas `schemas/hiring.py` (`extra="forbid"`): `JobStatus` =
+  open/on_hold/closed/filled; experience = int years; description = plain text.
+- Frontend `JobsPage.tsx`: minimal create (jobKey/title/skills/assessment link)
+  + table. RBAC roles: super_admin/admin/hr hold `jobs.manage`.
+- Email infra exists (outbox + ZeptoMail) for assignee notifications.
+
+### Proposed collections/indexes (new fields live on `jobs`; no new collection)
+Extend `jobs` docs: companyName, jobRole, department, min/maxExpYears (decimal),
+positionsTotal/Filled, keywords[] (+keywordCount), workMode, location,
+openedAt/closesAt, assigneeUserId (+assigneeEmail snapshot), jdHtml + jdText,
+jdTemplateVersion, lifecycleStatus, duplicateOf?, closedAt, archivedAt.
+Indexes (in `db/mongodb.py`, verified at startup): keep uniq jobId+orgId and
+uniq jobKey+orgId; ADD `{orgId, lifecycleStatus}`, `{orgId, assigneeUserId}`,
+`{closesAt}` (auto-close sweep), text-ish `{orgId, companyName, jobRole}` via
+regular compound (no Atlas Search dependency). Migration entry in
+`backend/migrations/` backfills defaults for pre-existing job docs; dry-run in CI.
+
+### Conflicts with ENGINEERING_STANDARDS to resolve at Slice 1
+1. Status model: spec DRAFT/OPEN/ON_HOLD/CLOSED/ARCHIVED vs existing
+   open/on_hold/closed/filled (+ matrix test rows pin the old values).
+   Proposal: adopt spec lifecycle, migrate old values
+   (filled→CLOSED w/ filled=positions), update matrix rows.
+2. Spec "Job ID system-generated, Job Key?" — existing `jobId` (uuid, immutable)
+   already satisfies permanence; keep `jobKey` as the human unique key and map
+   spec "Job ID" display to a readable derived form OR adopt spec naming in UI
+   only. Needs your call — see Q1 below.
+3. Decimal experience + rich-text JD + JD upload (magic bytes, 5 MB default,
+   batch/single caps) reuse the resume-upload safety rules (§5); JD template
+   parse runs in the isolated-parse worker pattern, never inline unbounded.
+4. Assignee = active user + auto email snapshot: needs a users-directory read
+   (`users.manage`-scoped list already exists) + outbox notification on
+   assign/reassign (dedupe kind+entity).
+5. Auto-close sweep + audit-trail reads reuse worker/audit infra; timezone =
+   org setting (default Asia/Kolkata per phase protocol §7).
+
+### Risks
+- Biggest: building from message-spec without the PRD file (drift risk if the
+  file differs — especially duplicate-detection strictness, JD template schema,
+  and closing-timezone rule).
+- Scope is ~4 slices (backend schema/endpoints/migration; JD upload+template;
+  frontend list/detail/create/edit/lifecycle; tests+docs). Authz-matrix,
+  org-isolation, projection, injection, and e2e tests per phase protocol §8.
+- No new paid service, Docker, Redis, or S3 (protocol §10).
+
+**WAITING for your "go" (and Q1–Q3 below) before Slice 1.**
+
+### Jobs Slice 1 — DONE (schema/model/migration/indexes + tests)
+- Schemas (`schemas/hiring.py`): `JobLifecycle` DRAFT/OPEN/ON_HOLD/CLOSED/ARCHIVED;
+  `JobCreate` carries all 14 PRD §1 fields (company/jobRole/department mandatory,
+  decimal experience, StrictInt positionsTotal>=1, keyword normalize+dedupe+cap 20,
+  closesAt>openedAt, JD html mandatory with 50..20000 plain-text bounds);
+  `JobUpdate` excludes jobId/jobKey/companyName/jobRole (extra=forbid 422s them);
+  `JobPublic` adds positionsRemaining (derived), jdText, assignee snapshot,
+  closedAt/archivedAt. Old `JobStatus` retained read-only for migration mapping.
+- Model: `list/count_by_org` filter on lifecycleStatus with legacy-value shim.
+- Indexes: by_org_lifecycle/assignee/company/department, by_closesAt; retired
+  by_orgId_status (LEGACY_INDEXES + startup drop).
+- Migration `003_jobs_lifecycle` (idempotent, honest backfill, dry-run safe).
+- Tests: `job_payload()` factory in conftest; 6 files migrated to full payloads;
+  10 new requisition-validation tests; 2 migration tests; injection twin aligned
+  to the new experience band (purpose unchanged). Full suite: 483 passed.
+- Assumptions logged: MAX_KEYWORDS=20, JD 50..20000 chars, WorkMode
+  ONSITE/REMOTE/HYBRID optional, company/department non-blank (no master-data
+  service yet) — all trivially adjustable if the PRD file says otherwise.
+- Next: Slice 2 endpoints (detail+applications, close/reopen/archive/delete,
+  assignee+notifications, duplicate-warning, openedAt/assignee-email server
+  defaults, auto-close sweep) + matrix rows.
+
+### Jobs Slice 2 — DONE (endpoints: detail/lifecycle/assignee/duplicate/auto-close)
+- Hiring API: GET detail (+applications+counts); POST close/reopen (future-date
+  guard)/archive; DELETE refused with applications (409, archive instead);
+  POST check-duplicate (advisory only, exact-match on identity fields, archived
+  excluded); POST /api/admin/jobs/auto-close (OPEN + closesAt<=now UTC).
+- Create/update enrichment: openedAt/positionsFilled/jdText server defaults;
+  assignee must be an existing ACTIVE org user (422 otherwise) with email
+  snapshot (auto-refreshed on later updates); ARCHIVED immutable, CLOSED
+  limited subset; job.assign audit entries preserve history; assignee
+  notification via the EXISTING outbox channel (kind=job_assigned, deduped per
+  job+assignee, best-effort so writes never fail without a key).
+- Matrix: 8 new rows (same role split as job reads). No migration changes.
+- Tests: 13 new endpoint tests (incl. outbox dedupe + keyless graceful skip);
+  4 email-flow tests rescoped to invite kind (job notifications legitimately
+  present). Full suite: 537 passed. Frontend untouched (lint clean).
+- Assumptions: closesAt compared in UTC (no org-timezone setting exists in the
+  system; applied at input/display); duplicate = same company+role+dept+location
+  among non-archived (description-similarity scoring deferred to the file).
+
+### RESOLVED in Slice 13: org timezone for auto-close
+The PRD mandates the ORGANIZATION timezone for closing-date/time
+interpretation. Slice 2 compared closesAt in UTC because no org-timezone
+setting existed (verified: no timezone field in org settings, config, or
+schemas); UTC was INTERIM. Slice 13 introduced `settings.timezone`
+(validated IANA name, default "UTC" preserves the interim behavior for
+unconfigured orgs), and the auto-close sweep now interprets the stored
+wall-clock boundary in the org's timezone (real tz rules via `zoneinfo`,
+DST-sensitive, per-org isolation, invalid/missing tz → UTC fallback).
+
+
+### Jobs tracker
+✓ Slice 1 — Backend Foundation | ✓ Slice 2 — Backend Endpoints
+● Slice 3 — JD Upload & Template (in progress)
+○ Slice 4 — Jobs List | ○ Slice 5 — Create/Edit UI | ○ Slice 6 — Job Details
+○ Slice 7 — Lifecycle UI | ○ Slice 8 — Assignee Management
+○ Slice 9 — Notifications | ○ Slice 10 — Search/Filter/Sort/Pagination
+○ Slice 11 — Audit Trail | ○ Slice 12 — Edge Cases | ○ Slice 13 — RBAC
+○ Slice 14 — Full Verification
+
+### Jobs Slice 3 — DONE (JD upload → extract → map → review → save + template)
+- Service `services/jd_template.py` (stateless): prescribed v1 template format
+  (14 `Label: value` lines, JD runs to EOF); `build_template_docx()`,
+  `parse_template_text()` (seen-label tracking, wrapped-line continuations),
+  `map_template_values()` resolving assignee by userId-or-email + active check,
+  with JobCreate construction as the SINGLE validation truth (placeholder
+  jobKey stripped; assigneeEmail snapshot excluded from the create shape).
+- Endpoints (`jobs.manage`): GET jd-template (labeled .docx download, placed
+  before /jobs/{id} for route matching); POST parse-jd reusing
+  validate_client_filename/validate_upload (magic bytes, caps, traversal),
+  clamav hook (quarantined → 422), parse_bytes_isolated (timeout-isolated).
+- Exact PRD strings: invalid-template and missing-fields messages; per-field
+  errors with model-level attribution; create-ready `mapped` incl.
+  jdTemplateVersion (review → POST /api/jobs proven by test).
+- Matrix: 2 rows. Tests: 12 (incl. template round-trip, all PRD validations,
+  spoofed/extension rejects, interviewer 403s). Full suite: 561 passed; tsc clean.
+- Assumptions: template layout + date/number parsing leniency + v1 version are
+  documented in-module (adjustable if the PRD file surfaces); PDF/DOC parse via
+  the shared isolated worker (covered by resume parse tests).
+
+### Jobs tracker
+✓ Slice 1 — Backend Foundation | ✓ Slice 2 — Backend Endpoints
+✓ Slice 3 — JD Upload & Template
+○ Slice 4 — Jobs List | ○ Slice 5 — Create/Edit UI | ○ Slice 6 — Job Details
+○ Slice 7 — Lifecycle UI | ○ Slice 8 — Assignee Management
+○ Slice 9 — Notifications | ○ Slice 10 — Search/Filter/Sort/Pagination
+○ Slice 11 — Audit Trail | ○ Slice 12 — Edge Cases | ○ Slice 13 — RBAC
+○ Slice 14 — Full Verification
+
+### Jobs Slice 4 — DONE (list/search/filter/sort/paginate + row actions)
+- Backend: GET /api/jobs upgraded (q/company/department/assignee/experience/
+  workMode/date-bands, allowlisted sort+order, default limit 20, X-Total-Count
+  header; response stays a bare list); GET application-counts; POST assign
+  (email → userId, reuses Slice 2 audit/notify). Matrix +2 rows.
+- Frontend JobsPage rewritten: all 13 PRD columns; debounced cross-field
+  search; combined filters with clear-all; sortable Title/Company/Opened/
+  Closes (+createdAt default); 20/page with total; exact empty states;
+  expandable View (detail endpoint + applications); Edit modal (5 spec fields,
+  status-aware); Close/Reopen/Archive/Delete/Assign with two-step confirms and
+  the exact PRD close warning; role-gated actions (backend authoritative).
+- Decisions: Job ID column shows jobKey (human unique; uuid in tooltip);
+  assignee shows the email snapshot (no user-directory read needed);
+  experience filter = band-covers-years (bandless docs excluded when set);
+  JD preview renders jdText (no sanitizer dep; rich render in Slice 5/6).
+- Tests: 8 backend (search variants, combined, sort/page/header, counts,
+  assign incl. 403s) + 5 vitest (13 columns, exact empty states, query +
+  pagination, role gating). Full: backend 578 passed, vitest 15 passed,
+  tsc clean, vite build ok.
+
+### Jobs tracker
+✓ Slice 1 — Backend Foundation | ✓ Slice 2 — Backend Endpoints
+✓ Slice 3 — JD Upload & Template | ✓ Slice 4 — Jobs List
+(search/filter/sort/pagination complete with it)
+○ Slice 5 — Create/Edit UI | ○ Slice 6 — Job Details
+○ Slice 7 — Lifecycle UI | ○ Slice 8 — Assignee Management
+○ Slice 9 — Notifications | ○ Slice 11 — Audit Trail | ○ Slice 12 — Edge Cases
+○ Slice 13 — RBAC | ○ Slice 14 — Full Verification
+
+### Jobs Slice 5 — DONE (Create Job UI)
+- Backend (dependency-justified only): GET /api/users/directory (active users,
+  jobs.manage-gated, declared before /{user_id}) + matrix row + test. No other
+  backend changes.
+- Deps: @tiptap/react + @tiptap/pm + @tiptap/starter-kit (Link comes bundled in
+  StarterKit v3; dropped the duplicate extension). No new high/critical audit
+  findings (highs present trace to pre-existing @google/genai/autoprefixer/
+  express chains, untouched by this install).
+- `JdEditor.tsx`: H1/H2/bold/italic/bullets/ordered/quote/link/clear, live
+  50–20000 char count, upload fills while unfocused, editor styles in index.css.
+- `CreateJobForm.tsx`: all 14 PRD fields (Job ID read-only auto notice +
+  editable unique jobKey retained per Q1); directory dropdown with readonly
+  auto email; JD upload → parse → review-fill (nothing persisted on upload);
+  template download; duplicate pre-check with the exact advisory modal;
+  unsaved guard (beforeunload + Stay/Discard); double-submit lock; data
+  preserved on API failure; exact "Job created successfully." success state.
+- Jobs tab: Create Job entry point (manage roles), form replaces list, Back
+  reloads. Slice 4 Edit modal untouched.
+- Tests: 11 vitest (fields, all validations, keywords, assignee email,
+  upload→review, exact template message, duplicate flow, double-submit,
+  success, error preservation, unsaved flow). Full: backend 585 passed,
+  vitest 26 passed, tsc clean, vite build ok.
+
+### Jobs tracker
+✓ Slice 1 — Backend Foundation | ✓ Slice 2 — Backend Endpoints
+✓ Slice 3 — JD Upload & Template | ✓ Slice 4 — Jobs List + Search/Filter/Sort/Pagination
+✓ Slice 5 — Create Job UI
+○ Slice 6 — Job Details | ○ Slice 7 — Lifecycle UI | ○ Slice 8 — Assignee Management UI
+○ Slice 9 — Notifications | ○ Slice 10 — Audit Trail | ○ Slice 11 — Edge Cases
+○ Slice 12 — RBAC Verification | ○ Slice 13 — Organization Timezone | ○ Slice 14 — Full Verification
+
+### Jobs Slice 6 — DONE (Job Details page)
+- Backend (additive only): GET /jobs/{id}/activity (job-scoped trail,
+  resumes.upload-gated so HR/interviewers can read it; global audit-log keeps
+  audit.view); audit-log list gains resource_id filter; job.update audit now
+  stores per-field {from,to} (was new-values-only). Matrix +1 row.
+- Frontend: JobDetailsPage (header, overview groups, keywords, sanitized JD via
+  DOMPurify tight allowlist, applications with counts, ehr-timeline activity
+  with friendly who/what/old→new sentences, full action set reusing Slice 2
+  endpoints + shared modals); Jobs tab gains details mode; applicant rows
+  dispatch elite:open-applicant consumed by App (existing applicant tab, no new
+  route); 404 vs error states distinct (no blanket offline banner).
+- Tests: 3 backend (trail content/scoping/404+403) + 9 vitest (fields, status,
+  apps+counts, safe JD incl. script-strip, 404+retry, empties, audit content,
+  applicant event, close flow, role gating). Full: backend 594 passed,
+  vitest 35 passed, tsc clean, vite build ok.
+
+### Jobs tracker (43% — 6/14 complete)
+✓ Slice 1 — Backend Foundation | ✓ Slice 2 — Backend Endpoints
+✓ Slice 3 — JD Upload & Template | ✓ Slice 4 — Jobs List + Search/Filter/Sort/Pagination
+✓ Slice 5 — Create Job UI | ✓ Slice 6 — Job Details
+○ Slice 7 — Lifecycle UI | ○ Slice 8 — Assignee Management UI
+○ Slice 9 — Notifications | ○ Slice 10 — Audit Trail refinement
+○ Slice 11 — Edge Cases | ○ Slice 12 — RBAC Verification
+○ Slice 13 — Organization Timezone | ○ Slice 14 — Full Verification
+
+### Jobs Slice 7 — DONE (Lifecycle UI; rules untouched)
+- New `JobLifecycle.tsx`: LIFECYCLE_ORDER, normalizeLifecycle (unknown→DRAFT),
+  LifecycleBadge (single presentation), jobActionsFor(status×permission[×apps])
+  as the single visibility source, visitedFromActivity (audit-derived only),
+  LifecycleStepper (current/visited/pending, responsive vertical on mobile).
+- List + Details unified on the shared badge/matrix (identical rendering).
+  Details gained a "Lifecycle progress" section; audit trail untouched.
+- Consistency hardening found in-slice: the assign endpoint lacked the
+  ARCHIVED guard that PUT enforces → added 409 + matrix-neutral test. No other
+  backend rule changed.
+- ON_HOLD stays display-only: no API transition reaches it (PUT cannot touch
+  lifecycle; no hold endpoint was ever specified/built). Logged as a product
+  gap, not silently worked around.
+- Tests: 6 lifecycle unit + 3 list-sync/guard + 2 details-extras + 1 backend
+  guard. Full: backend 594 passed, vitest 46 passed, tsc clean, vite build ok.
+
+### Jobs tracker (50% — 7/14 complete)
+✓ Slice 1 — Backend Foundation | ✓ Slice 2 — Backend Endpoints
+✓ Slice 3 — JD Upload & Template | ✓ Slice 4 — Jobs List + Search/Filter/Sort/Pagination
+✓ Slice 5 — Create Job UI | ✓ Slice 6 — Job Details | ✓ Slice 7 — Lifecycle UI
+○ Slice 8 — Assignee Management UI | ○ Slice 9 — Notifications
+○ Slice 10 — Audit Trail refinement | ○ Slice 11 — Edge Cases
+○ Slice 12 — RBAC Verification | ○ Slice 13 — Organization Timezone
+○ Slice 14 — Full Verification
+
+### Jobs Slice 8 — DONE (Assignee Management UI; single-owner model kept)
+- Shared `assignees.ts`: resolveOwner (snapshot preserved + inactive flag),
+  ownerDisplayName, nameForUserId (directory → former-user/system fallback),
+  openCountsByAssignee (open-only load).
+- AssignModal upgraded (shared by List + Details): current-owner card with
+  inactive warning, active-user dropdown (name·email·role·open-job count),
+  email fallback when directory is unavailable, stale-failure resync via
+  onRefresh, double-submit lock. Same assign endpoint underneath.
+- Owners mode in Jobs tab: active owners table (user/email/role/open/total)
+  + preserved-inactive section with per-job Reassign/Open; empty states.
+- List assignee cell + Details header/overview show resolved names and an
+  inactive dot/badge; audit from→to ids resolve to names (unknown → former).
+- No backend changes this slice (no new rules, no new endpoints).
+- Tests: 12 vitest (helpers, directory, modal flows incl. stale resync +
+  double-submit, details inactive flag). Full: backend 595 passed (unchanged),
+  vitest 58 passed, tsc clean, vite build ok.
+
+### Jobs Slice 9 — DONE (Notifications; existing outbox → worker → ZeptoMail only)
+- Gap found + fixed: `queue_job_assignment` wrote `email_outbox` rows but never
+  chained the EXISTING `email_send` background job, so the worker never
+  delivered `job_assigned` (assessment invites chain both; assignments did not).
+  Fix reuses the identical pattern: outbox enqueue (dedupe per job+assignee,
+  kind=job_assigned) + `email_send` enqueue (dedupe per messageId). No new
+  channel, no new retry machine, no ZeptoMail replacement. Worker
+  `process_email_job` is generic by messageId (no applicationId → pure
+  delivery, no stage transition). Notification failures never block the job
+  write (best-effort, logged; missing key skips gracefully).
+- Read-only visibility: GET /api/jobs/{id}/notifications (resumes.upload-gated,
+  same split as activity; org-scoped; kind=job_assigned + entityKey=jobId;
+  metadata only — payloadEncrypted excluded, recipient masked like
+  diagnostics). States shown are exactly the outbox states
+  (pending/sending/sent/failed + attempts/lastError/sentAt/sentVia). Retries
+  stay admin-only via POST /api/diagnostics/outbox/{id}/retry. Audit
+  (job.assign old→new) remains authoritative.
+- Frontend: JobDetailsPage gains a Notifications section (loading skeleton,
+  empty, error+retry; Elite HR card language; Queued/Sending/Sent/Failed/
+  Dry-run badges; failed rows show the real lastError, never fake delivery).
+  Reloads alongside activity after assign. hiringApi adds fetchJobNotifications
+  + JobNotification type. No admin retry controls in Jobs UI.
+- Tests: 6 backend (initial queues outbox+worker, reassign notifies new +
+  audit intact, dedupe, keyless non-blocking, worker Zepto delivery mocked,
+  RBAC+org isolation) + 3 vitest (queued/sent, failed truthfulness, error
+  state) + matrix +1 row. Full: backend 607 passed, coverage 84%,
+  vitest 61 passed, tsc clean, vite build ok.
+
+### Jobs Slice 10 — DONE (Audit Trail Refinement; existing system only)
+- Reused the existing append-only `audit_log` (Slice 2) + job activity
+  endpoint (Slice 6). No new system, actions, endpoints, or model changes.
+  Coverage verified end-to-end: create (jobKey/title/assignee new values),
+  update (per-field old→new), assign/reassign (from→to on both PUT and
+  POST paths), close (from/to+reason), reopen (from/to+closesAt — new date
+  added to the audited values), archive, delete, auto-close
+  (actor `system:auto-close`, reason "closing date reached").
+- Idempotency noise removed: PUT with no actual change logs no `job.update`;
+  POST /assign to the SAME owner logs no `job.assign` and sends no
+  notification (mirrors the PUT path, which already skipped). History stays
+  append-only: Rahul→Priya→Srinivas keeps every hop, never collapsed.
+- Actor readability: new `actorForUserId()` (name + email where the
+  directory knows the user; `Automatic closure` for system actions, never a
+  human; `Former user <id8>` snapshot preserved, never fabricated or
+  rewritten). Activity titles and old→new assignee rows show name · email.
+  Historical ids survive user deactivation (proven by test).
+- Isolation/RBAC unchanged: activity scoped per jobId + orgId (Job A never
+  shows Job B; cross-org → 404); interviewers stay 403 on activity (same as
+  before); global audit-log keeps `audit.view`. Lifecycle stepper untouched
+  and still separate from the audit trail. Slice 9 notification states stay
+  visible in Details but are NOT part of audit semantics.
+- Tests: 7 backend (`test_job_audit.py`: full mutation coverage, old/new,
+  actor, timestamps, idempotency, chain append-only, job+org isolation,
+  RBAC, deactivation) + 3 vitest (actor name+email, former-user fallback,
+  system attribution). Full: backend 614 passed, coverage 84%,
+  vitest 64 passed, tsc clean, vite build ok.
+
+### Jobs Slice 11 — DONE (Edge Cases verified + regression tests; no new rules)
+- Verified every PRD edge-case category against Slices 1–10 implementation.
+- Fixes made (gaps found, no new business rules):
+  - Server-side experience range check now holds on partial PUT (only one of
+    min/max patched above stored max rejected, 422) — `hiring.py:update_job`.
+  - `closesAt <= openedAt` on partial PUT rejected (422) — same endpoint.
+  - New applications are refused against CLOSED/ARCHIVED jobs —
+    `POST /api/applications` (409) and the resume pipeline
+    (`pipeline.py` file marked FAILED with an explicit reason).
+  - `hiringApi.ts`: network failures (fetch TypeError) map to a clear
+    "Network unavailable..." message; HTTP statuses keep server `detail`
+    (401/403/404/422/500 no longer surface as "network" errors).
+- Verified as-is (tests added, behavior unchanged): duplicate-job advisory
+  never blocks, job ID immutable, reopen requires future date, delete blocked
+  with applications (409), application counts consistent across list/detail/
+  delete guard, CLOSED/ARCHIVED read-only edits, assignee snapshot preserved
+  on deactivation (no silent reassignment), inactive assignee cannot be
+  newly assigned, duplicate jobKey → 409 (submit-lock server twin),
+  unsaved-changes guard on Create Job, duplicate JD/keyword/date/positions
+  validation, closed-job reopen guard, UTC interim auto-close documented.
+- Out of scope by spec: no optimistic-locking versioning (last-writer-wins
+  stays, server authoritative), no org-timezone system (Slice 13), no new
+  lifecycle states or permission models.
+- Caveat noted: Edit/Assign/Reopen modals have no dirty-guard for unsaved
+  changes (Create Job does); assignee email snapshot refreshes lazily on
+  next job edit; list application-counts failure degrades to 0s.
+- Tests: 25 new backend (`test_job_edge_cases.py`), 7 new vitest
+  (`src\lib\hiringApi.test.ts`). Full: backend 639 passed, coverage 84%,
+  vitest 71 passed, tsc clean, eslint build ok.
+
+### Jobs Slice 12 — DONE (RBAC verified for the Jobs module; verification-first)
+- Exercised the existing role matrix against every Jobs endpoint:
+  super_admin/admin/hr allowed, technical_interviewer/managerial_interviewer
+  403 on all Jobs mutations and reads (deny-by-default for interviewers
+  holds), any-authed rows verified open to every role, unauthenticated →
+  401/403, invalid token → 401/403.
+- Added matrix row: PUT /api/jobs/{id} (all three managing roles allowed,
+  both interviewer roles 403).
+- Added explicit tests: missing token rejected, invalid token rejected,
+  transition endpoint 403 for interviewer on a REAL application (404 for
+  nonexistent id precedes the permission check — documented ordering,
+  no information leak), hr passes the transition guard, every ANY_AUTHED
+  row open to all roles (regression guard).
+- UI authorization behavior preserved: JobsPage gates create/assign/owners
+  on MANAGING_ROLES (src/components/JobsPage.tsx:166), JobDetailsPage
+  similar; frontend hiding is display-only, backend guards authoritative.
+- Cross-organization isolation: verified for list/detail/edit/close/reopen/
+  archive/delete/assign/activity/applications (existing tests + matrix).
+- No new permissions, no role redesign; no bugs found in the Jobs RBAC
+  boundary itself. Slice 11 gaps stay fixed (closed/archived job
+  application guard verified under authz too).
+- Tests: 648 backend passed (+9 vs Slice 11), coverage 84%, vitest 71
+  passed, tsc clean, vite build OK.
+
+### Jobs Slice 13 — DONE (Organization timezone for automatic close)
+- No timezone setting existed anywhere (verified: org settings, config,
+  schemas — the interim UTC note is what Slice 2 recorded). Resolution:
+  - `settings.timezone` added to `default_settings()` (`models/organization.py`),
+    validated IANA name in `OrgSettings` (`schemas/organization.py`), and
+    accepted via `PUT /api/org/settings` (`assessments.py`, 422 on invalid).
+  - Auto-close sweep (`hiring.py:auto_close_jobs`) now loads the org's
+    `settings.timezone` and interprets the stored closesAt wall-clock
+    boundary in that timezone via `zoneinfo.ZoneInfo` (real tz rules,
+    DST-sensitive — no fixed offsets). Missing/invalid tz → `UTC`
+    (documented fallback preserving the pre-Slice-13 interim behavior;
+    a default of Asia/Kolkata was NOT invented).
+  - Storage convention unchanged: timestamps stay UTC instants; only the
+    closing decision uses the org tz. Multi-org isolation: each sweep reads
+    the caller org's own settings only.
+  - Audit unchanged: actor `system:auto-close`, reason "closing date reached".
+- `tzdata>=2024.1` added to `backend/requirements.txt` (Windows zoneinfo
+  needs it).
+- Tests: `backend/tests/test_org_timezone.py` — 11 tests: Kolkata vs UTC
+  boundary divergence, UTC fallback for missing/invalid tz, boundary exact
+  and just-after, America/New_York DST boundary (Jan EST 17:00Z vs Jul EDT
+  16:00Z), idempotency + CLOSED/ARCHIVED/future filters, multi-org isolation
+  (same wall closesAt, different orgs, different outcomes), audit + 409 on
+  application after auto-close, manual close/reopen unchanged, settings
+  timezone validation 422.
+
+### Jobs Slice 14 — DONE (Full Jobs verification; acceptance sweep)
+- End-to-end journey test added (`backend/tests/test_jobs_e2e.py`, 4 tests):
+  create → assignee snapshot → list/details → edit permitted field →
+  application + consistent counts → delete blocked (409) → close →
+  applications blocked → reopen (future date) + invalid-date rejection →
+  reassign + audit → archive preserves applications. Negative paths:
+  invalid experience range → 422; delete-with-applications → 409;
+  interviewer → 403 on PUT/close/delete/activity.
+- PRD traceability (all verified by tests above + Slices 1–13 suites):
+  ✓ Create (14 fields, validation, ID generation, assignee snapshot,
+    duplicate advisory, JD entry/upload) — test_hiring_api, test_jd_template
+  ✓ JD upload/parse/template incl. security + extraction failure —
+    test_jd_template
+  ✓ Job list (columns, pagination 20/page, search, filters, sort,
+    empty/no-results) — test_hiring_api, jobsList.test.tsx
+  ✓ Job details (all fields, JD render, counts consistent) —
+    jobDetails.test.tsx, test_hiring_api
+  ✓ Lifecycle DRAFT/OPEN/ON_HOLD/CLOSED/ARCHIVED — test_hiring_api,
+    lifecycle.test.tsx
+  ✓ Close (exact confirmation in UI, 409 guards, audit) — test_hiring_api,
+    test_job_audit
+  ✓ Automatic close with org tz, DST, multi-org, idempotency, audit —
+    test_org_timezone
+  ✓ Reopen (future-date validation, authz) — test_hiring_api
+  ✓ Archive/delete (delete blocked with applications, history preserved) —
+    test_hiring_api, test_job_edge_cases
+  ✓ Assignee (active selectable, inactive rejected, snapshot, reassignment,
+    deactivated owner preserved, audit, outbox flow) — assignees.test.tsx,
+    test_job_notifications
+  ✓ Notifications (assignment → outbox → worker → ZeptoMail, dedupe,
+    idempotency, failure truthfulness) — test_job_notifications
+  ✓ Audit (create/update/assign/reassign/close/reopen/archive/delete/
+    auto-close; system actor; cross-job/org isolation) — test_job_audit
+  ✓ Applications (counts, closed/archived block, org isolation) —
+    test_hiring_api, test_job_edge_cases
+  ✓ RBAC (5 roles × all Jobs endpoints, any-authed, token edge cases) —
+    test_authz_matrix
+  ✓ Edge cases — test_job_edge_cases, createJob.test.tsx
+  ✓ Error classification (network/401/403/404/409/422/500) — hiringApi.ts +
+    hiringApi.test.ts
+  ✓ Data integrity (idempotent ops, stable IDs, preserved history) —
+    Slice 11/12 tests
+  ✓ Concurrent editing — documented last-writer-wins, server authoritative —
+    test_job_edge_cases
+  ✓ UI consistency (Elite HR visual system in Jobs pages) — reviewed
+  ⚠ Performance: practical verification only; pagination/capping verified by
+    tests; no measurable UI blocking found. No optimization performed.
+- Regression: all Slices 1–13 suites green.
+- Final status:
+  **Jobs / Job Requisition Management Module — 100% verified against the
+  approved specification.**
+
+### Jobs tracker (100% — 14/14 complete)
+✓ Slice 1 — Backend Foundation | ✓ Slice 2 — Backend Endpoints
+✓ Slice 3 — JD Upload & Template | ✓ Slice 4 — Jobs List + Search/Filter/Sort/Pagination
+✓ Slice 5 — Create Job UI | ✓ Slice 6 — Job Details | ✓ Slice 7 — Lifecycle UI
+✓ Slice 8 — Assignee Management UI | ✓ Slice 9 — Notifications
+✓ Slice 10 — Audit Trail refinement | ✓ Slice 11 — Edge Cases
+✓ Slice 12 — Jobs RBAC Verification | ✓ Slice 13 — Organization Timezone
+✓ Slice 14 — Full Jobs Verification — COMPLETE
+
+### Jobs Enhancement — AI JD Document Ingestion — Phase 0: Architecture / Decision (PROPOSED, awaiting go)
+- Status: Jobs module remains 100% complete (14/14) against the approved PRD.
+  This is a SEPARATE enhancement tracker; the archived completion % is untouched.
+- Problem: Slice 3 `POST /api/jobs/parse-jd` (`backend/app/api/hiring.py:301`,
+  `services/jd_template.py`) is prescribed-template-only by design; a normal JD
+  PDF correctly 422s (`INVALID_TEMPLATE_MESSAGE` / `MISSING_FIELDS_MESSAGE`).
+  Product goal: HR uploads a normal PDF/DOCX → secure validate → text-first
+  extract → OpenRouter structures fields → HR reviews → existing
+  `POST /api/jobs` persists. LLM never persists, assigns, or changes lifecycle.
+- Reuse inventory (no new security plumbing, no new env, no new collections):
+  `validate_client_filename`/`validate_upload` + `clamav.scan_bytes` +
+  `parse_bytes_isolated` (30 s isolated worker); `services/llm/base.py`
+  (`scrub_text`, `detect_injection`, `input_hash`, strict-schema pattern) +
+  `services/llm/openrouter.py` (semaphore, retry ≤2, `llm_runs` hash-only,
+  never-raises, unconfigured → graceful fallback); `JobCreate` as single
+  validation truth + `JDParseOut` review contract; `parseJd()`/`CreateJobForm`
+  review flow; `OPENROUTER_*`/`LLM_CONCURRENCY` config; `llm_runs` collection.
+- Design (proposed): extend `POST /api/jobs/parse-jd` with a `mode` form field
+  (`template` default = byte-identical current behavior; `document` = new
+  AI path). New `services/jd_extract.py` (text-first, PII-strip, delimited
+  `<<<JD-START/END>>>`, `jd-extract-v1` prompt, new `JdExtractPayload`
+  `extra="forbid"` schema, missing → null + `missingFields`, evidence where
+  cheap) + assignee raw-string resolved server-side via `UserRepository`
+  (same as template; never auto-creates). Frontend gets two paths
+  (Template / Document) with AI-extracted badge; save always via existing
+  create endpoint + duplicate advisory.
+- Standards conflicts: none — follows §4/§6 (delimited blocks,
+  ignore-instructions prompt, strict JSON, retry ≤2 → manual fallback,
+  advisory-only with human `userId`, `llm_runs` hash-not-content, PII-strip,
+  injection fixtures), §1 (`jobs.manage` guard unchanged), §5 (no bypass),
+  §7 (no doc content in logs). Stateless parse: no outbox/audit-job event.
+- Risks: hallucination (mitigate: strict schema + JobCreate revalidation +
+  missing-stays-missing + evidence); unconfigured LLM (fallback to manual,
+  template path independent); free-tier 429/latency (reuse backoff+jitter);
+  `parseJd()` double-`res.json()` bug drops `fieldErrors` (fix read-once in
+  this enhancement); response-contract drift (keep `JDParseOut` shape,
+  additive fields only).
+- Plan (stops after each, tests + docs each step):
+  1. Secure Document Extraction (reuse worker, empty/malformed errors)
+  2. LLM Structured Extraction (`jd-extract-v1`, fixtures, no persist)
+  3. Schema Validation (JobCreate truth, field errors/warnings)
+  4. Review UI (two paths, AI badge, missing/needs-review)
+  5. Template + AI Integration (mode default, regression suites green)
+  6. Error/Fallback + Injection Tests 7. Full Verification (80%+ cov, CI).
+- Tracker:
+  ● AI JD Ingestion — Phase 0: Architecture / Decision (this entry)
+  ● AI JD Ingestion — Phase 1: Secure Document Extraction — DONE (see entry below)
+  ● AI JD Ingestion — Phase 2: LLM Structured Extraction — DONE (see entry below)
+  ● AI JD Ingestion — Phase 3: Schema Validation — DONE (see entry below)
+  ● AI JD Ingestion — Phase 4: Review UI — DONE (see entry below)
+  ● AI JD Ingestion — Phase 5: Template + AI Integration — DONE (see entry below)
+  ● AI JD Ingestion — Phase 6: Error/Fallback + Injection Verification — DONE (see entry below)
+  ○ Full Verification
+- WAITING FOR "go" — no code changed in Phase 0.
+
+### AI JD Ingestion — Phase 1 DONE (Secure Document Extraction, no LLM)
+- New `services/jd_document.py` (`doc-v1`): `normalize_jd_text()` (CRLF→LF,
+  per-line rstrip, edge blanks dropped, 3+ blanks→2, 20k cap) + `is_extractable()`.
+- `POST /api/jobs/parse-jd` gains `mode` form field (`template` default,
+  `document` new; anything else → 422 naming `mode`). Template branch is
+  byte-identical (default callers send file-only → unchanged). Document branch
+  `_parse_jd_document()` reuses the exact Slice 3 chain (filename safety,
+  `validate_upload` magic-bytes/size/zip-bomb, ClamAV 422, isolated 30 s
+  parser) then returns `JDParseOut(templateVersion="doc-v1", mapped={},
+  warnings=[AI-pending])`. No LLM import, no DB write, no schema/migration
+  change (`JDParseOut` shape reused; no new collections/indexes/env vars).
+- Failure contract: 400 traversal/extension-mismatch/empty/oversize;
+  422 invalid-mode / quarantined / timeout-or-parse-failure /
+  no-readable-text (dict shape with `file` field error); 403 interviewer;
+  missing file → FastAPI 422. Unreadable input never reaches any LLM.
+- Tests: `backend/tests/test_jd_document.py` — 18 (PDF+DOCX prose extraction,
+  template-file-as-document, 3 template-pinned regressions incl. prose-still-422s
+  without mode, missing-file/invalid-mode/403, wrong-ext/spoof/traversal/empty/
+  corrupt-PDF/oversize/quarantine/timeout, normalizer units). Full backend
+  681 passed (663 prior + 18 new); coverage 84.76% (gate 80; `jd_document.py`
+  100%). Frontend untouched: `tsc` clean, vitest 71 passed, `vite build` ok.
+- Next: Phase 2 LLM Structured Extraction (`jd-extract-v1`, strict schema,
+  missing-stays-missing) — NOT started; awaiting "go".
+
+### AI JD Ingestion — Phase 2 DONE (LLM Structured Extraction, jd-extract-v1)
+- New `services/llm/jd_extract.py` (scorer `match-score-v1` untouched):
+  `JdExtractPayload` (`extra="forbid"`, all facts nullable, `assigneeText`
+  raw-only, `missingFields`/`warnings`/`evidence`, `injection_suspected`),
+  `JD_EXTRACT_SYSTEM_PROMPT` (untrusted-data rules, null-if-missing, JSON
+  only), `build_jd_extract_block()` (PII-scrub + 12k truncate +
+  `<<<JD-START/END>>>`), `extract_jd_fields()` mirroring the scorer
+  (config gate, injection short-circuit WITH hash-only run log, semaphore,
+  initial + 2 retries, 429/5xx/auth/bad-schema handling, never-raises incl.
+  a hardened catch-all the scorer lacks). Output capped review-size
+  (30 keywords, 500-char evidence). No DB writes except `llm_runs`
+  (promptVersion `jd-extract-v1`, hash never content); no user resolution;
+  no Job write.
+- Wiring: `_parse_jd_document()` now calls `extract_jd_fields()` after the
+  Phase 1 text check. Success → `JDParseOut` gains additive-only
+  `aiExtract`/`missingFields`/`evidence` (`mapped` stays `{}` until Phase 3;
+  `templateVersion` still `doc-v1`). Any LLM skip/failure → Phase 1 text-only
+  200 with reasons + AI-pending warning (manual entry always possible).
+  Injection also appends a verify-every-field warning. Template path
+  byte-identical and LLM-free (proven by test).
+- PII tradeoff noted: assignee emails in-JD are scrubbed to `[EMAIL]` before
+  send (privacy wins); Phase 3 resolves assignees server-side from the
+  unscrubbed stored text if needed — names (non-email) survive scrubbing.
+- Tests: `backend/tests/test_jd_extract.py` — 21 (PM extraction incl. hash-only
+  audit + scrub/truncation asserts, sparse-missing, truncation, caps,
+  unconfigured/empty/injection skips, 429→success, 500×3, bad-schema→success
+  and ×3 exhaust, bad-envelope ×3, 401, timeout→success, unexpected-error,
+  model-reported injection, 5 endpoint tests incl. template-bypass pin).
+  Full backend 702 passed (681 + 21); coverage 85.15% (gate 80;
+  `jd_extract.py` ~99%, only the defensive `_log` except uncovered).
+  Frontend untouched: `tsc` clean, vitest 71 passed, build ok.
+- Next: Phase 3 Schema Validation (`aiExtract` → JobCreate truth) — NOT
+  started; awaiting "go".
+
+### AI JD Ingestion — Phase 3 DONE (Schema Validation, JobCreate truth)
+- New `services/jd_validate.py`: `validate_jd_extraction()` (read-only —
+  user lookups + validation, zero writes) returning `JdReviewReady`
+  (values/missingFields/needsReview/fieldErrors/warnings/resolvedAssignee/
+  evidence). `JobCreate` constructed with an `AI-CHECK` placeholder as the
+  SINGLE validation truth (stripped from output; `jobKey` never reported
+  missing — HR supplies it at save, as in the template flow). `missing`-type
+  pydantic errors → missingFields; other errors → fieldErrors with
+  message-based attribution for model-level rules (range/order/length).
+  Normalization (number/date/mode leniency, `<p>` JD wrap) mirrors template
+  conventions; the shared `normalize_keywords` is reused, never duplicated.
+- Assignee: userId → email → name resolution via `UserRepository`,
+  org-scoped + active-checked; unique-active resolves with the email snapshot
+  taken from the USER RECORD. No match / multi-match / inactive → needsReview
+  (named-but-unresolved is review, not missing). No user is ever created.
+  PII tradeoff closed: emails from the ORIGINAL unscrubbed server text are
+  candidates only when the doc names an assignee and exactly one resolves;
+  bare contact emails with no named assignee stay unresolved (tested).
+- Wiring: document mode attaches `review` (additive `JDParseOut.review`);
+  LLM-unavailable → `review: null` text-only fallback. Injection flag flows
+  into a document-level needsReview entry. Range bounds removed from the
+  Phase 2 shape (`ge=` dropped) so out-of-range LLM values reach JobCreate
+  as field errors instead of malformed-LLM fallbacks.
+- Frontend (minimal, no UI): `parseJd()` fixed to read the body ONCE
+  (message + fieldErrors from one parse; FastAPI array details now mapped
+  loc→field) + additive `ParsedJd.aiExtract/missingFields/evidence/review`
+  types. All other error handling untouched.
+- Tests: `backend/tests/test_jd_validation.py` — 31 (valid PM, missing
+  required/optional, decimals, range, negative, 3+-without-max, positions,
+  keyword dedupe+cap, JD bounds, ISO/ambiguous/impossible/order dates,
+  7 assignee cases incl. record-email snapshot + scrubbed-email recovery +
+  contacts-not-assignees + org isolation + no-auto-create, injection,
+  malformed-dict, 5 endpoint incl. PM end-to-end + no-persistence +
+  401/403) + 4 `hiringApi.test.ts` parseJd regressions. Full backend
+  733 passed (702 + 31); coverage 85.27% (gate 80; `jd_validate` 88%,
+  `jd_extract` 99%). Frontend: `tsc` clean, vitest 75 passed, build ok.
+  Template suites green; no migration/collections/env changes.
+- Next: Phase 4 Review UI — NOT started; awaiting "go".
+
+### AI JD Ingestion — Phase 4 DONE (Review UI, human-in-the-loop)
+- `parseJd(file, mode='template'|'document')` (`hiringApi.ts`): mode sent as a
+  FormData field; default `template` keeps every existing caller byte-identical.
+  Additive `ParsedJd.aiExtract/missingFields/evidence/review` types (Phase 3).
+- `CreateJobForm.tsx`: JD Template / JD Document (AI-assisted) radio paths
+  (template default). Template path logic + messages unchanged and shows zero
+  AI chrome. Document path prefills from `review.values` (never `mapped`,
+  never raw LLM output; `jobKey` never prefilled), stores the review payload
+  client-side only, and renders: extraction summary counts (from the actual
+  payload), missing list (Needs input), needs-review list with reasons + raw
+  assignee text, per-field amber notes, AI-extracted badges in Elite HR
+  warm-amber (`--warning-soft`), resolved-assignee identity note, collapsible
+  source evidence (review.evidence preferred, parsed.evidence fallback; no
+  prompts/traces), honest AI-failure state with manual-continue, static
+  processing stage labels (no fake percentages), replace-upload replacing the
+  review state. Save still flows only through validate → duplicate advisory →
+  existing `POST /api/jobs`; unsaved-change guard and double-submit lock
+  untouched (AI prefill flows through the same draft state).
+- Tests: `src/components/__tests__/aiReview.test.tsx` — 15 (paths + mode
+  args, prefill/badges/summary, missing, needs-review + raw assignee,
+  resolved identity, evidence, field notes, template-clean, failure +
+  manual-continue, replace, review→edit→duplicate→save, stages, dirty,
+  double-submit). `hiringApi.test.ts` +4 (Phase 3). Full vitest 90 passed
+  (75 + 15); `tsc` clean; build ok. Backend untouched this phase: 733 passed,
+  85.27% (gate 80); template suites green.
+- Next: Phase 5 Template + AI Integration — NOT started; awaiting "go".
+
+### AI JD Ingestion — Phase 5 DONE (Template + AI Integration)
+- ROOT CAUSE of the reported "LLM not configured" runtime message: the
+  implementation was correct end-to-end (CreateJobForm mode=document →
+  parseJd → POST /api/jobs/parse-jd → _parse_jd_document → Phase 1 text →
+  extract_jd_fields → honest skip → text-only JDParseOut → Review UI
+  fallback), but the local runtime `backend/.env` defines NO
+  `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` (keys verified present/absent by
+  name only; defaults are empty). `_is_configured()` therefore returns False
+  by design. NOT a wiring bug. To enable AI: set the two existing vars
+  (documented in `backend/.env.example`) and restart the API; no code,
+  endpoint, collection, or migration change is involved.
+- Changes: `JD_DOCUMENT_AI_PENDING_WARNING` rewritten to runtime-accurate
+  text with no phase references ("AI field extraction is unavailable —
+  text extraction only. You can continue filling the form manually; nothing
+  was saved."); `main.py` lifespan now logs a names-only warning when the
+  LLM pair is unset so the next boot explains itself. Fallback behavior
+  unchanged (still honest text-only, still no persistence).
+- Tests: `backend/tests/test_jd_integration.py` — 5 (configured PM doc →
+  structured `review.values` + `jd-extract-v1` audit row; missing config →
+  fallback with zero HTTP calls/rows; provider 500s → fallback; template
+  with config → `v1` + zero LLM calls; message has no phase language).
+  Full backend 738 passed (733 + 5); coverage 85.27% (gate 80). Frontend
+  untouched: `tsc` clean, vitest 90 passed, build ok. Template suites green.
+- Real-file note: `Elite_HR_Product_Manager_JD.pdf` is not in the repo, so
+  verification used a PM-shaped fixture; manual check is: configure the two
+  vars, restart `:8000`, re-upload the PDF, expect structured review.
+- Next: Phase 6 Error/Fallback + Injection Verification — NOT started;
+  awaiting "go".
+
+### AI JD Ingestion — Phase 6 DONE (Error/Fallback + Injection Verification)
+- Runtime config (operator): `OPENROUTER_API_KEY` present in local
+  `backend/.env`; `OPENROUTER_MODEL` was empty → set to the Gemma 4 26B A4B
+  free-tier slug (public identifier; paid variant is the same slug without
+  the `:free` suffix). Model choice rationale: structured-output support is
+  required by the `jd-extract-v1` contract; Mercury Decide is a decision
+  endpoint, not a full-schema extractor. No code hardcodes the model; the
+  `:8000` server was restarted to pick it up. Secrets never read/printed —
+  presence and lengths only.
+- Hardening: `llm/base.py` `INJECTION_PATTERNS` extended (additive) with
+  JD-hidden attacks — tool/function calls, destructive DB verbs, credential
+  revelation, priority/schema override — tuned against false positives on
+  legitimate prose ("maintain records", "call APIs", "return to office" all
+  verified clean). Scorer behavior unchanged (flags → human review only).
+- Tests: `backend/tests/test_jd_security.py` — 8 (key-without-model and
+  model-without-key fallbacks; 7 adversarial docs each skipped with zero HTTP
+  calls + hash-only `injection_suspected` audit rows; legit-prose negatives;
+  endpoint injection upload → honest manual state with zero jobs/users
+  created; multi-PII scrub pre-LLM with server-side resolution intact;
+  garbage numerics become review errors, never corrected values). Full
+  backend 746 passed (738 + 8); coverage 85.36% (gate 80). Frontend
+  untouched: `tsc` clean, vitest 90 passed, build ok. Template zero-LLM +
+  persistence safety re-verified via Phase 5 suite (green).
+- Real-file note: `Elite_HR_Product_Manager_JD.pdf` is still absent from the
+  repo, so no live PDF run was possible here (also needs an authed session);
+  operator step is: re-upload the PDF through Create Job → expect populated
+  `review.values` instead of the text-only fallback.
+- Next: Phase 7 Full Verification — NOT started; awaiting "go".
+
+### LLM Resilience — Step 0: Architecture / Decision (PROPOSED, awaiting go)
+### LLM Resilience — L1 DONE (Tier 1 dispatch; STOPPED per plan, L2 + Phase 7 pending)
+- Built: `services/llm/resilience.py` (taxonomy 429/5xx-retryable vs 4xx/schema
+  fail-fast with sanitized codes-only reasons; Retry-After + remaining-limit
+  headers; defer-delay = max(Retry-After, exp-backoff)+jitter; atomic token
+  bucket with interactive reserve; Mongo-shared breaker with single half-open
+  probe; result cache keyed prompt+digest+job with TTL; dev-only fake provider
+  refused in production; `llm_guard`/`llm_record`; `llm_health` card data).
+  Atomicity note: bucket take tries aggregation-pipeline `findOneAndUpdate`
+  first, CAS-loop fallback second (same one-conditional-update guarantee;
+  the fallback exists for servers without pipeline updates).
+- Pipeline (`pipeline.py` + `worker.py` + `models/jobs.py defer()`): parse →
+  deterministic keyword score stored immediately → guarded single-attempt LLM
+  (breaker + bucket + cache + blank/injection skips) → success decides
+  normally; retryable failure defers-and-releases (bounded by 12 attempts /
+  6 h age / 120 s wait, then deterministic decide + `llm_complete`
+  follow-up); fail-fast decides deterministically. Borderline (±10, keyword
+  52 held PARSED + needsReview; 36 pooled; 68 shortlisted — all proven).
+  Late LLM annotates only: TALENT_POOL/PARSED + crossing score →
+  needsReview, never a transition. `llmStatus` (pending/done/failed/skipped)
+  on files + breakdowns; batches stay PROCESSING with pendingAI counts.
+- Surface: sync JD fails fast to text-only on open breaker/empty bucket
+  (zero LLM calls, visible flag); diagnostics `llm` card (breaker, bucket,
+  queue depth, oldest wait, 429s/hour, last sanitized error) + deferred list
+  + audited, capped `POST /diagnostics/llm/retry-failed`; batch-table and
+  applicant-profile "AI scoring pending/unavailable" chips.
+- Config: 13 new settings with safe defaults, both `.env.example` files,
+  production ranges + fake-refusal in `validate_settings()`. No hardcoded
+  models. New `llm_governance` collection (bucket/breaker/cache, unique _id,
+  TTL on cache expiry) indexed in code. `deferred` is a status value — no
+  migration. Naive/aware datetime hardening (`as_aware`) after finding the
+  drivers return naive UTC (would have silently disabled all age budgets).
+- Tests: `test_llm_l1.py` 18 (taxonomy, headers, backoff bounds, bucket
+  burst/refill/floor + 10-way concurrency, breaker open/half-open/close,
+  defer/claim/lease, restart survival, borderline 3-way, late-no-restage,
+  cache, blank skip, echo canary across logs + 6 collections, diagnostics +
+  audited retry + 403, sync fast-path ×2, prod config guards, 100-file 50%-
+  429 batch with zero loss/dupe) + 3 JD fake/cache tests + 4 chip tests.
+  Full backend 803 passed, coverage 83.54% (gate 80). Frontend: tsc clean,
+  93/94 vitest (1 failure = parallel JobRules message drift in
+  createJob.test, owned by the concurrent workstream — "positive integer"
+  → "integer between 1 and 1000"), build ok. One full-suite run showed a
+  single load flake in `test_late_llm_never_restages`; immediate full
+  re-run green (803/803).
+- Live 429 note (prior turn): with real creds the free Gemma tier rejected
+  3× instantly; key/slug valid, egress valid, slug exists on OpenRouter.
+  Retry manually or switch to the paid slug (drop `:free`) with credits.
+- L2 note (not built): governance key fingerprint must be truncated HMAC
+  with an app secret — never plain hash, never logged.
+- Next: Phase 7 Full Verification, then L2 — both awaiting "go".
+- Status: separate enhancement tracker ("LLM Resilience", Slices L1/L2). Jobs
+  100% frozen; AI JD Ingestion Phases 0–6 done, Phase 7 still pending and
+  unaffected. The 429 evidence (free-tier Gemma, 3× immediate rejections in
+  live logs) motivates system-level dispatch instead of manual retries.
+- Scope split (verified against code): L1 governs the BACKGROUND worker path
+  (`background_jobs` + `worker.py run_once` + `pipeline.process_resume_file`
+  → scorer): deferral, deterministic-first scoring, stage gating. The SYNC JD
+  path (`POST /api/jobs/parse-jd`, inline retry+sleep) only gains the shared
+  token-bucket + breaker checks (no deferral — HTTP cannot wait hours); its
+  30 s timeout and text-only fallback stay.
+- Collections/indexes (new): `llm_governance` (one doc per provider+model[+key
+  hash]: token-bucket `{tokens, nextRefill}`, breaker `{state, openedAt,
+  consecutiveFailures}`, 429 counters) with unique index on the governance
+  key; all index definitions in `db/mongodb.py` + verified at startup. Reuse:
+  `background_jobs` (`pending` + `runAfter` already claim-gated; `deferred`
+  added as an observable status value, no schema migration), `llm_runs`
+  (+tokens/cost fields, additive), `audit_log` (retry action),
+  `organizations` (L2 settings + Fernet-encrypted key, same mechanism as
+  outbox crypto; never returned, canary-tested).
+- Standards conflicts: none — §1 (diagnostics + retry action permission-gated,
+  existing `require_permission`), §2 (`extra="forbid"` on new schemas), §4
+  (no secrets in logs/errors; key names only), §6 (advisory-only preserved;
+  late-LLM-never-restages + needsReview rule), §8 (timeouts, requestId logs,
+  graceful worker), §9 (audit for overrides/retries). New env vars go in both
+  `.env.example` files + `validate_settings()` ranges (L1: attempts/age/rpm/
+  burst/breaker/wait-seconds; L2: chain order, daily caps).
+- Risks: worker timing changes (deferred scoring delays SHORTLIST visibility
+  — mitigated by deterministic-first + flags); free-tier 429 storms filling
+  the queue (breaker + token bucket bound the blast radius); per-org key
+  handling (Fernet reuse, never-logged); fair-share complexity creep (L2
+  keeps FIFO-per-org + interactive lane only); 100-resume flaky-provider
+  test runtime (fake provider, sleeps patched).
+- Plan: L1 (adapter error taxonomy + defer/release + bucket + breaker +
+  deterministic-first + wait-seconds gate + skips + diagnostics card + env +
+  fake-provider tests) → STOP + report; L2 (chain + per-org keys + fairness +
+  cost/caps + RUNBOOK) → STOP + report.
+- Tracker:
+  ● LLM Resilience — L1 Tier 1 dispatch — DONE (see entry below)
+  ○ L2 Tier 2 groundwork
+- L1 built and verified; STOPPED per plan. Phase 7 and L2 both awaiting "go".

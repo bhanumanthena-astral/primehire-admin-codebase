@@ -133,3 +133,47 @@ async def test_002_terminal_states_not_duplicates(db):
     })
     report = await mod.upgrade(db)
     assert report["activeDuplicates"] == 0
+
+# --- 003_jobs_lifecycle migration ---
+
+async def test_003_migrates_legacy_statuses(db):
+    """Legacy open/filled statuses convert to the lifecycle with honest backfill."""
+    import importlib
+
+    mod = importlib.import_module("migrations.versions.003_jobs_lifecycle")
+    await db["jobs"].insert_one({
+        "jobId": "job-open", "orgId": "default", "jobKey": "OPEN-1",
+        "title": "Open Role", "status": "open", "description": "Backend role with enough characters.",
+    })
+    await db["jobs"].insert_one({
+        "jobId": "job-filled", "orgId": "default", "jobKey": "FILL-1",
+        "title": "Filled Role", "status": "filled", "description": "x" * 60,
+    })
+    report = await mod.upgrade(db)
+    assert report["migrated"] == 2
+
+    opened = await db["jobs"].find_one({"jobId": "job-open"})
+    assert opened["lifecycleStatus"] == "OPEN"
+    assert opened["positionsTotal"] == 1
+    assert opened["positionsFilled"] == 0
+    assert opened["keywords"] == []
+
+    filled = await db["jobs"].find_one({"jobId": "job-filled"})
+    assert filled["lifecycleStatus"] == "CLOSED"
+    assert filled["positionsFilled"] == 1
+
+
+async def test_003_idempotent_and_skips_new_docs(db):
+    """Re-running migrates nothing new; lifecycle docs are skipped."""
+    import importlib
+
+    mod = importlib.import_module("migrations.versions.003_jobs_lifecycle")
+    await db["jobs"].insert_one({
+        "jobId": "job-new", "orgId": "default", "jobKey": "NEW-1",
+        "title": "New", "lifecycleStatus": "DRAFT", "positionsTotal": 3,
+    })
+    first = await mod.upgrade(db)
+    assert first["migrated"] == 0
+    assert first["skipped"] == 1
+    second = await mod.upgrade(db)
+    assert second["migrated"] == 0

@@ -19,10 +19,20 @@ Required variables (`backend/.env`, git-ignored):
 
 ## Run locally
 
+Before starting, confirm the port is free — a stale process on :8000 serving
+an older build causes confusing 405/401 responses through the :3000 dev proxy:
+
 ```powershell
+netstat -ano | findstr ":8000 "
+# Kill any stale PID, then:
 .\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --port 8000
-# GET http://localhost:8000/api/health
+# GET http://localhost:8000/api/health  → check appVersion/gitSha/routeCount
 ```
+
+`/api/health` reports `appVersion`, `gitSha`, and `routeCount`, and startup
+logs them, so you can immediately tell whether you are talking to the build
+you think you are. Always launch with the venv interpreter above, not a
+system `python`.
 
 Without `MONGODB_URI` the API still boots (health reports `"mongo": "not_configured"`).
 With a URI, startup ensures all indexes and health reports `"connected"`/`"unreachable"`.

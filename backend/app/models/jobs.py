@@ -88,11 +88,12 @@ class BackgroundJobRepository:
         return record
 
     async def claim_next(self, kinds: list[str] | None = None, lease_s: int = 300) -> dict[str, Any] | None:
-        """Atomically claim one due job (pending, or running with expired lease)."""
+        """Atomically claim one due job (pending/deferred, or running with expired lease)."""
         now = _utcnow()
         query: dict[str, Any] = {
             "$or": [
                 {"status": "pending", "runAfter": {"$lte": now}},
+                {"status": "deferred", "runAfter": {"$lte": now}},
                 {"status": "running", "leaseUntil": {"$lte": now}},
             ]
         }
@@ -120,6 +121,38 @@ class BackgroundJobRepository:
         if doc:
             doc.pop("_id", None)
         return doc
+
+    async def defer(self, job_id: str, *, run_after: datetime, error: str,
+                  first_deferred_at: datetime | None = None) -> dict[str, Any] | None:
+        """Park a job as `deferred` until run_after and release the worker.
+
+        A plain status value (no migration): deferred jobs are reclaimed by
+        `claim_next` when due, so a worker restart loses nothing. Returns the
+        updated job (without `_id`) or None when missing.
+        """
+        doc = await self.coll.find_one({"jobId": job_id})
+        if not doc:
+            return None
+        now = _utcnow()
+        patch: dict[str, Any] = {
+            "status": "deferred",
+            "runAfter": run_after,
+            "leaseUntil": None,
+            "lastError": error[:500],
+            "updatedAt": now,
+        }
+        if not doc.get("llmDeferredSince") and first_deferred_at is None:
+            patch["llmDeferredSince"] = now
+        elif first_deferred_at is not None and not doc.get("llmDeferredSince"):
+            patch["llmDeferredSince"] = first_deferred_at
+        await self.coll.update_one(
+            {"jobId": job_id},
+            {"$set": patch, "$inc": {"llmAttempts": 1}},
+        )
+        updated = await self.coll.find_one({"jobId": job_id})
+        if updated:
+            updated.pop("_id", None)
+        return updated
 
     async def complete(self, job_id: str, result: dict[str, Any] | None = None) -> None:
         await self.coll.update_one(

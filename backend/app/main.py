@@ -24,11 +24,46 @@ from .db.mongodb import ensure_indexes, get_database
 
 logger = logging.getLogger(__name__)
 
+APP_VERSION = "1.0.0"
+
+
+def _git_sha() -> str:
+    try:
+        import subprocess
+
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                timeout=5,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:  # noqa: BLE001 — version stamp must never block boot
+        return "unknown"
+
+
+GIT_SHA = _git_sha()
+
+
+def route_count() -> int:
+    try:
+        return len(app.routes)
+    except Exception:  # noqa: BLE001
+        return 0
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Fail fast on insecure production config (§2.7). Never caught: boot stops.
     validate_settings()
+    # AI JD ingestion degrades honestly without LLM credentials (names only).
+    if not (settings.openrouter_api_key or "").strip() or not (settings.openrouter_model or "").strip():
+        logger.warning(
+            "OPENROUTER_API_KEY/OPENROUTER_MODEL not set — "
+            "AI extraction will fall back to text-only."
+        )
     # Degraded boot: a bad/unreachable URI must not prevent the app (and
     # /api/health, which reports the mongo state) from serving.
     if not settings.has_mongo:
@@ -76,6 +111,10 @@ async def lifespan(_app: FastAPI):
                 except Exception as fb_exc:
                     logger.warning("Could not initialize local fallback database: %s", fb_exc)
 
+    logger.info(
+        "Startup: %s version=%s gitSha=%s routes=%d",
+        settings.app_name, APP_VERSION, GIT_SHA, route_count(),
+    )
     yield
 
 

@@ -20,7 +20,7 @@ import httpx
 
 from ..config import settings
 from ..models.outbox import EmailOutboxRepository
-from .outbox_crypto import decrypt_body, encrypt_body
+from .outbox_crypto import decrypt_body, encrypt_body, OutboxCryptoError
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,123 @@ async def queue_assessment_invite(
         payload_encrypted=encrypt_body(body),
         dedupe_key=f"assessment_invite:application:{application_id}",
     )
+
+
+async def queue_job_assignment(
+    db: Any,
+    *,
+    org_id: str,
+    job_id: str,
+    job_key: str,
+    job_title: str,
+    to_email: str,
+    to_name: str,
+    assignee_user_id: str,
+) -> dict[str, Any]:
+    """Notify a (re)assigned job owner via the existing outbox channel.
+
+    Same render → encrypt → enqueue pattern as assessment invites, then
+    chain into the EXISTING `email_send` background job so the standard
+    worker delivers through ZeptoMail (outbox → worker → ZeptoMail).
+    No new channel, no new retry logic: delivery, backoff, and dedupe
+    reuse the outbox + background_jobs infrastructure verbatim.
+    Dedupe key covers the (job, assignee) pair so repeats are
+    idempotent. Raises OutboxCryptoError when no encryption key is
+    configured — callers treat notification as best-effort and must not
+    fail the job write.
+    """
+    subject = f"You have been assigned a job — {job_title} ({job_key})"
+    html = (
+        f"<p>Dear {to_name},</p>"
+        f"<p>You have been assigned as the owner of <strong>{job_title}</strong> "
+        f"({job_key}).</p>"
+        f"<p>Please review the requisition and its applications.</p>"
+        f"<p>Good luck,<br>{settings.email_from_name}</p>"
+    )
+    body = json.dumps({"to": to_email, "subject": subject, "html": html})
+    repo = EmailOutboxRepository(db)
+    msg = await repo.enqueue(
+        org_id=org_id,
+        kind="job_assigned",
+        entity_type="job",
+        entity_key=job_id,
+        to_email=to_email,
+        to_name=to_name,
+        subject=subject,
+        payload_encrypted=encrypt_body(body),
+        dedupe_key=f"job_assigned:job:{job_id}:{assignee_user_id}",
+    )
+    # Chain into the existing worker path (same as assessment invites).
+    # The generic `email_send` handler delivers by messageId; with no
+    # applicationId it performs no stage transition — pure delivery.
+    # Best-effort: an enqueue failure here must never fail the job write
+    # (the caller already guards), but log for diagnostics.
+    try:
+        from ..models.jobs import BackgroundJobRepository
+
+        queue = BackgroundJobRepository(db)
+        await queue.enqueue(
+            org_id=org_id,
+            kind="email_send",
+            entity_type="outbox_message",
+            entity_key=str(msg.get("messageId", "")),
+            payload={"messageId": str(msg.get("messageId", "")),
+                      "jobId": job_id},
+            dedupe_key=f"email_send:outbox:{msg.get('messageId', '')}",
+        )
+    except Exception:  # noqa: BLE001 — outbox row already durable; worker sweep covers
+        logger.warning("Job-assignment email_send enqueue failed", exc_info=True)
+    return msg
+
+
+async def queue_job_closed(
+    db: Any,
+    *,
+    org_id: str,
+    job_id: str,
+    job_key: str,
+    job_title: str,
+    to_email: str,
+    to_name: str,
+) -> dict[str, Any]:
+    """Notify the job's owner that the job auto-closed (outbox, idempotent
+    on job_id). Mirrors queue_job_assignment; delivery via the same
+    email_send worker path and EMAIL_DRY_RUN gate."""
+    subject = f"Job closed automatically — {job_title} ({job_key})"
+    html = (
+        f"<p>Dear {to_name},</p>"
+        f"<p>The job <strong>{job_title}</strong> ({job_key}) has been closed "
+        f"automatically because its closing date/time was reached.</p>"
+        f"<p>Good luck,<br>{settings.email_from_name}</p>"
+    )
+    body = json.dumps({"to": to_email, "subject": subject, "html": html})
+    repo = EmailOutboxRepository(db)
+    msg = await repo.enqueue(
+        org_id=org_id,
+        kind="job_closed",
+        entity_type="job",
+        entity_key=job_id,
+        to_email=to_email,
+        to_name=to_name,
+        subject=subject,
+        payload_encrypted=encrypt_body(body),
+        dedupe_key=f"job_closed:job:{job_id}",
+    )
+    try:
+        from ..models.jobs import BackgroundJobRepository
+
+        queue = BackgroundJobRepository(db)
+        await queue.enqueue(
+            org_id=org_id,
+            kind="email_send",
+            entity_type="outbox_message",
+            entity_key=str(msg.get("messageId", "")),
+            payload={"messageId": str(msg.get("messageId", "")), "jobId": job_id},
+            dedupe_key=f"email_send:outbox:{msg.get('messageId', '')}",
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("job_closed email_send enqueue failed", exc_info=True)
+    return msg
 
 
 async def send_via_zepto(to_email: str, to_name: str, subject: str, html_body: str) -> str:

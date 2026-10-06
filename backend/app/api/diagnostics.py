@@ -13,9 +13,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..config import settings
+from ..models.hiring import AuditLogRepository
 from ..models.jobs import BackgroundJobRepository
 from ..models.outbox import EmailOutboxRepository
 from ..security.deps import CurrentUser, get_current_user, require_permission, get_db
+from ..services.llm.resilience import llm_health
 from ..services.outbox_crypto import decrypt_body
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,8 @@ async def get_diagnostics(
         "outbox": await outbox.counts_by_status(current_user.org_id),
         "failedOutbox": failed_outbox,
         "deadJobs": dead_jobs,
+        "llm": await llm_health(db, current_user.org_id),
+        "deferredJobs": await jobs.list_by_org(current_user.org_id, status="deferred", limit=20),
     }
 
 
@@ -103,3 +107,44 @@ async def retry_job(
     if not await repo.requeue(job_id, current_user.org_id):
         raise HTTPException(status_code=404, detail="Only dead/failed jobs can be retried.")
     return {"jobId": job_id, "status": "pending"}
+
+
+#: Job kinds owned by LLM dispatch (resume scoring + late-LLM completion).
+LLM_JOB_KINDS = ("resume_process", "llm_complete")
+
+#: Per-call cap so one retry action cannot flood the queue.
+LLM_RETRY_CAP = 50
+
+
+@router.post("/diagnostics/llm/retry-failed")
+async def retry_failed_llm_jobs(
+    current_user: CurrentUser = Depends(require_permission("audit.view")),
+    db: Any = Depends(get_db),
+) -> dict[str, Any]:
+    """Requeue dead LLM jobs (up to the cap) for another attempt.
+
+    Permission-gated and audit-logged. Rate-limited by the per-call cap;
+    repeat the call for larger backlogs.
+    """
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    repo = BackgroundJobRepository(db)
+    dead = await repo.list_by_org(current_user.org_id, status="dead", limit=200)
+    retried = 0
+    for job in dead:
+        if retried >= LLM_RETRY_CAP:
+            break
+        if job.get("kind") not in LLM_JOB_KINDS:
+            continue
+        if await repo.requeue(str(job.get("jobId", "")), current_user.org_id):
+            retried += 1
+    audit = AuditLogRepository(db)
+    await audit.log(
+        org_id=current_user.org_id,
+        actor_user_id=current_user.user_id,
+        action="llm.retry_failed",
+        resource_type="llm_jobs",
+        resource_id="-",
+        details={"retried": retried, "cap": LLM_RETRY_CAP},
+    )
+    return {"retried": retried, "cap": LLM_RETRY_CAP}

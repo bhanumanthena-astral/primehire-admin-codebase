@@ -24,7 +24,16 @@ async def health() -> dict[str, object]:
             mongo = "connected" if await ping(db) else "unreachable"
         except Exception:  # noqa: BLE001 — health must not raise
             mongo = "unreachable"
-    return {"status": "ok", "app": settings.app_name, "mongo": mongo}
+    from ..main import APP_VERSION, GIT_SHA, route_count
+
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "mongo": mongo,
+        "appVersion": APP_VERSION,
+        "gitSha": GIT_SHA,
+        "routeCount": route_count(),
+    }
 
 
 def _storage_writable() -> bool:

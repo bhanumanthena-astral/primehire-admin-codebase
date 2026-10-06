@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, job_payload, ensure_user
 from tests.test_resumes_api import make_docx_bytes, _drain
 
 
@@ -78,9 +78,9 @@ VARIANTS = {
 
 @pytest.mark.parametrize("variant", sorted(VARIANTS))
 async def test_variant_stage_and_score_unaffected(client, mock_db, variant):
-    res = client.post("/api/jobs", json={
-        "jobKey": f"INJ-{variant}", "title": "Backend",
-        "mustHaveSkills": ["Python", "SQL"]}, headers=_hr())
+    res = client.post("/api/jobs", json=job_payload(
+        f"INJ-{variant}", "Backend", ensure_user(client, auth_headers(role="super_admin")),
+        mustHaveSkills=["Python", "SQL"]), headers=_hr())
     assert res.status_code == 201
     evil = [l for l in BASE]
     display = variant.replace("_", " ").title().replace(" ", "")
@@ -104,7 +104,7 @@ async def test_variant_stage_and_score_unaffected(client, mock_db, variant):
                             parsed={"skills": ["Python", "SQL", "AWS"], "languages": ["Python"],
                                     "technologies": ["SQL", "AWS"], "experienceYears": 5.0},
                             job={"mustHaveSkills": ["Python", "SQL"], "niceToHaveSkills": [],
-                                 "minExperienceYears": None, "maxExperienceYears": None})
+                                 "minExperienceYears": 2, "maxExperienceYears": 5})
     assert bd["keyword"] == twin_kw["score"]
     # …final never boosted by the injection (LLM skipped)…
     assert bd["llm"] is None and bd["final"] == bd["keyword"]

@@ -42,6 +42,7 @@ class OrgSettingsUpdate(BaseModel):
     autoSendAssessment: bool | None = None
     scoring: dict[str, Any] | None = None
     reminderLeadMinutes: int | None = Field(default=None, ge=5, le=120)
+    timezone: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/applications/send-assessments")
@@ -130,6 +131,14 @@ async def update_org_settings(
         updates["settings.scoring"] = {"keywordWeight": kw, "llmWeight": lw}
     if payload.reminderLeadMinutes is not None:
         updates["settings.reminderLeadMinutes"] = payload.reminderLeadMinutes
+    if payload.timezone is not None:
+        from ..schemas.organization import validate_timezone
+
+        try:
+            validate_timezone(payload.timezone)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        updates["settings.timezone"] = payload.timezone
     if not updates:
         raise HTTPException(status_code=400, detail="Nothing to update.")
     await repo.update_by_org_id(current_user.org_id, updates)

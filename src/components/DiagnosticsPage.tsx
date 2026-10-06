@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Diagnostics, fetchDiagnostics, retryJob, retryOutboxMessage } from '../lib/hiringApi';
+import { Diagnostics, fetchDiagnostics, retryFailedLlmJobs, retryJob, retryOutboxMessage } from '../lib/hiringApi';
 import { EmptyNote, Pill, SectionHeader } from './ui/primitives';
 import DryRunBanner from './DryRunBanner';
 
@@ -41,6 +41,19 @@ export default function DiagnosticsPage() {
     }
   }
 
+  async function onRetryFailedLlm() {
+    try {
+      const r = await retryFailedLlmJobs();
+      setError(null);
+      await load();
+      if (r.retried === 0) {
+        setError('No dead LLM jobs to retry.');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Retry failed.');
+    }
+  }
+
   return (
     <div className="space-y-4" aria-label="Diagnostics">
       <SectionHeader
@@ -71,6 +84,46 @@ export default function DiagnosticsPage() {
                 </button>
               </div>
             ))}
+          </div>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold">LLM health</h3>
+              <button onClick={() => void onRetryFailedLlm()} className="ml-auto text-xs text-sky-600 hover:underline">
+                Retry failed LLM jobs
+              </button>
+            </div>
+            {!data.llm && <EmptyNote>No LLM activity recorded yet.</EmptyNote>}
+            {data.llm && (
+              <div className="rounded-xl border px-3 py-2 text-sm" aria-label="LLM health card">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Pill tone={data.llm.breaker.state === 'closed' ? 'success' : 'warning'}>
+                    breaker {data.llm.breaker.state}
+                  </Pill>
+                  <span className="font-mono text-xs">{data.llm.providerModel}</span>
+                  <span className="text-xs opacity-70">
+                    bucket {data.llm.bucket.tokens}/{data.llm.bucket.capacity} @ {data.llm.bucket.rpm}/min
+                  </span>
+                  <span className="text-xs opacity-70">queued {data.llm.queuedJobs}</span>
+                  {data.llm.oldestWaitingSeconds != null && (
+                    <span className="text-xs opacity-70">
+                      oldest waiting {Math.round(data.llm.oldestWaitingSeconds)}s
+                    </span>
+                  )}
+                  <span className="text-xs opacity-70">429s last hour: {data.llm.rateLimitedLastHour}</span>
+                </div>
+                {data.llm.lastError ? (
+                  <p className="mt-1 text-xs text-red-500">
+                    last error: {data.llm.lastError.error} · {data.llm.lastError.promptVersion} ·{' '}
+                    {data.llm.lastError.latencyMs}ms
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs opacity-60">no recent LLM errors</p>
+                )}
+                {data.llm.fakeProvider !== 'off' && (
+                  <p className="mt-1 text-xs text-amber-600">fake provider active: {data.llm.fakeProvider} (dev only)</p>
+                )}
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">Dead jobs ({data.deadJobs.length})</h3>

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, job_payload, ensure_user
 from tests.test_resumes_api import make_docx_bytes, make_pdf_bytes, _drain
 
 
@@ -63,11 +63,11 @@ WEAK = [
 
 
 def _job(client, key="S-JOB", musts=None, threshold=60):
-    res = client.post("/api/jobs", json={
-        "jobKey": key, "title": "Backend Dev",
-        "mustHaveSkills": musts if musts is not None else ["Python", "SQL"],
-        "matchThreshold": threshold,
-    }, headers=_hr())
+    res = client.post("/api/jobs", json=job_payload(
+        key, "Backend Dev", ensure_user(client, auth_headers(role="super_admin")),
+        mustHaveSkills=musts if musts is not None else ["Python", "SQL"],
+        matchThreshold=threshold,
+    ), headers=_hr())
     assert res.status_code == 201, res.text
     return res.json()
 

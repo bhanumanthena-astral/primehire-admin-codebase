@@ -1,6 +1,10 @@
 """List APIs for assessments/candidates (Phase 3C read cutover).
 
 Paginated reads over MongoDB. No PrimeHire calls, no writes.
+
+Reads are gated on ``applications.view_all`` (held by every role) so
+interviewer portals can list their assigned work. Write operations live
+on their own routers with write permissions.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from ..models.assessment import AssessmentRepository
 from ..models.candidate import CandidateRepository
 from ..security.deps import require_permission
 
-router = APIRouter(dependencies=[Depends(require_permission("resumes.upload"))])
+router = APIRouter(dependencies=[Depends(require_permission("applications.view_all"))])
 
 
 def _db() -> Any:

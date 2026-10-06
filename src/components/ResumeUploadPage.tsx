@@ -202,6 +202,12 @@ export default function ResumeUploadPage() {
                     <td className="px-2 py-1">
                       <Pill tone={statusTone(f.status)}>{f.status}</Pill>
                       {f.error && <span className="ml-1 text-xs opacity-70">{f.error}</span>}
+                      {f.llmStatus === 'pending' && (
+                        <span className="ml-1"><Pill tone="warning">AI scoring pending</Pill></span>
+                      )}
+                      {(f.llmStatus === 'failed' || f.llmStatus === 'skipped') && f.status === 'parsed' && (
+                        <span className="ml-1"><Pill tone="neutral">AI unavailable — deterministic score used</Pill></span>
+                      )}
                     </td>
                     <td className="px-2 py-1">{f.parsedJson?.name || '—'}</td>
                     <td className="px-2 py-1">{f.parsedJson?.email || '—'}</td>

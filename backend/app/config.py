@@ -52,6 +52,31 @@ class Settings(BaseSettings):
     # Max concurrent LLM calls (free-tier rate-limit guard). Slice B enforces.
     llm_concurrency: int = 2
 
+    # --- LLM resilience Tier 1 (dispatch hardening; all have safe defaults) ---
+    # Background LLM retries: attempts cap + total age cap before the
+    # deterministic fallback wins (visible flag, never silent).
+    llm_job_max_attempts: int = 12
+    llm_job_max_age_hours: int = 6
+    # Stage decisions wait this long for a deferred LLM before deciding on
+    # the deterministic score (a late LLM then only annotates / needsReview).
+    llm_wait_seconds: int = 120
+    # Shared token bucket per provider+model (Mongo-atomic take; interactive
+    # calls keep a reserved share so bulk batches can't starve them).
+    llm_rpm: int = 30
+    llm_burst: int = 5
+    llm_interactive_reserve: float = 0.25
+    # Circuit breaker per provider+model (consecutive 429/5xx → open).
+    llm_breaker_threshold: int = 5
+    llm_breaker_cooldown_s: int = 300
+    # Borderline band around the job threshold: without a usable LLM score,
+    # candidates inside ±margin go to needsReview instead of auto-pool.
+    llm_borderline_margin: int = 10
+    # Dev-only fake provider for 429 drills ("off" | "mixed" | "down").
+    # REFUSED in production (startup failure).
+    llm_fake_provider: str = "off"
+    llm_fake_failure_rate: float = 0.5
+    llm_fake_retry_after_s: int = 5
+
     # Fernet key (base64 urlsafe 32 bytes) encrypting email_outbox bodies.
     # REQUIRED in production. Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     outbox_encryption_key: str = ""
@@ -71,6 +96,9 @@ class Settings(BaseSettings):
     # Completion-sync sweep knobs (Slice C).
     assessment_sync_batch: int = 20
     assessment_sync_interval_s: int = 300
+
+    # Automatic job closure sweep in the background worker (Slice V1).
+    jobs_auto_close_interval_s: int = 60
 
     # Upload caps (§3). Enforced pre-read via Content-Length + streaming cap.
     upload_max_mb: int = 5
@@ -175,6 +203,29 @@ def validate_settings(candidate: Settings | None = None) -> None:
         problems.append("UPLOAD_BATCH_MAX must be between 1 and 50 in production")
     if target.llm_concurrency < 1 or target.llm_concurrency > 8:
         problems.append("LLM_CONCURRENCY must be between 1 and 8 in production")
+    if target.llm_fake_provider.strip().lower() != "off":
+        problems.append("LLM_FAKE_PROVIDER must be 'off' in production")
+    for var, value, lo, hi in (
+        ("LLM_JOB_MAX_ATTEMPTS", target.llm_job_max_attempts, 1, 100),
+        ("LLM_JOB_MAX_AGE_HOURS", target.llm_job_max_age_hours, 1, 72),
+        ("LLM_WAIT_SECONDS", target.llm_wait_seconds, 10, 3600),
+        ("LLM_RPM", target.llm_rpm, 1, 1000),
+        ("LLM_BURST", target.llm_burst, 1, 100),
+        ("LLM_BREAKER_THRESHOLD", target.llm_breaker_threshold, 2, 50),
+        ("LLM_BREAKER_COOLDOWN_S", target.llm_breaker_cooldown_s, 30, 3600),
+        ("LLM_BORDERLINE_MARGIN", target.llm_borderline_margin, 0, 50),
+        ("LLM_FAKE_RETRY_AFTER_S", target.llm_fake_retry_after_s, 0, 300),
+    ):
+        try:
+            ok = lo <= float(value) <= hi
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            problems.append(f"{var} must be between {lo} and {hi} in production")
+    if not 0.0 <= float(target.llm_interactive_reserve or 0) <= 0.9:
+        problems.append("LLM_INTERACTIVE_RESERVE must be between 0 and 0.9 in production")
+    if not 0.0 <= float(target.llm_fake_failure_rate or 0) <= 1.0:
+        problems.append("LLM_FAKE_FAILURE_RATE must be between 0 and 1 in production")
     if target.retention_days < 30:
         problems.append("RETENTION_DAYS must be at least 30 in production")
     if problems:

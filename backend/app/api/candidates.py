@@ -27,7 +27,14 @@ from ..security.deps import require_permission
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(dependencies=[Depends(require_permission("resumes.upload"))])
+# Write operations require the upload permission; the single-candidate
+# read is open to every role holding ``applications.view_all`` (all
+# roles, including both interviewer roles) so assigned-candidate views
+# work outside HR/admin.
+router = APIRouter()
+
+_WRITE = require_permission("resumes.upload")
+_READ = require_permission("applications.view_all")
 
 
 def _db() -> Any:
@@ -40,7 +47,8 @@ def _service(db: Any = Depends(_db)) -> CandidateService:
     return CandidateService(db)
 
 
-@router.post("/candidates/bulk", status_code=status.HTTP_201_CREATED)
+@router.post("/candidates/bulk", status_code=status.HTTP_201_CREATED,
+               dependencies=[Depends(_WRITE)])
 async def create_candidates_bulk(
     body: CandidatesBulkIn, service: CandidateService = Depends(_service)
 ) -> dict[str, Any]:
@@ -54,7 +62,7 @@ async def create_candidates_bulk(
             "created": len(created), "failed": len(errors)}
 
 
-@router.get("/candidates/{candidate_key}")
+@router.get("/candidates/{candidate_key}", dependencies=[Depends(_READ)])
 async def get_candidate(
     candidate_key: str, service: CandidateService = Depends(_service)
 ) -> dict[str, Any]:
@@ -69,7 +77,8 @@ async def get_candidate(
         raise HTTPException(status_code=500, detail="Candidate lookup failed.") from None
 
 
-@router.post("/candidates", status_code=status.HTTP_201_CREATED)
+@router.post("/candidates", status_code=status.HTTP_201_CREATED,
+               dependencies=[Depends(_WRITE)])
 async def create_candidate(
     body: CandidateIn, service: CandidateService = Depends(_service)
 ) -> dict[str, Any]:
@@ -86,7 +95,7 @@ async def create_candidate(
         raise HTTPException(status_code=500, detail="Candidate creation failed.") from None
 
 
-@router.put("/candidates/{candidate_key}")
+@router.put("/candidates/{candidate_key}", dependencies=[Depends(_WRITE)])
 async def update_candidate(
     candidate_key: str, body: CandidateUpdate,
     service: CandidateService = Depends(_service),
@@ -109,7 +118,7 @@ async def update_candidate(
         raise HTTPException(status_code=500, detail="Candidate update failed.") from None
 
 
-@router.delete("/candidates/{candidate_key}")
+@router.delete("/candidates/{candidate_key}", dependencies=[Depends(_WRITE)])
 async def delete_candidate(
     candidate_key: str, service: CandidateService = Depends(_service)
 ) -> dict[str, Any]:

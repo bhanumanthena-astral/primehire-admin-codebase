@@ -4,9 +4,24 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import re
 import uuid
 
 from ..schemas.hiring import Stage, JobStatus, ApplicationStatus
+
+#: Transition shim: pre-lifecycle `status` query values map onto the
+#: JobLifecycle. Removed once all clients send lifecycle values.
+LEGACY_STATUS_TO_LIFECYCLE = {
+    "open": "OPEN",
+    "on_hold": "ON_HOLD",
+    "closed": "CLOSED",
+    "filled": "CLOSED",
+    "OPEN": "OPEN",
+    "ON_HOLD": "ON_HOLD",
+    "CLOSED": "CLOSED",
+    "ARCHIVED": "ARCHIVED",
+    "DRAFT": "DRAFT",
+}
 
 
 def utcnow() -> datetime:
@@ -116,7 +131,8 @@ class JobRepository:
     ) -> list[dict[str, Any]]:
         query: dict[str, Any] = {"orgId": org_id}
         if status:
-            query["status"] = status
+            mapped = LEGACY_STATUS_TO_LIFECYCLE.get(status, status)
+            query["$or"] = [{"lifecycleStatus": mapped}, {"lifecycleStatus": {"$exists": False}, "status": status}]
         cursor = self.coll.find(query).sort("createdAt", -1).skip(skip).limit(limit)
         docs = []
         async for d in cursor:
@@ -127,8 +143,115 @@ class JobRepository:
     async def count_by_org(self, org_id: str, status: str | None = None) -> int:
         query: dict[str, Any] = {"orgId": org_id}
         if status:
-            query["status"] = status
+            mapped = LEGACY_STATUS_TO_LIFECYCLE.get(status, status)
+            query["$or"] = [{"lifecycleStatus": mapped}, {"lifecycleStatus": {"$exists": False}, "status": status}]
         return await self.coll.count_documents(query)
+
+    #: Allowlisted sort keys for the Jobs list (PRD §15-16).
+    SORT_FIELDS = frozenset({"createdAt", "openedAt", "closesAt", "title", "companyName"})
+
+    def _search_query(
+        self,
+        org_id: str,
+        *,
+        status: str | None = None,
+        q: str | None = None,
+        company: str | None = None,
+        department: str | None = None,
+        assignee: str | None = None,
+        experience: float | None = None,
+        work_mode: str | None = None,
+        opened_from: datetime | None = None,
+        opened_to: datetime | None = None,
+        closes_from: datetime | None = None,
+        closes_to: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Build the ANDed Jobs-list filter (PRD §15 search + §16 filters).
+
+        Text matches are case-insensitive substrings (covers exact, partial,
+        starts-with and contains). `experience` keeps jobs whose band covers
+        the given years; docs without a band are excluded when it is set.
+        """
+        query: dict[str, Any] = {"orgId": org_id}
+        if status:
+            mapped = LEGACY_STATUS_TO_LIFECYCLE.get(status, status)
+            query["$or"] = [{"lifecycleStatus": mapped}, {"lifecycleStatus": {"$exists": False}, "status": status}]
+        if q and q.strip():
+            rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+            query["$and"] = query.get("$and", [])
+            query["$and"].append({"$or": [
+                {"jobKey": rx}, {"jobId": rx}, {"title": rx}, {"jobRole": rx},
+                {"companyName": rx}, {"assigneeEmail": rx}, {"assigneeUserId": rx},
+            ]})
+        if company and company.strip():
+            query["companyName"] = {"$regex": re.escape(company.strip()), "$options": "i"}
+        if department and department.strip():
+            query["department"] = {"$regex": re.escape(department.strip()), "$options": "i"}
+        if assignee and assignee.strip():
+            rx = {"$regex": re.escape(assignee.strip()), "$options": "i"}
+            query["$and"] = query.get("$and", [])
+            query["$and"].append({"$or": [{"assigneeUserId": rx}, {"assigneeEmail": rx}]})
+        if experience is not None:
+            query["minExperienceYears"] = {"$lte": experience}
+            query["maxExperienceYears"] = {"$gte": experience}
+        if work_mode:
+            query["workMode"] = work_mode
+        if opened_from is not None or opened_to is not None:
+            band: dict[str, Any] = {}
+            if opened_from is not None:
+                band["$gte"] = opened_from
+            if opened_to is not None:
+                band["$lte"] = opened_to
+            query["openedAt"] = band
+        if closes_from is not None or closes_to is not None:
+            band = {}
+            if closes_from is not None:
+                band["$gte"] = closes_from
+            if closes_to is not None:
+                band["$lte"] = closes_to
+            query["closesAt"] = band
+        return query
+
+    async def search(
+        self,
+        org_id: str,
+        *,
+        status: str | None = None,
+        q: str | None = None,
+        company: str | None = None,
+        department: str | None = None,
+        assignee: str | None = None,
+        experience: float | None = None,
+        work_mode: str | None = None,
+        opened_from: datetime | None = None,
+        opened_to: datetime | None = None,
+        closes_from: datetime | None = None,
+        closes_to: datetime | None = None,
+        sort: str = "createdAt",
+        order: str = "desc",
+        skip: int = 0,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        query = self._search_query(
+            org_id, status=status, q=q, company=company, department=department,
+            assignee=assignee, experience=experience, work_mode=work_mode,
+            opened_from=opened_from, opened_to=opened_to,
+            closes_from=closes_from, closes_to=closes_to,
+        )
+        direction = -1 if order == "desc" else 1
+        cursor = self.coll.find(query).sort(sort, direction).skip(skip).limit(limit)
+        docs = []
+        async for d in cursor:
+            d.pop("_id", None)
+            docs.append(d)
+        return docs
+
+    async def count_search(self, org_id: str, **filters: Any) -> int:
+        return await self.coll.count_documents(self._search_query(org_id, **filters))
+
+    async def list_ids(self, org_id: str, limit: int = 1000) -> list[str]:
+        cursor = self.coll.find({"orgId": org_id}, {"jobId": 1}).limit(limit)
+        return [str(d.get("jobId")) async for d in cursor if d.get("jobId")]
 
 
 class ApplicantRepository:
@@ -401,11 +524,13 @@ class AuditLogRepository:
         return record
 
     async def list_by_org(
-        self, org_id: str, resource_type: str | None = None, skip: int = 0, limit: int = 50
+        self, org_id: str, resource_type: str | None = None, resource_id: str | None = None, skip: int = 0, limit: int = 50
     ) -> list[dict[str, Any]]:
         query: dict[str, Any] = {"orgId": org_id}
         if resource_type:
             query["resourceType"] = resource_type
+        if resource_id:
+            query["resourceId"] = resource_id
         cursor = self.coll.find(query).sort("createdAt", -1).skip(skip).limit(limit)
         docs = []
         async for d in cursor:

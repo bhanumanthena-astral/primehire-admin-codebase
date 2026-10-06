@@ -170,6 +170,9 @@ export default function ApplicantProfilePage({
                 </h4>
                 <p className="text-xs">Keyword: <strong>{b.keyword ?? '—'}</strong> · LLM: <strong>{b.llm ?? '—'}</strong>
                   {b.llmUnavailable && ' (unavailable — deterministic only)'} · Final: <strong>{b.final ?? a.matchScore ?? '—'}</strong></p>
+                {b.llmStatus === 'pending' && (
+                  <p className="mt-1"><Pill tone="warning">AI scoring pending</Pill></p>
+                )}
                 <p className="text-xs opacity-70">
                   Weights {b.weights ? `${Math.round((b.weights.keyword || 0.7) * 100)}/${Math.round((b.weights.llm || 0.3) * 100)}` : '70/30'} ·
                   threshold {b.threshold ?? 60}

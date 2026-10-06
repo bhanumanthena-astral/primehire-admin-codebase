@@ -39,6 +39,16 @@ INJECTION_PATTERNS = [
     re.compile(r"rate\s+(me\s+)?as\s+hired", re.IGNORECASE),
     re.compile(r"jailbreak", re.IGNORECASE),
     re.compile(r"override\s+the\s+hiring\s+decision", re.IGNORECASE),
+    # JD-ingestion additions (Phase 6): tool/database/priority attacks hidden
+    # in responsibilities/requirements sections. Kept tight to avoid flagging
+    # legitimate prose ("maintain records" does NOT match — only destructive
+    # verbs with data nouns do). A match means "human review", never action.
+    re.compile(r"call\s+(a\s+|this\s+|the\s+)?(tool|function|api)\b", re.IGNORECASE),
+    re.compile(r"(delete|drop|remove|wipe)\s+(\S+\s+){0,6}?(database|records|all\s+data\b)", re.IGNORECASE),
+    re.compile(r"(reveal|disclose|return|send)\s+(\S+\s+){0,6}?(api\s*key|secret|password|credential)", re.IGNORECASE),
+    re.compile(r"(highest|higher)\s+priority.*(instruction|schema|prompt)", re.IGNORECASE),
+    re.compile(r"override\s+(all\s+|these\s+|the\s+)?(instructions|safeguards|schema)", re.IGNORECASE),
+    re.compile(r"ignore\s+(this|the)\s+schema", re.IGNORECASE),
     # Best-effort cross-language equivalents of "ignore the instructions".
     re.compile(r"ignora\s+las\s+instrucciones", re.IGNORECASE),  # es
     re.compile(r"puntaje\s+perfecto", re.IGNORECASE),  # es

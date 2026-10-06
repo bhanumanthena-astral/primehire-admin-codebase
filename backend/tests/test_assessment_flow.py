@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, job_payload, ensure_user
 
 
 @pytest.fixture(autouse=True)
@@ -140,7 +140,8 @@ async def _drain(mock_db, limit=50):
 
 def _make_shortlisted(client, key="A-JOB", email="cand.a@example.com", assessment="UP-A-1"):
     job = client.post("/api/jobs", json={
-        "jobKey": key, "title": "Backend", "mustHaveSkills": ["Python"],
+        **job_payload(key, "Backend", ensure_user(client, _sa())),
+        "mustHaveSkills": ["Python"],
         "assessmentJobId": assessment}, headers=_hr()).json()
     applicant = client.post("/api/applicants", json={"email": email, "name": "Cand A"},
                             headers=_hr()).json()
@@ -167,7 +168,7 @@ async def test_dry_run_records_without_sending(client, mock_db):
     assert res.json()["items"][0]["result"] == "accepted"
     await _drain(mock_db)
     assert CALLS["interview"] == 1 and CALLS["zepto"] == 0
-    msgs = await _outbox(mock_db)()
+    msgs = [m for m in await _outbox(mock_db)() if m.get("kind") == "assessment_invite"]
     assert len(msgs) == 1
     assert msgs[0]["status"] == "sent" and msgs[0]["sentVia"] == "dry_run"
     assert msgs[0]["payloadEncrypted"]  # dry-run keeps the record for inspection
@@ -175,7 +176,7 @@ async def test_dry_run_records_without_sending(client, mock_db):
     assert prof["currentStage"] == "SHORTLISTED"  # dry-run never moves the stage
     # Diagnostics shows it as recorded-not-sent, bodies excluded from lists.
     diag = client.get("/api/diagnostics", headers=_sa()).json()
-    assert diag["dryRun"] is True and diag["outbox"].get("sent") == 1
+    assert diag["dryRun"] is True and diag["outbox"].get("sent", 0) >= 1
     single = client.get(f"/api/diagnostics/outbox/{msgs[0]['messageId']}", headers=_sa()).json()
     assert CANARY in (single["body"] or "")  # dry-run record inspectable by admin
 
@@ -190,7 +191,7 @@ async def test_real_send_wipes_body_and_moves_stage(client, mock_db, monkeypatch
                 json={"applicationIds": [app_doc["applicationId"]]}, headers=_hr())
     await _drain(mock_db)
     assert CALLS["interview"] == 1 and CALLS["zepto"] == 1
-    msgs = await _outbox(mock_db)()
+    msgs = [m for m in await _outbox(mock_db)() if m.get("kind") == "assessment_invite"]
     assert msgs[0]["status"] == "sent" and msgs[0]["sentVia"] == "zepto"
     assert msgs[0]["payloadEncrypted"] is None and msgs[0]["wiped"] is True
     prof = client.get(f"/api/applications/{app_doc['applicationId']}", headers=_hr()).json()
@@ -222,7 +223,7 @@ async def test_allowlist_refuses_off_list(client, mock_db, monkeypatch):
                 json={"applicationIds": [app_doc["applicationId"]]}, headers=_hr())
     await _drain(mock_db)
     assert CALLS["zepto"] == 0
-    msgs = await _outbox(mock_db)()
+    msgs = [m for m in await _outbox(mock_db)() if m.get("kind") == "assessment_invite"]
     assert msgs[0]["status"] == "failed" and "allowlist" in (msgs[0]["lastError"] or "")
     prof = client.get(f"/api/applications/{app_doc['applicationId']}", headers=_hr()).json()
     assert prof["currentStage"] == "SHORTLISTED"
@@ -242,7 +243,7 @@ async def test_double_click_sends_once(client, mock_db, monkeypatch):
     await _drain(mock_db)
     assert CALLS["interview"] == 1
     assert CALLS["zepto"] == 1
-    assert len(await _outbox(mock_db)()) == 1
+    assert len([m for m in await _outbox(mock_db)() if m.get("kind") == "assessment_invite"]) == 1
 
 
 # ---- Crash recovery: killed after upstream success resumes via duplicate ----
@@ -274,7 +275,8 @@ async def test_bulk_per_item_results(client, mock_db):
         "applicantId": client.post("/api/applicants", json={"email": "b2@example.com", "name": "B2"},
                                    headers=_hr()).json()["applicantId"],
         "initialStage": "TALENT_POOL"}, headers=_hr()).json()
-    no_assess_job = client.post("/api/jobs", json={"jobKey": "B-NA", "title": "No Assess"},
+    no_assess_job = client.post("/api/jobs", json=job_payload("B-NA", "No Assess",
+                                ensure_user(client, _sa())),
                                 headers=_hr()).json()
     no_assess_app = client.post("/api/applications", json={
         "jobId": no_assess_job["jobId"],
@@ -379,7 +381,7 @@ async def test_autosend_default_off_opt_in_sends(client, mock_db, monkeypatch):
 
     assert await seed_default_org(mock_db) is True
     monkeypatch.setattr(settings, "email_dry_run", True)
-    client.post("/api/jobs", json={"jobKey": "AS-JOB", "title": "Auto",
+    client.post("/api/jobs", json={**job_payload("AS-JOB", "Auto", ensure_user(client, _sa())),
                                    "mustHaveSkills": ["Python"],
                                    "assessmentJobId": "UP-AS-1"}, headers=_hr())
     lines = ["Auto Cand", "auto.cand@example.com", "+919444444444",

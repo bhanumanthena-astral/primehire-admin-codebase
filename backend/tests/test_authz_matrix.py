@@ -65,6 +65,7 @@ AUTHZ_MATRIX = [
 
     # --- Users management ---
     ("GET", "/api/users", ["super_admin", "admin"], ["hr", "technical_interviewer", "managerial_interviewer"]),
+    ("GET", "/api/users/directory", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     # Admin has users.manage, so admin CAN create users (except assigning super_admin role, enforced separately).
     ("POST", "/api/users", ["super_admin", "admin"], ["hr", "technical_interviewer", "managerial_interviewer"]),
 
@@ -74,6 +75,23 @@ AUTHZ_MATRIX = [
     ("POST", "/api/jobs", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("GET", "/api/jobs", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("GET", f"/api/jobs/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    # --- Job lifecycle (PRD Jobs module; same role split as the job reads) ---
+    ("GET", f"/api/jobs/{_SAMPLE_UUID}/detail", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("GET", f"/api/jobs/{_SAMPLE_UUID}/activity", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("GET", f"/api/jobs/{_SAMPLE_UUID}/notifications", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/close", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/reopen", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/archive", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("DELETE", f"/api/jobs/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("PUT", f"/api/jobs/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", "/api/jobs/check-duplicate", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", "/api/admin/jobs/auto-close", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    # --- Job listing extras (same role split as the job reads/writes) ---
+    ("GET", "/api/jobs/application-counts", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/assign", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    # --- JD template + parse (PRD Jobs §9-§11; job-creation flow) ---
+    ("GET", "/api/jobs/jd-template", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", "/api/jobs/parse-jd", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
 
     # --- Applicants ---
     ("POST", "/api/applicants", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
@@ -110,10 +128,18 @@ AUTHZ_MATRIX = [
     ("GET", f"/api/resumes/batches/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("GET", f"/api/resumes/files/{_SAMPLE_UUID}/download", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
 
-    # --- Reports & Directory (existing endpoints, require auth via router-level dependency) ---
+    # --- Reports & Directory (reads open to every authenticated role
+    # via the applications.view_all router-level dependency) ---
     ("GET", f"/api/reports/{_SAMPLE_UUID}", "ANY_AUTHED", []),
     ("GET", "/api/assessments", "ANY_AUTHED", []),
     ("GET", "/api/candidates", "ANY_AUTHED", []),
+
+    # --- Candidate write API (reads view_all; writes resumes.upload) ---
+    ("GET", f"/api/candidates/{_SAMPLE_UUID}", "ANY_AUTHED", []),
+    ("POST", "/api/candidates", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", "/api/candidates/bulk", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("PUT", f"/api/candidates/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("DELETE", f"/api/candidates/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
 ]
 
 
@@ -141,6 +167,8 @@ def _minimal_body(method: str, path: str) -> dict | None:
         return {"jobId": _SAMPLE_UUID, "applicantId": _SAMPLE_UUID}
     if "/users" in path:
         return {"email": "authz-user@x.com", "name": "Test", "role": "hr"}
+    if path.endswith("/assign"):
+        return {"email": "assignee@x.com"}
     return {}
 
 
@@ -202,4 +230,75 @@ def test_allowed_role_passes_guard(client, method, path, role):
     res = getattr(client, method.lower())(path, headers=headers, **kwargs)
     assert res.status_code not in (401, 403), (
         f"{method} {path} as {role}: got {res.status_code}, expected auth to pass"
+    )
+
+
+# ---- Test: ANY_AUTHED rows really are open to every role ----
+# Regression guard: rows marked ANY_AUTHED must pass the guard for ALL
+# roles (a router-level write permission here silently 403s interviewers
+# while the matrix claims the read is open to everyone).
+
+_ALL_ROLES = ["super_admin", "admin", "hr", "technical_interviewer", "managerial_interviewer"]
+
+_ANY_AUTHED_ROWS = [
+    (m, p, role)
+    for m, p, allowed, _ in AUTHZ_MATRIX
+    if allowed == "ANY_AUTHED"
+    for role in _ALL_ROLES
+]
+
+
+# ---- Slice 12: token edge cases + authorization-vs-validation ordering ----
+
+
+def test_missing_token_rejected(client):
+    res = client.get("/api/jobs")
+    assert res.status_code in (401, 403)
+
+
+def test_invalid_token_rejected(client):
+    res = client.get("/api/jobs", headers={"Authorization": "Bearer not-a-real-token"})
+    assert res.status_code in (401, 403)
+
+
+def test_transition_requires_permission_on_existing_application(client):
+    """Interviewer must get 403 on a REAL application; the 404-before-403
+    ordering for a missing resource only applies to nonexistent ids."""
+    import uuid as _uuid
+    sa = auth_headers(role="super_admin")
+    uid = _create_user(client, sa, _uuid.uuid4().hex[:8])
+    job = client.post("/api/jobs", json=_job_payload(uid), headers=sa).json()
+    applicant = client.post("/api/applicants", json={"email": f"{_uuid.uuid4().hex[:6]}@x.com", "name": "A"}, headers=sa).json()
+    appl = client.post("/api/applications", json={"jobId": job["jobId"], "applicantId": applicant["applicantId"]}, headers=sa).json()
+    res = client.post(f"/api/applications/{appl['applicationId']}/transition", json={"toStage": "PARSED", "reason": "x"}, headers=auth_headers(role="technical_interviewer"))
+    assert res.status_code == 403
+    res2 = client.post(f"/api/applications/{appl['applicationId']}/transition", json={"toStage": "PARSED", "reason": "x"}, headers=auth_headers(role="hr"))
+    assert res2.status_code != 403
+
+
+def _create_user(client, sa_headers, suffix):
+    res = client.post("/api/users", json={"email": f"u-{suffix}@x.com", "name": "U", "role": "hr"}, headers=sa_headers)
+    return res.json()["user"]["userId"]
+
+
+def _job_payload(uid):
+    import uuid as _uuid
+    return {
+        "jobKey": f"T-{_uuid.uuid4().hex[:6]}",
+        "title": "RBAC Review", "companyName": "Elite HR", "jobRole": "Backend Engineer", "department": "Engineering",
+        "minExperienceYears": 1, "maxExperienceYears": 3, "positionsTotal": 1,
+        "closesAt": "2027-12-31T00:00:00Z", "assigneeUserId": uid,
+        "jdHtml": "<p>" + "x"*60 + "</p>",
+    }
+
+
+@pytest.mark.parametrize("method,path,role", _ANY_AUTHED_ROWS, ids=[f"{m} {p} [{r}]" for m, p, r in _ANY_AUTHED_ROWS])
+def test_any_authed_row_open_to_every_role(client, method, path, role):
+    """ANY_AUTHED rows must NOT 401/403 for any role (regression: directory reads)."""
+    body = _minimal_body(method, path)
+    kwargs = {"json": body} if body else {}
+    headers = auth_headers(role=role)
+    res = getattr(client, method.lower())(path, headers=headers, **kwargs)
+    assert res.status_code not in (401, 403), (
+        f"{method} {path} as {role}: got {res.status_code}, expected open to all authed roles"
     )

@@ -23,7 +23,7 @@ from .assessment_flow import (
     handle_assessment_sync,
 )
 from .email_send import process_email_job
-from .pipeline import process_resume_file
+from .pipeline import process_llm_followup, process_resume_file
 from .transitions import TransitionError, transition_application
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,16 @@ Handler = Callable[[Any, dict[str, Any]], Awaitable[dict[str, Any]]]
 
 async def _handle_resume_process(db: Any, job: dict[str, Any]) -> dict[str, Any]:
     payload = job.get("payload") or {}
-    return await process_resume_file(db, org_id=job["orgId"], file_id=payload.get("fileId", ""))
+    return await process_resume_file(db, org_id=job["orgId"], file_id=payload.get("fileId", ""),
+                                     worker_job=job)
+
+
+async def _handle_llm_complete(db: Any, job: dict[str, Any]) -> dict[str, Any]:
+    payload = job.get("payload") or {}
+    return await process_llm_followup(db, org_id=job["orgId"],
+                                      file_id=str(payload.get("fileId", "")),
+                                      application_id=str(payload.get("applicationId", "")),
+                                      worker_job=job)
 
 
 async def _handle_assessment_send(db: Any, job: dict[str, Any]) -> dict[str, Any]:
@@ -75,6 +84,7 @@ async def _handle_assessment_sync(db: Any, job: dict[str, Any]) -> dict[str, Any
 
 HANDLERS: dict[str, Handler] = {
     "resume_process": _handle_resume_process,
+    "llm_complete": _handle_llm_complete,
     "assessment_send": _handle_assessment_send,
     "email_send": _handle_email_send,
     "assessment_sync": _handle_assessment_sync,
@@ -97,6 +107,12 @@ async def run_once(db: Any, kinds: list[str] | None = None) -> dict[str, Any] | 
         logger.exception("Job %s failed", job["jobId"])
         status = await repo.fail(job["jobId"], f"{type(exc).__name__}", retryable=True)
         return {"jobId": job["jobId"], "status": status, "error": type(exc).__name__}
+    if isinstance(result, dict) and result.get("deferred"):
+        # The handler parked the job with repo.defer(): do NOT complete it.
+        # Deferred jobs are reclaimed by claim_next when due — including
+        # after a worker restart — so nothing is lost or duplicated.
+        return {"jobId": job["jobId"], "status": "deferred",
+                "runAfter": result.get("run_after"), "error": result.get("error")}
     await repo.complete(job["jobId"], result)
     return {"jobId": job["jobId"], "status": "done", "result": result}
 
@@ -122,6 +138,7 @@ async def run_forever(db: Any, poll_seconds: int = 5) -> None:
     import time as _time
 
     last_sweep = 0.0
+    last_auto_close = 0.0
     while not stop.is_set():
         outcome = await run_once(db)
         if outcome is None:
@@ -138,4 +155,14 @@ async def run_forever(db: Any, poll_seconds: int = 5) -> None:
                     logger.info("Sync sweep enqueued %d applications.", swept)
             except Exception:  # noqa: BLE001 — sweep must not kill the worker
                 logger.exception("Sync sweep failed")
+        if now - last_auto_close >= max(10, _settings.jobs_auto_close_interval_s):
+            last_auto_close = now
+            try:
+                from .auto_close import auto_close_due_jobs
+
+                result = await auto_close_due_jobs(db)
+                if result.get("closed"):
+                    logger.info("Auto-close sweep closed %d job(s).", result["closed"])
+            except Exception:  # noqa: BLE001 — sweep must not kill the worker
+                logger.exception("Auto-close sweep failed")
     logger.info("Worker stopped.")

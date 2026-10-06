@@ -109,3 +109,26 @@ async def test_update_and_delete_user(client, mock_db):
     # Target is gone
     get_res = client.get(f"/api/users/{target['userId']}", headers=super_headers)
     assert get_res.status_code == 404
+
+@pytest.mark.asyncio
+async def test_user_directory_lists_only_active_for_job_creators(client, mock_db):
+    """GET /api/users/directory: jobs.manage roles see active users; interviewers 403."""
+    _, sa = await _make_user_and_token(mock_db, email="super@example.com")
+    repo = UserRepository(mock_db)
+    await repo.create({
+        "email": "hr@example.com", "name": "HR", "role": "hr", "orgId": "org-1",
+        "passwordHash": hash_password("ValidPassword123!"), "isActive": True,
+    })
+    await repo.create({
+        "email": "gone@example.com", "name": "Gone", "role": "hr", "orgId": "org-1",
+        "passwordHash": hash_password("ValidPassword123!"), "isActive": False,
+    })
+    res = client.get("/api/users/directory", headers=sa)
+    assert res.status_code == 200
+    emails = [u["email"] for u in res.json()]
+    assert "hr@example.com" in emails
+    assert "gone@example.com" not in emails
+
+    _, iv = await _make_user_and_token(mock_db, role="technical_interviewer",
+                                       email="iv@example.com")
+    assert client.get("/api/users/directory", headers=iv).status_code == 403

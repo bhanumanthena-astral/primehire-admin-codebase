@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { fetchAssessments, fetchCandidates, updateCandidate } from './lib/mongoApi';
+import { fetchAssessments, fetchCandidates, updateCandidate, ApiError } from './lib/mongoApi';
 
 const MODULE_TABS = [
   { id: 'dashboard', label: 'Overview', short: 'Overview', icon: LayoutDashboard },
@@ -70,6 +70,20 @@ function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [openApplicantId, setOpenApplicantId] = useState<string | null>(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  // Deep link from Job Details ("View candidate"): opens the existing
+  // applicant-profile tab without creating a parallel navigation flow.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const applicantId = (e as CustomEvent<{ applicantId?: string }>).detail?.applicantId;
+      if (applicantId) {
+        setOpenApplicantId(applicantId);
+        setActiveTab('applicant');
+      }
+    };
+    window.addEventListener('elite:open-applicant', handler);
+    return () => window.removeEventListener('elite:open-applicant', handler);
+  }, []);
 
   const canManageUsers = user?.role === 'super_admin' || user?.role === 'admin';
   const availableTabs = [
@@ -163,6 +177,9 @@ function AdminDashboard() {
   // Phase 3C read cutover: true when the API read failed and the UI is
   // showing localStorage fallback (or empty state in a fresh profile).
   const [apiDown, setApiDown] = useState(false);
+  // Distinct from apiDown: the server IS reachable but this role is not
+  // allowed to read the directory (HTTP 403). Never misreported as offline.
+  const [accessDenied, setAccessDenied] = useState(false);
 
   // Preferred source of truth: FastAPI + MongoDB. localStorage stays as the
   // temporary fallback (existing hydrate above) until the write cutover.
@@ -190,14 +207,22 @@ function AdminDashboard() {
         handleSetAssessments(mergedAsms);
         handleSetCandidates(mergedCands);
         setApiDown(false);
+        setAccessDenied(false);
         console.info(`[DataSource] assessments: mongodb (${asms.length})`);
         console.info(`[DataSource] candidates: mongodb (${cands.length})`);
       } catch (err) {
         if (cancelled) return;
-        setApiDown(true);
-        console.warn('[DataSource] assessments: localStorage-fallback (FastAPI unreachable)');
-        console.warn('[DataSource] candidates: localStorage-fallback (FastAPI unreachable)', err);
-        toast.error('Server unreachable — showing locally cached data.');
+        if (err instanceof ApiError && err.status === 403) {
+          setAccessDenied(true);
+          setApiDown(false);
+          console.warn('[DataSource] directory read forbidden for this role — showing locally cached data.');
+        } else {
+          setApiDown(true);
+          setAccessDenied(false);
+          console.warn('[DataSource] assessments: localStorage-fallback (FastAPI unreachable)');
+          console.warn('[DataSource] candidates: localStorage-fallback (FastAPI unreachable)', err);
+          toast.error('Server unreachable — showing locally cached data.');
+        }
       }
     })();
     return () => {
@@ -502,6 +527,13 @@ function AdminDashboard() {
           <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6" role="alert">
             <div className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning-soft)] px-4 py-2 text-xs font-semibold text-[var(--warning)]">
               Server unreachable — showing locally cached data. Changes may not sync until the connection is restored.
+            </div>
+          </div>
+        )}
+        {accessDenied && (
+          <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6" role="alert">
+            <div className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-semibold text-muted-foreground shadow-[var(--shadow-card)]">
+              Limited access — your role isn&rsquo;t permitted to load some directory data. Showing locally cached data; contact your admin if this looks wrong.
             </div>
           </div>
         )}

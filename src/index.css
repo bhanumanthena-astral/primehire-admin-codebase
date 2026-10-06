@@ -331,6 +331,53 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent);
   }
 
+  /* ── Elite HR rich-text editor ── */
+  .ehr-richtext {
+    min-height: 180px;
+    padding: 12px 14px;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--foreground);
+  }
+  .ehr-richtext:focus {
+    outline: none;
+  }
+  .ehr-richtext p {
+    margin: 0 0 0.6em;
+  }
+  .ehr-richtext h1 {
+    font-size: 20px;
+    font-weight: 800;
+    margin: 0.4em 0 0.4em;
+  }
+  .ehr-richtext h2 {
+    font-size: 16px;
+    font-weight: 800;
+    margin: 0.4em 0 0.4em;
+  }
+  .ehr-richtext ul,
+  .ehr-richtext ol {
+    padding-left: 1.4em;
+    margin: 0 0 0.6em;
+  }
+  .ehr-richtext blockquote {
+    border-left: 3px solid var(--ring);
+    padding-left: 0.8em;
+    margin: 0 0 0.6em;
+    color: var(--muted-foreground);
+  }
+  .ehr-richtext a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .ehr-richtext code {
+    background: var(--muted);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: 12.5px;
+  }
+
   /* ── hand-drawn brand line ── */
   .ehr-squiggle {
     fill: none;

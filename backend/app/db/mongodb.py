@@ -127,7 +127,11 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
     ],
     "jobs": [
         ([("orgId", 1), ("jobKey", 1)], {"unique": True, "name": "uniq_org_jobKey"}),
-        ([("orgId", 1), ("status", 1)], {"name": "by_orgId_status"}),
+        ([("orgId", 1), ("lifecycleStatus", 1)], {"name": "by_org_lifecycle"}),
+        ([("orgId", 1), ("assigneeUserId", 1)], {"name": "by_org_assignee"}),
+        ([("orgId", 1), ("companyName", 1)], {"name": "by_org_company"}),
+        ([("orgId", 1), ("department", 1)], {"name": "by_org_department"}),
+        ([("closesAt", 1)], {"name": "by_closesAt"}),
     ],
     "applicants": [
         ([(  "applicantId", 1)], {"unique": True, "name": "uniq_applicantId"}),
@@ -184,11 +188,22 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
     "llm_runs": [
         ([("orgId", 1), ("createdAt", -1)], {"name": "by_org_created"}),
     ],
+    # --- LLM resilience Tier 1: shared governance state ---
+    # One collection for token buckets, circuit breakers (both keyed
+    # bucket:/breaker:{provider}:{model} via the document _id, unique by
+    # default) and result-cache entries (cache:{prompt}:{hash}). Cache docs
+    # carry expiresAt and are reaped by the TTL index; bucket/breaker docs
+    # have no expiresAt field and are therefore never TTL-deleted.
+    "llm_governance": [
+        ([("expiresAt", 1)], {"expireAfterSeconds": 0, "name": "ttl_cache"}),
+    ],
 }
 
 # Old indexes that must be retired — best-effort drop on startup.
 LEGACY_INDEXES: dict[str, tuple[str, ...]] = {
     "candidates": ("uniq_interviewId", "uniq_responseId"),
+    # Pre-lifecycle job status index (replaced by by_org_lifecycle):
+    "jobs": ("by_orgId_status",),
     # Pre-org-scoping global indexes:
     "assessments": ("uniq_jobId", "by_isActive"),
     "templates": ("uniq_templateId", "by_type"),

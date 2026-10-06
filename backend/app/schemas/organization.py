@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def validate_timezone(name: str) -> str:
+    """Reject unknown IANA names at the boundary (422 on bad input)."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        ZoneInfo(name)
+    except Exception:
+        raise ValueError(f"Unknown timezone: {name}")
+    return name
 
 
 class OrgSettings(BaseModel):
@@ -16,6 +27,12 @@ class OrgSettings(BaseModel):
     llm_model: str = Field(default="")
     email_from: str = Field(default="noreply@nxtagent.ai")
     reminder_lead_minutes: int = Field(default=15, ge=1)
+    timezone: str = Field(default="UTC", max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone_valid(cls, v: str) -> str:
+        return validate_timezone(v)
 
 
 class OrganizationCreate(BaseModel):

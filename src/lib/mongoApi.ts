@@ -20,10 +20,20 @@ export function isApiConfigured(): boolean {
   return API_BASE.length > 0;
 }
 
+/** Typed API failure so callers can tell "forbidden" apart from "unreachable". */
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await authFetch(`${API_BASE}${path}`);
   if (!res.ok) {
-    throw new Error(await apiErrorMessage(res, `GET ${path}`));
+    throw new ApiError(res.status, await apiErrorMessage(res, `GET ${path}`));
   }
   return res.json() as Promise<T>;
 }
@@ -54,7 +64,7 @@ async function sendJson<T>(method: string, path: string, body?: unknown): Promis
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(await apiErrorMessage(res, `${method} ${path}`));
+    throw new ApiError(res.status, await apiErrorMessage(res, `${method} ${path}`));
   }
   return res.json() as Promise<T>;
 }

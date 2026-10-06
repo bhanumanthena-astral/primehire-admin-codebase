@@ -107,6 +107,24 @@ async def create_user(
     }
 
 
+@router.get("/directory", response_model=list[UserPublic])
+async def list_user_directory(
+    current_user: CurrentUser = Depends(require_permission("jobs.manage")),
+    db: Any = Depends(get_db),
+) -> list[UserPublic]:
+    """Minimal ACTIVE-user directory for job assignee selection (PRD §21).
+
+    Declared before /{user_id} so "directory" is never parsed as an id.
+    Only active users are listed; the assign endpoints re-validate anyway.
+    """
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    repo = UserRepository(db)
+    docs = await repo.list_by_org(current_user.org_id, skip=0, limit=500)
+    return [UserPublic(**to_public_user(d)) for d in docs if d.get("isActive", True)]
+
+
 @router.get("/{user_id}", response_model=UserPublic)
 async def get_user(
     user_id: str,

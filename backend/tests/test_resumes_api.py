@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, job_payload, ensure_user
 
 
 @pytest.fixture(autouse=True)
@@ -101,8 +101,9 @@ RESUME_LINES = [
 
 
 def _make_job(client, key="JOB-A"):
-    res = client.post("/api/jobs", json={"jobKey": key, "title": "Backend Dev",
-                                         "mustHaveSkills": ["Python", "SQL"]}, headers=_hr())
+    res = client.post("/api/jobs", json=job_payload(
+        key, "Backend Dev", ensure_user(client, auth_headers(role="super_admin")),
+        mustHaveSkills=["Python", "SQL"]), headers=_hr())
     assert res.status_code == 201
     return res.json()
 
@@ -168,7 +169,7 @@ async def test_happy_path_docx_and_pdf(client, mock_db):
     assert detail.status_code == 200
     body = detail.json()
     assert body["batch"]["status"] == "done"
-    assert body["batch"]["counts"] == {"total": 2, "parsed": 2, "failed": 0, "quarantined": 0}
+    assert body["batch"]["counts"] == {"total": 2, "parsed": 2, "failed": 0, "quarantined": 0, "pendingAI": 0}
     assert body["batch"]["consent"]["given"] is True
     for f in body["files"]:
         assert f["status"] == "parsed"

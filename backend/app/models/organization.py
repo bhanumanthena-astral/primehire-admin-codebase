@@ -24,6 +24,9 @@ def default_settings() -> dict[str, Any]:
         "reminderLeadMinutes": 15,
         # Human-gated bulk send is the norm; auto-send on SHORTLISTED only
         # when an admin explicitly opts in (audited).
+        # Zero-config fallback preserves the documented interim behavior;
+        # super_admin sets the org's real IANA timezone via PUT /api/org/settings.
+        "timezone": "UTC",
         "autoSendAssessment": False,
         # Score combination weights (normalized on read). Slice B default 70/30.
         "scoring": {"keywordWeight": 0.7, "llmWeight": 0.3},

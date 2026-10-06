@@ -16,7 +16,7 @@ from ..db.mongodb import get_database
 from ..models.report import ReportRepository
 from ..security.deps import require_permission
 
-router = APIRouter(dependencies=[Depends(require_permission("resumes.upload"))])
+router = APIRouter(dependencies=[Depends(require_permission("reviews.read_all"))])
 
 _MOCK_PREFIX = "int-"
 
