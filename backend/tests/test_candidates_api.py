@@ -202,7 +202,12 @@ def test_identifier_indexes_are_partial_not_sparse():
         keys, kwargs = specs[name]
         assert kwargs["unique"] is True
         assert "sparse" not in kwargs
-        assert kwargs["partialFilterExpression"][keys[0][0]]["$type"] == "string"
+        expr = kwargs["partialFilterExpression"][keys[0][0]]
+        assert expr["$type"] == "string"
+        # Regression: $ne is rejected by real Atlas (CannotCreateIndex 67).
+        # Only server-supported operators may appear here.
+        assert "$ne" not in expr and "$not" not in expr
+        assert set(expr) <= {"$type", "$gt", "$gte", "$lt", "$lte", "$eq", "$exists"}
 
 
 async def test_ensure_indexes_drops_legacy_sparse():

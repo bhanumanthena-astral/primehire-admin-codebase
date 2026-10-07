@@ -180,7 +180,12 @@ class AssessmentRepository:
         self, job_id: str, expected_version: int, changes: dict[str, Any]
     ) -> dict[str, Any]:
         """Atomic version-checked $set. Stale writes raise AssessmentConflict
-        carrying the current document (HTTP 409)."""
+        carrying the current document (HTTP 409).
+
+        Legacy documents (saved before Slice 2A, no version field) adopt
+        versioning on first write: expected version 1 is accepted once and
+        the document moves to version 2.
+        """
         safe = dict(changes)
         safe["updatedAt"] = utcnow()
         result = await self._col.update_one(
@@ -191,6 +196,21 @@ class AssessmentRepository:
             current = await self._col.find_one({"jobId": job_id})
             if current is None:
                 raise KeyError(job_id)
+            if "version" not in current and expected_version == 1:
+                safe["version"] = 2
+                adopted = await self._col.update_one(
+                    {"jobId": job_id, "version": {"$exists": False}},
+                    {"$set": safe},
+                )
+                if adopted.matched_count == 1:
+                    doc = await self._col.find_one({"jobId": job_id})
+                    assert doc is not None
+                    return to_public(doc)
+                current = await self._col.find_one({"jobId": job_id})
+                raise AssessmentConflict(
+                    "This was changed by someone else, reload to see the latest version.",
+                    current=to_public(current) if current else None,
+                )
             raise AssessmentConflict(
                 "This was changed by someone else, reload to see the latest version.",
                 current=to_public(current),

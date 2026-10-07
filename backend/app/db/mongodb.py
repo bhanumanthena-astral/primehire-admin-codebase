@@ -59,17 +59,20 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
         # any number of pre-link candidates may coexist. The previous sparse
         # unique indexes indexed explicit nulls and raised E11000 on the
         # second insert — see LEGACY_CANDIDATE_INDEXES migration below.
+        # NOTE: partialFilterExpression supports only a subset of operators
+        # ($ne is rejected by real Atlas with CannotCreateIndex). $type +
+        # $gt:"" covers "non-empty string" with supported operators only.
         ([("primehire.interviewId", 1)], {
             "unique": True,
             "partialFilterExpression": {
-                "primehire.interviewId": {"$type": "string", "$ne": ""}
+                "primehire.interviewId": {"$type": "string", "$gt": ""}
             },
             "name": "uniq_interviewId_v2",
         }),
         ([("primehire.responseId", 1)], {
             "unique": True,
             "partialFilterExpression": {
-                "primehire.responseId": {"$type": "string", "$ne": ""}
+                "primehire.responseId": {"$type": "string", "$gt": ""}
             },
             "name": "uniq_responseId_v2",
         }),

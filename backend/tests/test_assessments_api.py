@@ -333,6 +333,22 @@ def test_route_retry_endpoint():
         _teardown()
 
 
+async def test_legacy_doc_without_version_adopts_on_first_write(db):
+    """Pre-2A documents (no version/syncState) load, edit and toggle."""
+    await db["assessments"].insert_one({
+        "jobId": "JOB-LEGACY", "jobTitle": "Old", "jobDescription": "d",
+        "language": "ENGLISH", "roundType": "TECHNICAL",
+        "questions": [], "isActive": True,
+    })
+    svc = AssessmentService(db, fetch=_ok_fetch)
+    current = await svc.get_by_job_id("JOB-LEGACY")
+    assert "version" not in current  # legacy shape loads fine
+    updated = await svc.patch("JOB-LEGACY", {"version": 1, "jobTitle": "Old v2"})
+    assert updated["version"] == 2 and updated["jobTitle"] == "Old v2"
+    toggled = await svc.set_active("JOB-LEGACY", False, updated["version"])
+    assert toggled["isActive"] is False and toggled["version"] == 3
+
+
 async def test_find_duplicates_dry_run(db):
     await db["assessments"].insert_many([
         {"jobId": "JOB-D", "roundType": "TECHNICAL"},
