@@ -17,7 +17,20 @@ from ..services import migration_service
 router = APIRouter()
 
 
+from ..auth import require_admin_auth
+
+
 def require_migration_secret(request: Request) -> None:
+    # 1. Check admin auth first (Cloudflare Access JWT or Admin API Key)
+    try:
+        if settings.cloudflare_access_aud or settings.admin_api_key or settings.disable_auth:
+            admin_claims = require_admin_auth(request)
+            if admin_claims.get("role") == "admin":
+                return
+    except HTTPException:
+        pass
+
+    # 2. Check legacy migration secret if configured
     if not settings.migration_secret:
         raise HTTPException(status_code=403, detail="Migration endpoint is disabled")
     provided = request.headers.get("x-migration-secret", "")

@@ -17,6 +17,26 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // In-memory rate limiting and allowlist rules
+  const PROXY_ROUTE_ALLOWLIST = [
+    { method: 'POST', pattern: /^\/assessment\/?$/ },
+    { method: 'GET', pattern: /^\/assessment\/[a-zA-Z0-9_\-]+\/?$/ },
+    { method: 'POST', pattern: /^\/interview\/?$/ },
+    { method: 'PUT', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/reschedule\/?$/ },
+    { method: 'GET', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/status\/?$/ },
+    { method: 'GET', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/report\/?$/ },
+    { method: 'POST', pattern: /^\/response\/[a-zA-Z0-9_\-]+\/generate-report\/?$/ },
+    { method: 'GET', pattern: /^\/response\/report-not-generated\/?$/ },
+    { method: 'PUT', pattern: /^\/candidate\/[a-zA-Z0-9_\-]+\/password\/?$/ },
+  ];
+
+  function isProxyRouteAllowed(method: string, path: string): boolean {
+    const normPath = path.startsWith('/') ? path : `/${path}`;
+    return PROXY_ROUTE_ALLOWLIST.some(
+      r => r.method === method.toUpperCase() && r.pattern.test(normPath)
+    );
+  }
+
   // Proxy to ZeptoMail
   app.post("/api/send-email", async (req, res) => {
     const { toEmail, toName, subject, htmlBody } = req.body;
@@ -25,6 +45,21 @@ async function startServer() {
     if (!apiKey) {
       console.error("[Email Proxy Error] ZeptoMail API key is missing in environment variables.");
       return res.status(500).json({ error: "ZeptoMail API key is missing on the server." });
+    }
+
+    if (!toEmail || !subject || !htmlBody) {
+      return res.status(400).json({ error: "Missing required fields: toEmail, subject, htmlBody" });
+    }
+
+    // Anti-open-relay protections
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(toEmail)) {
+      return res.status(400).json({ error: "Invalid recipient email address format" });
+    }
+
+    const allowedSubjectPattern = /primehire|assessment|interview|invitation|reminder|evaluation|credentials/i;
+    if (!allowedSubjectPattern.test(subject)) {
+      return res.status(403).json({ error: "Subject does not match permitted recruiting communications template" });
     }
 
     try {
@@ -72,6 +107,17 @@ async function startServer() {
     const prefix = req.path.startsWith("/api/backend") ? "/api/backend" : "/api/primehire";
     const subpath = req.path.substring(prefix.length);
     const queryString = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
+
+    // Route & method allowlist guard
+    if (!isProxyRouteAllowed(req.method, subpath)) {
+      console.warn(`[Proxy Guard] Blocked unauthorized route/method: ${req.method} ${subpath}`);
+      return res.status(403).json({
+        error: "Forbidden: Endpoint or HTTP method not permitted on PrimeHire proxy allowlist",
+        path: subpath,
+        method: req.method,
+      });
+    }
+
     const backendBase = (process.env.BACKEND_URL || "https://api.placement.vils.ai/primehire/api/v1").replace(/\/+$/, "");
     const targetUrl = `${backendBase}${subpath}${queryString}`;
 

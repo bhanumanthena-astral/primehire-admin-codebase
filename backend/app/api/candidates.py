@@ -23,9 +23,11 @@ from ..services.candidate_service import (
     CandidateService,
 )
 
+from ..auth import require_admin_auth
+
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_auth)])
 
 
 def _db() -> Any:

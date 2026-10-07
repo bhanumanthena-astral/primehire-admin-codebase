@@ -11,11 +11,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ..auth import require_admin_auth
 from ..config import settings
 from ..db.mongodb import get_database
 from ..models.report import ReportRepository
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_auth)])
 
 _MOCK_PREFIX = "int-"
 

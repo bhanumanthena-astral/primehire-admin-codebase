@@ -54,6 +54,20 @@ function jsonResponse(body: unknown, status: number, origin: string | null): Res
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+const ipEmailRateLimits = new Map<string, { count: number; resetAt: number }>();
+
+function checkEmailRateLimit(ip: string, maxReqs = 10, windowMs = 60000): boolean {
+  const now = Date.now();
+  const entry = ipEmailRateLimits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipEmailRateLimits.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxReqs) return false;
+  entry.count++;
+  return true;
+}
+
 export async function onRequest(context: EmailContext): Promise<Response> {
   const { request, env } = context;
   const corsOrigin = resolveAllowedOrigin(request, env);
@@ -61,13 +75,19 @@ export async function onRequest(context: EmailContext): Promise<Response> {
   if (request.method === 'OPTIONS') {
     const headers = corsHeaders(corsOrigin);
     headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    headers.set('Access-Control-Allow-Headers', 'Content-Type');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cf-Access-Jwt-Assertion');
     headers.set('Access-Control-Max-Age', '86400');
     return new Response(null, { status: 204, headers });
   }
 
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed', status: 405 }, 405, corsOrigin);
+  }
+
+  // Rate Limiting (10 req/min per IP)
+  const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'default';
+  if (!checkEmailRateLimit(clientIp, 10, 60000)) {
+    return jsonResponse({ error: 'Too many email dispatch requests. Please wait a minute before retrying.', status: 429 }, 429, corsOrigin);
   }
 
   const apiKey = (env.ZEPTOMAIL_API_KEY || '').trim();
@@ -88,6 +108,23 @@ export async function onRequest(context: EmailContext): Promise<Response> {
     return jsonResponse(
       { error: 'Missing required fields: toEmail, subject, htmlBody', status: 400 },
       400,
+      corsOrigin
+    );
+  }
+
+  // Anti-open-relay protections:
+  // 1. Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(toEmail)) {
+    return jsonResponse({ error: 'Invalid recipient email address format', status: 400 }, 400, corsOrigin);
+  }
+
+  // 2. Validate subject matches legitimate candidate assessment communication
+  const allowedSubjectPattern = /primehire|assessment|interview|invitation|reminder|evaluation|credentials/i;
+  if (!allowedSubjectPattern.test(subject)) {
+    return jsonResponse(
+      { error: 'Subject does not match permitted recruiting communications template', status: 403 },
+      403,
       corsOrigin
     );
   }

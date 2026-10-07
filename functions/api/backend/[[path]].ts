@@ -32,6 +32,44 @@ const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD';
 const ALLOWED_HEADERS = 'Content-Type, Authorization, X-Requested-With, Accept';
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+interface AllowedRoute {
+  method: string;
+  pattern: RegExp;
+}
+
+const PROXY_ROUTE_ALLOWLIST: AllowedRoute[] = [
+  { method: 'POST', pattern: /^\/assessment\/?$/ },
+  { method: 'GET', pattern: /^\/assessment\/[a-zA-Z0-9_\-]+\/?$/ },
+  { method: 'POST', pattern: /^\/interview\/?$/ },
+  { method: 'PUT', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/reschedule\/?$/ },
+  { method: 'GET', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/status\/?$/ },
+  { method: 'GET', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/report\/?$/ },
+  { method: 'POST', pattern: /^\/response\/[a-zA-Z0-9_\-]+\/generate-report\/?$/ },
+  { method: 'GET', pattern: /^\/response\/report-not-generated\/?$/ },
+  { method: 'PUT', pattern: /^\/candidate\/[a-zA-Z0-9_\-]+\/password\/?$/ },
+];
+
+function isProxyRouteAllowed(method: string, path: string): boolean {
+  const normPath = path.startsWith('/') ? path : `/${path}`;
+  return PROXY_ROUTE_ALLOWLIST.some(
+    r => r.method === method.toUpperCase() && r.pattern.test(normPath)
+  );
+}
+
+const ipProxyRateLimits = new Map<string, { count: number; resetAt: number }>();
+
+function checkProxyRateLimit(ip: string, maxReqs = 60, windowMs = 60000): boolean {
+  const now = Date.now();
+  const entry = ipProxyRateLimits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipProxyRateLimits.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxReqs) return false;
+  entry.count++;
+  return true;
+}
+
 /**
  * Decide which Origin (if any) gets CORS headers.
  * - Same-origin requests are always allowed.
@@ -81,6 +119,12 @@ export async function onRequest(context: ProxyContext): Promise<Response> {
     return new Response(null, { status: 204, headers });
   }
 
+  // ---- Client Rate Limiting (60 req/min per IP) ----
+  const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'default';
+  if (!checkProxyRateLimit(clientIp, 60, 60000)) {
+    return jsonResponse({ error: 'Too many requests to backend proxy. Rate limit exceeded.', status: 429 }, 429, corsOrigin);
+  }
+
   // ---- Resolve the fixed destination (SSRF-safe: base is env-controlled) ----
   const rawParam = context.params.path;
   const segments = rawParam === undefined ? [] : Array.isArray(rawParam) ? rawParam : [rawParam];
@@ -95,9 +139,27 @@ export async function onRequest(context: ProxyContext): Promise<Response> {
       return jsonResponse({ error: 'Invalid path', status: 400 }, 400, corsOrigin);
     }
   }
+
+  const suffix = segments.join('/');
+  const normalizedPath = `/${suffix.replace(/^\/+/, '')}`;
+
+  // ---- Strict Route & Method Allowlist ----
+  if (!isProxyRouteAllowed(request.method, normalizedPath)) {
+    console.warn(`[Proxy Guard] Blocked unauthorized route/method: ${request.method} ${normalizedPath}`);
+    return jsonResponse(
+      {
+        error: 'Forbidden: Endpoint or HTTP method not permitted on PrimeHire proxy allowlist',
+        status: 403,
+        path: normalizedPath,
+        method: request.method,
+      },
+      403,
+      corsOrigin
+    );
+  }
+
   const base = (env.BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '');
   const query = new URL(request.url).search;
-  const suffix = segments.join('/');
   const targetUrl = suffix ? `${base}/${suffix}${query}` : `${base}${query}`;
 
   // ---- Server-side credentials (never exposed to the browser) ----

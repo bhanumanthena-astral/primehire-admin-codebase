@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     # NEVER put this in React, NEVER log it.
     migration_secret: str = ""
 
+    # Cloudflare Access Zero Trust settings
+    cloudflare_access_team_domain: str = ""
+    cloudflare_access_aud: str = ""
+
+    # Admin Bearer key fallback / internal service token
+    admin_api_key: str = ""
+
+    # Auth bypass for local tests / development
+    disable_auth: bool = False
+
     @property
     def has_mongo(self) -> bool:
         return bool(self.mongodb_uri.strip())

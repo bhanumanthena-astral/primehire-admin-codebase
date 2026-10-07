@@ -46,8 +46,10 @@ async def ping(db: Any) -> bool:
 # startup and tests share one definition.
 INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
     "assessments": [
-        ([("jobId", 1)], {"unique": True, "name": "uniq_jobId"}),
+        ([("jobId", 1), ("roundType", 1)], {"unique": True, "name": "uniq_jobId_roundType"}),
         ([("isActive", 1)], {"name": "by_isActive"}),
+        ([("roundType", 1)], {"name": "by_roundType"}),
+        ([("updatedAt", -1)], {"name": "by_updatedAt"}),
     ],
     "candidates": [
         ([("assessmentId", 1)], {"name": "by_assessmentId"}),
@@ -91,6 +93,10 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
 # raised E11000. Dropped best-effort on startup (missing = already migrated).
 LEGACY_CANDIDATE_INDEXES = ("uniq_interviewId", "uniq_responseId")
 
+# Retired by uniq_jobId_roundType (Slice 2A): jobId alone is no longer the
+# uniqueness scope — (jobId, roundType) is. Dropped best-effort on startup.
+LEGACY_ASSESSMENT_INDEXES = ("uniq_jobId",)
+
 
 async def ensure_indexes(db: Any) -> dict[str, list[str]]:
     """Create all indexes (idempotent). Returns {collection: [index names]}."""
@@ -103,8 +109,51 @@ async def ensure_indexes(db: Any) -> dict[str, list[str]]:
                     logger.info("Dropped legacy candidates index %s", legacy)
                 except Exception as exc:  # noqa: BLE001 — absent = migrated
                     logger.debug("Legacy index %s not dropped (%s)", legacy, type(exc).__name__)
+        if collection == "assessments":
+            for legacy in LEGACY_ASSESSMENT_INDEXES:
+                try:
+                    await db[collection].drop_index(legacy)
+                    logger.info("Dropped legacy assessments index %s", legacy)
+                except Exception as exc:  # noqa: BLE001 — absent = migrated
+                    logger.debug("Legacy index %s not dropped (%s)", legacy, type(exc).__name__)
         names: list[str] = []
         for keys, kwargs in specs:
-            names.append(await db[collection].create_index(keys, **kwargs))
+            try:
+                names.append(await db[collection].create_index(keys, **kwargs))
+            except Exception as exc:  # noqa: BLE001 — duplicates block unique builds
+                logger.warning(
+                    "Index build failed on %s (%s): %s. "
+                    "Run find_assessment_duplicates / candidate duplicate check (dry run) "
+                    "and resolve before retrying.",
+                    collection, kwargs.get("name"), type(exc).__name__,
+                )
+                raise
         created[collection] = names
     return created
+
+
+async def ensure_idempotency_indexes(db: Any) -> list[str]:
+    """TTL index for the idempotency_keys collection (24h expiry).
+
+    Kept separate from INDEXES so the core collection contract (and its
+    tests) stays untouched.
+    """
+    from datetime import datetime, timezone
+
+    # Touch the collection so it exists even before the first keyed write.
+    await db["idempotency_keys"].insert_one(
+        {"_init": True, "createdAt": datetime.now(timezone.utc)}
+    )
+    await db["idempotency_keys"].delete_many({"_init": True})
+    names: list[str] = []
+    names.append(
+        await db["idempotency_keys"].create_index(
+            [("createdAt", 1)], expireAfterSeconds=24 * 3600, name="ttl_createdAt"
+        )
+    )
+    names.append(
+        await db["idempotency_keys"].create_index(
+            [("key", 1)], unique=True, name="uniq_key"
+        )
+    )
+    return names
