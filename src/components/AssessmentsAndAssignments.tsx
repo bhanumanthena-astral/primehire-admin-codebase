@@ -6,8 +6,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AssessmentProfile, Question, Candidate, MailTemplate, RoundType, QuestionType, CandidateStatus } from '../types';
 import { 
-  mockCreateAssessment, 
-  mockToggleAssessmentActive, 
   mockGenerateLink,
   mockRegenerateLink,
   mockRescheduleInterview,
@@ -24,6 +22,13 @@ import {
   updateCandidate,
   deleteCandidate,
   syncCandidateToServer,
+  createAssessment as apiCreateAssessment,
+  putAssessment as apiPutAssessment,
+  setAssessmentActive as apiSetAssessmentActive,
+  retryAssessmentSync as apiRetryAssessmentSync,
+  assessmentToPayload,
+  newIdempotencyKey,
+  ApiError,
 } from '../lib/mongoApi';
 import { asJobId, asLocalCandidateId, JobId, LocalCandidateId, generate32BitId } from '../lib/primehireIds';
 import { primehireClient } from '../lib/primehireClient';
@@ -200,7 +205,11 @@ interface AssessmentsAndAssignmentsProps {
   assessments: AssessmentProfile[];
   candidates: Candidate[];
   templates: MailTemplate[];
-  onSetAssessments: (asm: AssessmentProfile[]) => void;
+  assessmentsLoading: boolean;
+  assessmentsError: string | null;
+  lastSyncedAt: string | null;
+  onRefreshAssessments: () => void;
+  onSetAssessments: (asm: AssessmentProfile[] | ((prev: AssessmentProfile[]) => AssessmentProfile[])) => void;
   onSetCandidates: React.Dispatch<React.SetStateAction<Candidate[]>>;
   onOpenReport: (candidate: Candidate, assessment: AssessmentProfile) => void;
 }
@@ -209,6 +218,10 @@ export default function AssessmentsAndAssignments({
   assessments,
   candidates,
   templates,
+  assessmentsLoading,
+  assessmentsError,
+  lastSyncedAt,
+  onRefreshAssessments,
   onSetAssessments,
   onSetCandidates,
   onOpenReport
@@ -547,7 +560,27 @@ export default function AssessmentsAndAssignments({
     }));
   };
 
+  // Friendly, non-raw error text for assessment writes. Form data is always
+  // kept on failure so nothing is lost.
+  const friendlyAssessmentError = (err: any, action: string): string => {
+    if (err instanceof ApiError) {
+      if (err.status === 409 && err.code === 'VERSION_CONFLICT') {
+        return 'This was changed by someone else, reload to see the latest version.';
+      }
+      if (err.status === 409) {
+        return 'An assessment with this Job ID and round already exists.';
+      }
+      if (err.status === 422) return `Could not ${action}: please check the highlighted fields.`;
+      if (err.status === 503 || /unreachable|network|fetch|failed/i.test(err.message)) {
+        return `Server unreachable — could not ${action}. Your entries were kept; retry when back online.`;
+      }
+      return `Could not ${action}. Your entries were kept.`;
+    }
+    return `Could not ${action}. Your entries were kept.`;
+  };
+
   const handleCreateAssessmentSubmit = async () => {
+    if (isSavingAssessment) return; // double-submit protection (clicks + Enter)
     // 1. Check required headers
     if (!formJobId.trim() || !formJobTitle.trim() || !formJobDescription.trim()) {
       toast.error('Job ID, Job Title, and Job Description are mandatory fields.');
@@ -611,26 +644,32 @@ export default function AssessmentsAndAssignments({
       return;
     }
 
-    // Handle Edit Save
+    // Handle Edit Save — server-truth via PUT with optimistic concurrency.
     if (editingAssessmentId) {
+      const target = assessments.find(a => a.id === editingAssessmentId);
+      if (!target) {
+        toast.error('Assessment not found — it may have been removed. Reloading.');
+        onRefreshAssessments();
+        return;
+      }
       setIsSavingAssessment(true);
       try {
-        const updatedList = assessments.map(a => {
-          if (a.id === editingAssessmentId) {
-            return {
-              ...a,
-              jobTitle: formJobTitle,
-              jobDescription: formJobDescription,
-              language: formLanguage,
-              questions: formQuestions,
-              startDate: new Date(formStartDate).toISOString(),
-              endDate: new Date(formEndDate).toISOString()
-            };
-          }
-          return a;
+        const payload = assessmentToPayload({
+          jobId: target.jobId,
+          jobTitle: formJobTitle,
+          jobDescription: formJobDescription,
+          language: formLanguage,
+          roundType: target.roundType,
+          questions: formQuestions,
+          startDate: formStartDate ? new Date(formStartDate).toISOString() : undefined,
+          endDate: formEndDate ? new Date(formEndDate).toISOString() : undefined,
         });
-        onSetAssessments(updatedList);
-        toast.success(`Assessment "${formJobTitle}" updated successfully!`);
+        const updated = await apiPutAssessment(target.jobId, {
+          ...payload,
+          version: target.version ?? 1,
+        });
+        onSetAssessments(prev => prev.map(a => (a.id === editingAssessmentId ? updated : a)));
+        toast.success(`Assessment "${updated.jobTitle}" updated successfully!`);
         
         // Reset Creation Fields
         setEditingAssessmentId(null);
@@ -642,32 +681,47 @@ export default function AssessmentsAndAssignments({
         setFormEndDate('');
         setCurrentView('LIST');
       } catch (err: any) {
-        toast.error('Failed to update assessment: ' + err.message);
+        const msg = friendlyAssessmentError(err, 'update this assessment');
+        if (err instanceof ApiError && err.status === 409) {
+          toast.error(msg, { action: { label: 'Reload', onClick: () => onRefreshAssessments() } });
+          onRefreshAssessments();
+        } else {
+          toast.error(msg);
+        }
       } finally {
         setIsSavingAssessment(false);
       }
       return;
     }
 
+    // Fresh Idempotency-Key per submit attempt (reused only on auto-retry).
+    const idempotencyKey = newIdempotencyKey();
     setIsSavingAssessment(true);
     try {
-      const payload: Omit<AssessmentProfile, 'id' | 'createdAt' | 'deactivatedAt'> = {
-        jobId: asJobId(formJobId),
+      const payload = assessmentToPayload({
+        jobId: formJobId,
         jobTitle: formJobTitle,
         jobDescription: formJobDescription,
         language: formLanguage,
         roundType: formRoundType,
-        isActive: true,
         questions: formQuestions,
-        startDate: new Date(formStartDate).toISOString(),
-        endDate: new Date(formEndDate).toISOString()
-      };
+        startDate: formStartDate ? new Date(formStartDate).toISOString() : undefined,
+        endDate: formEndDate ? new Date(formEndDate).toISOString() : undefined,
+      });
 
-      // Call the real API (no silent fallback)
-      const newAsm = await mockCreateAssessment(payload);
-      onSetAssessments([newAsm, ...assessments]);
+      // Server-truth create: FastAPI validates, stores pending, calls
+      // PrimeHire server-side, then marks synced/failed. The browser never
+      // calls the PrimeHire proxy for assessments any more.
+      const newAsm = await apiCreateAssessment(payload, idempotencyKey);
+      onSetAssessments(prev => [newAsm, ...prev]);
 
-      toast.success(`Assessment "${newAsm.jobTitle}" created successfully!`);
+      if (newAsm.syncState?.state === 'failed') {
+        toast.warning(
+          `Assessment "${newAsm.jobTitle}" saved, but PrimeHire sync failed. Retry from the list.`,
+        );
+      } else {
+        toast.success(`Assessment "${newAsm.jobTitle}" created successfully!`);
+      }
       
       // Reset Creation Fields and generate a new Job ID
       setFormJobId('JOB-' + generate32BitId());
@@ -679,12 +733,8 @@ export default function AssessmentsAndAssignments({
       setCurrentView('LIST');
     } catch (err: any) {
       console.error('[Create Assessment Error]', err);
-      const rawMsg = err.message || 'Unknown error';
-      const isAuth = /401|invalid credentials|not configured|PRIMEHIRE_ACCESS_KEY/i.test(rawMsg);
       // Keep entered form data intact on failure (no reset here) so nothing is lost.
-      toast.error('Failed to create assessment: ' + rawMsg, {
-        duration: isAuth ? 10000 : 5000,
-      });
+      toast.error(friendlyAssessmentError(err, 'create this assessment'));
     } finally {
       setIsSavingAssessment(false);
     }
@@ -720,14 +770,47 @@ export default function AssessmentsAndAssignments({
   // =========================================================================
   // HANDLERS FOR DETAIL / ASSIGNMENT PIPELINE
   // =========================================================================
+  // Server-truth toggle: state changes only when MongoDB confirms.
+  const [togglingAsmId, setTogglingAsmId] = useState<string | null>(null);
+  const [retryingAsmId, setRetryingAsmId] = useState<string | null>(null);
+
   const handleToggleAssessmentActiveState = async (id: string) => {
+    const target = assessments.find(a => a.id === id);
+    if (!target || togglingAsmId) return;
+    setTogglingAsmId(id);
     try {
-      const updatedList = await mockToggleAssessmentActive(assessments, id);
-      onSetAssessments(updatedList);
-      const target = updatedList.find(a => a.id === id);
-      toast.success(`Assessment Profile is now ${target?.isActive ? 'ACTIVE' : 'INACTIVE'}`);
+      const updated = await apiSetAssessmentActive(target.jobId, !target.isActive, target.version ?? 1);
+      onSetAssessments(prev => prev.map(a => (a.id === id ? updated : a)));
+      toast.success(`Assessment is now ${updated.isActive ? 'ACTIVE' : 'INACTIVE'} (saved to server).`);
     } catch (err: any) {
-      toast.error('Failed to toggle state: ' + err.message);
+      if (err instanceof ApiError && err.status === 409) {
+        toast.error('This was changed by someone else, reload to see the latest version.', {
+          action: { label: 'Reload', onClick: () => onRefreshAssessments() },
+        });
+        onRefreshAssessments();
+      } else {
+        toast.error(friendlyAssessmentError(err, 'change this assessment'));
+      }
+    } finally {
+      setTogglingAsmId(null);
+    }
+  };
+
+  const handleRetryAssessmentSync = async (asm: AssessmentProfile) => {
+    if (retryingAsmId) return;
+    setRetryingAsmId(asm.id);
+    try {
+      const updated = await apiRetryAssessmentSync(asm.jobId);
+      onSetAssessments(prev => prev.map(a => (a.id === asm.id ? updated : a)));
+      if (updated.syncState?.state === 'synced') {
+        toast.success(`PrimeHire sync recovered for "${updated.jobTitle}".`);
+      } else {
+        toast.warning(`Still failing: ${updated.syncState?.error || 'unknown error'}. Kept for another retry.`);
+      }
+    } catch (err: any) {
+      toast.error(friendlyAssessmentError(err, 'retry the PrimeHire sync'));
+    } finally {
+      setRetryingAsmId(null);
     }
   };
 
@@ -1718,6 +1801,49 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             </div>
           </div>
 
+          {/* Sync status bar: last-synced indicator + manual refresh */}
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card px-4 py-2.5 text-xs text-muted-foreground shadow-[var(--shadow-card)]">
+            <span className="inline-flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full inline-block ${assessmentsError ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+              {assessmentsLoading ? 'Loading assessments…' : `Last synced ${lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : 'never'}`}
+            </span>
+            <span className="text-muted-foreground/70">· auto-refreshes every 30s and on focus</span>
+            <button
+              onClick={onRefreshAssessments}
+              disabled={assessmentsLoading}
+              className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/70 hover:bg-muted text-foreground font-semibold transition disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${assessmentsLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+
+          {assessmentsLoading && assessments.length === 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="Loading assessments">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="bg-card rounded-2xl border border-border/70 p-5 shadow-[var(--shadow-card)] animate-pulse">
+                  <div className="h-4 w-2/3 rounded bg-muted" />
+                  <div className="h-3 w-1/3 rounded bg-muted mt-2" />
+                  <div className="flex gap-2 mt-4">
+                    <div className="h-5 w-16 rounded bg-muted" />
+                    <div className="h-5 w-20 rounded bg-muted" />
+                  </div>
+                  <div className="h-9 rounded bg-muted mt-4" />
+                </div>
+              ))}
+            </div>
+          ) : assessmentsError && assessments.length === 0 ? (
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-8 text-center space-y-3">
+              <p className="text-sm font-semibold text-foreground">Couldn&apos;t load assessments.</p>
+              <p className="text-xs text-muted-foreground">Your data is safe on the server — this is a connection problem.</p>
+              <button
+                onClick={onRefreshAssessments}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Retry
+              </button>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {assessments.map((asm) => {
               const assessmentCandidates = candidates.filter(c => c.assessmentId === asm.id);
@@ -1788,10 +1914,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                     handleToggleAssessmentActiveState(asm.id);
                                     setActiveDropdownAsmId(null);
                                   }}
-                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/40 text-foreground flex items-center gap-2 font-medium"
+                                  disabled={togglingAsmId === asm.id}
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/40 text-foreground flex items-center gap-2 font-medium disabled:opacity-50"
                                 >
                                   <span className={`w-1.5 h-1.5 rounded-full ${asm.isActive ? 'bg-destructive' : 'bg-success'}`} />
-                                  {asm.isActive ? 'Deactivate' : 'Activate'}
+                                  {togglingAsmId === asm.id ? 'Saving…' : (asm.isActive ? 'Deactivate' : 'Activate')}
                                 </button>
                               </div>
                             </>
@@ -1815,6 +1942,25 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       <span className="text-[9px] font-semibold text-muted-foreground bg-muted/40 border border-border/70 px-2 py-0.5 rounded">
                         {assessmentCandidates.length} Registered
                       </span>
+                      {asm.syncState?.state === 'pending' && (
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded inline-flex items-center gap-1">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Syncing…
+                        </span>
+                      )}
+                      {asm.syncState?.state === 'failed' && (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-[9px] font-bold text-rose-700 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded" title={asm.syncState?.error || 'PrimeHire sync failed'}>
+                            Sync failed
+                          </span>
+                          <button
+                            onClick={() => handleRetryAssessmentSync(asm)}
+                            disabled={retryingAsmId === asm.id}
+                            className="text-[9px] font-bold text-rose-700 hover:text-rose-500 underline underline-offset-2 disabled:opacity-50 cursor-pointer"
+                          >
+                            {retryingAsmId === asm.id ? 'Retrying…' : 'Retry'}
+                          </button>
+                        </span>
+                      )}
                     </div>
 
                     {/* Dates detail */}
@@ -1864,11 +2010,13 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             })}
 
             {assessments.length === 0 && (
-              <div className="col-span-full py-20 text-center text-gray-400">
-                No assessments profiles created yet. Click "+ New Assessment" above.
+              <div className="col-span-full py-20 text-center space-y-2">
+                <p className="text-sm font-semibold text-foreground">No assessment profiles yet.</p>
+                <p className="text-xs text-gray-400">Click &quot;+ New Assessment&quot; above — it saves to the server and appears on every device.</p>
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { INITIAL_ASSESSMENTS, INITIAL_CANDIDATES, INITIAL_TEMPLATES } from './mockData';
+import { INITIAL_CANDIDATES, INITIAL_TEMPLATES } from './mockData';
 import { AssessmentProfile, Candidate, MailTemplate } from './types';
 import Dashboard from './components/Dashboard';
 import AssessmentsAndAssignments from './components/AssessmentsAndAssignments';
@@ -28,10 +28,11 @@ import {
   SlidersHorizontal,
   RotateCcw,
   Search,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { fetchAssessments, fetchCandidates, updateCandidate } from './lib/mongoApi';
+import { fetchAssessments, fetchCandidates, updateCandidate, API_BASE, fetchHealth } from './lib/mongoApi';
 
 const MODULE_TABS = [
   { id: 'dashboard', label: 'Dashboard Overview', short: 'Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
@@ -76,18 +77,14 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const [assessments, setAssessments] = useState<AssessmentProfile[]>(() => {
-    try {
-      const stored = localStorage.getItem('primehire_assessments');
-      if (stored) {
-        let parsed = JSON.parse(stored) as AssessmentProfile[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter(a => a && a.id && a.jobId);
-        }
-      }
-      return INITIAL_ASSESSMENTS;
-    } catch { return INITIAL_ASSESSMENTS; }
-  });
+  // Slice 2A: assessments are server-truth only. No localStorage read here —
+  // the list loads from FastAPI on mount (loading state until then) and
+  // syncs on focus + every 30s. localStorage keeps candidates/templates
+  // until Slices 2B/2C.
+  const [assessments, setAssessments] = useState<AssessmentProfile[]>([]);
+  const [assessmentsLoading, setAssessmentsLoading] = useState(true);
+  const [assessmentsError, setAssessmentsError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   const [candidates, setCandidates] = useState<Candidate[]>(() => {
     try {
@@ -109,12 +106,10 @@ export default function App() {
     } catch { return INITIAL_TEMPLATES; }
   });
 
+  // Server-truth setter (no localStorage). Accepts a full list or an
+  // updater; used for sync merges and server-confirmed writes.
   const handleSetAssessments = (newAsms: AssessmentProfile[] | ((prev: AssessmentProfile[]) => AssessmentProfile[])) => {
-    setAssessments(prev => {
-      const next = typeof newAsms === 'function' ? newAsms(prev) : newAsms;
-      localStorage.setItem('primehire_assessments', JSON.stringify(next));
-      return next;
-    });
+    setAssessments(prev => (typeof newAsms === 'function' ? newAsms(prev) : newAsms));
   };
 
   const handleSetCandidates = (newCands: Candidate[] | ((prev: Candidate[]) => Candidate[])) => {
@@ -139,33 +134,125 @@ export default function App() {
   // Phase 3C read cutover: true when the API read failed and the UI is
   // showing localStorage fallback (or empty state in a fresh profile).
   const [apiDown, setApiDown] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [backendMeta, setBackendMeta] = useState<{ url: string; db: string | null; counts?: Record<string, number> } | null>(null);
 
-  // Preferred source of truth: FastAPI + MongoDB. localStorage stays as the
-  // temporary fallback (existing hydrate above) until the write cutover.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [asms, cands] = await Promise.all([fetchAssessments(), fetchCandidates()]);
-        if (cancelled) return;
-        handleSetAssessments(asms);
-        handleSetCandidates(cands);
-        setApiDown(false);
-        console.info(`[DataSource] assessments: mongodb (${asms.length})`);
-        console.info(`[DataSource] candidates: mongodb (${cands.length})`);
-      } catch (err) {
-        if (cancelled) return;
-        setApiDown(true);
-        console.warn('[DataSource] assessments: localStorage-fallback (FastAPI unreachable)');
-        console.warn('[DataSource] candidates: localStorage-fallback (FastAPI unreachable)', err);
-        toast.error('Server unreachable — showing locally cached data.');
+  const candidatesRef = useRef(candidates);
+  candidatesRef.current = candidates;
+  const assessmentsRef = useRef(assessments);
+  assessmentsRef.current = assessments;
+
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const loadInFlightRef = useRef(false);
+  const lastSyncedRef = useRef<string | null>(null);
+
+  // Assessments sync: full load on mount/refresh, incremental (`since`) on
+  // focus + 30s poll. Never overlaps; abortable; never wipes good state on
+  // empty/failed responses (assessments are server-truth, so a successful
+  // empty list IS the truth — only errors preserve state).
+  const loadAssessments = async (opts?: { incremental?: boolean; signal?: AbortSignal }) => {
+    const params: { since?: string; signal?: AbortSignal } = {};
+    if (opts?.signal) params.signal = opts.signal;
+    if (opts?.incremental && lastSyncedRef.current) params.since = lastSyncedRef.current;
+    const fresh = await fetchAssessments(params);
+    setAssessments(prev => {
+      if (!opts?.incremental || !lastSyncedRef.current) return fresh;
+      if (fresh.length === 0) return prev; // unchanged data costs a cheap empty page
+      const byId = new Map(prev.map(a => [a.id, a]));
+      for (const a of fresh) byId.set(a.id, a);
+      return [...byId.values()];
+    });
+    const nowIso = new Date().toISOString();
+    lastSyncedRef.current = nowIso;
+    setLastSyncedAt(nowIso);
+    setAssessmentsError(null);
+    setApiDown(false);
+    return fresh;
+  };
+
+  const loadData = async (refreshSignal?: AbortSignal) => {
+    if (loadInFlightRef.current) return; // no overlapping requests
+    loadInFlightRef.current = true;
+    const ctrl = new AbortController();
+    loadAbortRef.current?.abort();
+    loadAbortRef.current = ctrl;
+    const signal = refreshSignal ?? ctrl.signal;
+    setIsRetrying(true);
+    try {
+      const [health, cands] = await Promise.all([
+        fetchHealth().catch(() => null),
+        fetchCandidates(),
+      ]);
+      await loadAssessments({ signal });
+
+      if (health) {
+        setBackendMeta({ url: API_BASE, db: health.database || 'unknown', counts: health.counts });
+        console.info(`[Backend] Connected to ${API_BASE} (database: '${health.database || 'none'}')`, health.counts);
+      } else {
+        setBackendMeta({ url: API_BASE, db: 'unreachable' });
       }
-    })();
+
+      const prevCandsCount = candidatesRef.current.length;
+
+      // Never wipe candidates if server returned 0 while local state has items
+      // (Slice 2B removes this guard when candidates become server-truth).
+      if (cands.length === 0 && prevCandsCount > 0) {
+        console.warn(
+          `[DataSource Warning] Server at ${API_BASE} returned 0 candidates, but local state has ${prevCandsCount} candidates. Refusing to overwrite local state!`
+        );
+        setApiError(
+          `Connected to ${API_BASE} (db: ${health?.database || 'none'}), but server returned 0 items. Kept local data.`
+        );
+      } else {
+        handleSetCandidates(cands);
+        setApiError(null);
+        setApiDown(false);
+        console.info(`[DataSource] candidates: mongodb (${cands.length})`);
+      }
+      console.info(`[DataSource] assessments: mongodb`);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      // Distinguish assessment errors (server-truth: show error, keep state)
+      // from total failure.
+      setAssessmentsError(err?.message || 'Server unreachable');
+      setApiDown(true);
+      setApiError(err?.message || 'Server unreachable');
+      console.warn('[DataSource] API read failed — preserving current state:', err);
+      toast.error('Server unreachable — showing last synced data.');
+    } finally {
+      loadInFlightRef.current = false;
+      setIsRetrying(false);
+      setAssessmentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadData();
+    // Light incremental sync (uses `since`, so unchanged data costs little).
+    const onRefocus = () => {
+      if (document.visibilityState !== 'visible' || loadInFlightRef.current) return;
+      loadAssessments({ incremental: true }).catch(() => {});
+    };
+    window.addEventListener('focus', onRefocus);
+    document.addEventListener('visibilitychange', onRefocus);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible' && !loadInFlightRef.current) {
+        loadAssessments({ incremental: true }).catch(() => {});
+      }
+    }, 30000);
     return () => {
-      cancelled = true;
+      window.removeEventListener('focus', onRefocus);
+      document.removeEventListener('visibilitychange', onRefocus);
+      clearInterval(timer);
+      loadAbortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleRefreshAssessments = () => {
+    void loadData();
+  };
 
   // Server-confirmed status change. The server write goes first; the local
   // state only changes when MongoDB confirms (or when the candidate was
@@ -490,10 +577,23 @@ export default function App() {
       </header>
 
       {/* ── Main: selectable cards + single frosted workspace ── */}
-      {apiDown && (
+      {(apiDown || apiError) && (
         <div className="relative z-10 max-w-7xl w-full mx-auto px-6 pt-4" role="alert">
-          <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-2 text-xs font-semibold text-warning">
-            Server unreachable — showing locally cached data. Changes may not sync until the connection is restored.
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-300 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="font-bold uppercase tracking-wider text-[10px] bg-rose-500/20 text-rose-200 px-2 py-0.5 rounded">
+                Data Notice
+              </span>
+              <span>{apiError || 'Server unreachable — preserving locally cached data.'}</span>
+            </div>
+            <button
+              onClick={() => { void loadData(); }}
+              disabled={isRetrying}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition disabled:opacity-50 cursor-pointer text-xs shrink-0"
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', isRetrying && 'animate-spin')} />
+              {isRetrying ? 'Retrying...' : 'Retry'}
+            </button>
           </div>
         </div>
       )}
@@ -587,6 +687,10 @@ export default function App() {
               assessments={assessments}
               candidates={candidates}
               templates={templates}
+              assessmentsLoading={assessmentsLoading}
+              assessmentsError={assessmentsError}
+              lastSyncedAt={lastSyncedAt}
+              onRefreshAssessments={handleRefreshAssessments}
               onSetAssessments={handleSetAssessments}
               onSetCandidates={handleSetCandidates}
               onOpenReport={handleOpenCandidateReport}
@@ -600,6 +704,24 @@ export default function App() {
           )}
         </FrostedDetailPanel>
       </main>
+
+      {/* Dev-only backend connection indicator */}
+      <footer className="relative z-10 max-w-7xl w-full mx-auto px-6 pb-6 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border/40 bg-card/60 backdrop-blur text-[11px] text-muted-foreground font-mono">
+          <span className={cn('w-2 h-2 rounded-full inline-block', backendMeta?.db && backendMeta.db !== 'unreachable' ? 'bg-emerald-500' : 'bg-rose-500')} />
+          <span>API: <strong className="text-foreground">{API_BASE}</strong></span>
+          <span>•</span>
+          <span>DB: <strong className="text-foreground">{backendMeta?.db || 'probing...'}</strong></span>
+          {backendMeta?.counts && (
+            <>
+              <span>•</span>
+              <span>Cands: <strong className="text-foreground">{backendMeta.counts.candidates ?? 0}</strong></span>
+              <span>•</span>
+              <span>Asms: <strong className="text-foreground">{backendMeta.counts.assessments ?? 0}</strong></span>
+            </>
+          )}
+        </div>
+      </footer>
 
       {/* Candidate Evaluation Report Workspace */}
       <ReportDialog

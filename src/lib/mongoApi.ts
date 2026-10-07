@@ -11,20 +11,78 @@ import { AssessmentProfile, Candidate } from '../types';
  * replace UI identifiers.
  */
 
-const API_BASE = (
-  (import.meta as any).env?.VITE_API_URL as string | undefined || 'http://localhost:8000'
-).replace(/\/+$/, '');
+const rawApiUrl = (import.meta as any).env?.VITE_API_URL as string | undefined;
+const isProd = Boolean((import.meta as any).env?.PROD);
+
+if (isProd) {
+  if (!rawApiUrl || rawApiUrl.includes('localhost') || rawApiUrl.includes('127.0.0.1')) {
+    throw new Error(
+      `[Production Misconfiguration] VITE_API_URL must be configured and point to a production endpoint (not localhost). Current: "${rawApiUrl || ''}"`
+    );
+  }
+}
+
+export const API_BASE = (rawApiUrl || 'http://localhost:8000').replace(/\/+$/, '');
+
+export interface HealthInfo {
+  status: string;
+  app: string;
+  mongo: string;
+  database?: string | null;
+  counts?: Record<string, number>;
+}
+
+export async function fetchHealth(): Promise<HealthInfo> {
+  return getJson<HealthInfo>('/api/health');
+}
 
 export function isApiConfigured(): boolean {
   return API_BASE.length > 0;
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { signal });
   if (!res.ok) {
-    throw new Error(await apiErrorMessage(res, `GET ${path}`));
+    throw await toApiError(res, `GET ${path}`);
   }
   return res.json() as Promise<T>;
+}
+
+/** Structured API error carrying HTTP status + server code for friendly UI. */
+export class ApiError extends Error {
+  status: number;
+  code: string | null;
+  current: unknown;
+  constructor(status: number, message: string, code: string | null = null, current: unknown = null) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.current = current;
+  }
+}
+
+async function toApiError(res: Response, fallback: string): Promise<Error> {
+  const message = await apiErrorMessage(res, fallback);
+  let code: string | null = null;
+  let current: unknown = null;
+  try {
+    const body = await res.clone().json();
+    const detail = (body as any)?.detail;
+    if (detail && typeof detail === 'object') {
+      if (typeof detail.code === 'string') code = detail.code;
+      if (detail.current !== undefined) current = detail.current;
+      if (typeof detail.message === 'string') {
+        if (res.status === 409 && code === 'VERSION_CONFLICT') {
+          return new ApiError(res.status, 'This was changed by someone else, reload to see the latest version.', code, current);
+        }
+        return new ApiError(res.status, detail.message, code, current);
+      }
+    }
+  } catch { /* fall through to generic message */ }
+  if (res.status === 409) {
+    return new ApiError(res.status, 'This was changed by someone else, reload to see the latest version.', code, current);
+  }
+  return new ApiError(res.status, message, code, current);
 }
 
 async function apiErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -46,16 +104,25 @@ async function apiErrorMessage(res: Response, fallback: string): Promise<string>
   return `FastAPI ${res.status} on ${fallback}`;
 }
 
-async function sendJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function sendJson<T>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(extraHeaders || {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(await apiErrorMessage(res, `${method} ${path}`));
+    throw await toApiError(res, `${method} ${path}`);
   }
   return res.json() as Promise<T>;
+}
+
+/** Fresh idempotency key per submit attempt (reused only on auto-retry). */
+export function newIdempotencyKey(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
 }
 
 interface Page<T> {
@@ -70,15 +137,29 @@ export function mapMongoAssessment(doc: any): AssessmentProfile {
     jobId: doc.jobId,
     jobTitle: doc.jobTitle ?? '',
     jobDescription: doc.jobDescription ?? '',
-    language: doc.language ?? 'en',
+    language: doc.language ?? 'ENGLISH',
     roundType: doc.roundType,
-    questions: Array.isArray(doc.questions) ? doc.questions : [],
+    questions: Array.isArray(doc.questions) ? doc.questions.map((q: any) => ({
+      id: q.id ?? '',
+      text: q.text ?? q.question ?? '',
+      type: q.type,
+      maxDuration: q.maxDuration ?? q.max_duration ?? 120,
+      referenceAnswer: q.referenceAnswer ?? q.answer,
+      criteria: q.criteria,
+      options: q.options,
+      correctOption: q.correctOption ?? q.correct_option,
+      maxScore: q.maxScore ?? q.max_score,
+      weightage: q.weightage,
+    })) : [],
     isActive: doc.isActive ?? true,
     createdAt: doc.createdAt ?? new Date().toISOString(),
+    updatedAt: doc.updatedAt,
     deactivatedAt: doc.deactivatedAt ?? null,
-    startDate: doc.startDate,
-    endDate: doc.endDate,
+    startDate: doc.startDateIso ?? doc.startDate,
+    endDate: doc.endDateIso ?? doc.endDate,
     mongoId: doc.id,
+    version: doc.version ?? 1,
+    syncState: doc.syncState,
   } as AssessmentProfile;
 }
 
@@ -115,9 +196,110 @@ export function mapMongoCandidate(doc: any): Candidate {
   } as Candidate;
 }
 
-export async function fetchAssessments(): Promise<AssessmentProfile[]> {
-  const body = await getJson<Page<any>>('/api/assessments?limit=200');
+export interface AssessmentListParams {
+  search?: string;
+  roundType?: string;
+  isActive?: boolean;
+  since?: string;
+  signal?: AbortSignal;
+}
+
+export async function fetchAssessments(params: AssessmentListParams = {}): Promise<AssessmentProfile[]> {
+  const qs = new URLSearchParams({ limit: '200' });
+  if (params.search) qs.set('search', params.search);
+  if (params.roundType) qs.set('roundType', params.roundType);
+  if (params.isActive !== undefined) qs.set('isActive', String(params.isActive));
+  if (params.since) qs.set('since', params.since);
+  const body = await getJson<Page<any>>(`/api/assessments?${qs.toString()}`, params.signal);
   return (body.items ?? []).map(mapMongoAssessment);
+}
+
+/** Outbound assessment payload (app-shaped; the backend maps to PrimeHire). */
+export interface AssessmentWritePayload {
+  jobId: string;
+  jobTitle: string;
+  jobDescription: string;
+  language: string;
+  roundType: string;
+  questions: Array<{
+    id: string;
+    text: string;
+    type: string;
+    maxDuration: number;
+    referenceAnswer?: string;
+    criteria?: string;
+    options?: string[];
+    correctOption?: string;
+    maxScore?: number;
+    weightage?: number;
+  }>;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+export function assessmentToPayload(a: {
+  jobId: string; jobTitle: string; jobDescription: string; language: string;
+  roundType: string; questions: AssessmentProfile['questions'];
+  startDate?: string; endDate?: string;
+}): AssessmentWritePayload {
+  return {
+    jobId: a.jobId,
+    jobTitle: a.jobTitle,
+    jobDescription: a.jobDescription,
+    language: a.language,
+    roundType: a.roundType,
+    questions: (a.questions ?? []).map((q) => ({
+      id: q.id,
+      text: q.text,
+      type: q.type,
+      maxDuration: q.maxDuration ?? 120,
+      referenceAnswer: q.referenceAnswer,
+      criteria: q.criteria,
+      options: q.options,
+      correctOption: q.correctOption,
+      maxScore: q.maxScore,
+      weightage: q.weightage,
+    })),
+    startDate: a.startDate ?? null,
+    endDate: a.endDate ?? null,
+  };
+}
+
+export async function createAssessment(
+  input: AssessmentWritePayload, idempotencyKey?: string,
+): Promise<AssessmentProfile> {
+  const headers = idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined;
+  const doc = await sendJson<any>('POST', '/api/assessments', input, headers);
+  return mapMongoAssessment(doc);
+}
+
+export async function putAssessment(
+  jobId: string, input: AssessmentWritePayload & { version: number },
+): Promise<AssessmentProfile> {
+  const doc = await sendJson<any>('PUT', `/api/assessments/${encodeURIComponent(jobId)}`, input);
+  return mapMongoAssessment(doc);
+}
+
+export async function patchAssessment(
+  jobId: string, patch: Record<string, unknown> & { version: number },
+): Promise<AssessmentProfile> {
+  const doc = await sendJson<any>('PATCH', `/api/assessments/${encodeURIComponent(jobId)}`, patch);
+  return mapMongoAssessment(doc);
+}
+
+export async function setAssessmentActive(
+  jobId: string, active: boolean, version: number,
+): Promise<AssessmentProfile> {
+  const action = active ? 'activate' : 'deactivate';
+  const doc = await sendJson<any>(
+    'PATCH', `/api/assessments/${encodeURIComponent(jobId)}/${action}`, { version },
+  );
+  return mapMongoAssessment(doc);
+}
+
+export async function retryAssessmentSync(jobId: string): Promise<AssessmentProfile> {
+  const doc = await sendJson<any>('POST', `/api/assessments/${encodeURIComponent(jobId)}/retry`);
+  return mapMongoAssessment(doc);
 }
 
 export async function fetchCandidates(assessmentId?: string): Promise<Candidate[]> {

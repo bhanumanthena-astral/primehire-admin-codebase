@@ -39,6 +39,16 @@ export interface AssessmentProfile {
   startDate?: string; // ISO 8601 — assessment schedule window start
   endDate?: string;   // ISO 8601 — assessment schedule window end
   mongoId?: string;   // MongoDB ObjectId (Phase 3C read cutover); never replaces id/jobId
+  // Slice 2A server-truth fields (from FastAPI; absent on legacy local rows)
+  version?: number;
+  updatedAt?: string;
+  syncState?: {
+    state: 'pending' | 'synced' | 'failed';
+    error?: string | null;
+    attemptedAt?: string | null;
+    syncedAt?: string | null;
+    failedAt?: string | null;
+  };
 }
 
 export interface Candidate {
