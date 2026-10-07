@@ -146,6 +146,13 @@ class AssessmentService:
         from ..schemas.assessment import AssessmentPut
 
         data = AssessmentPut.model_validate(payload)
+        if data.jobId is not None and data.jobId != job_id:
+            raise ValueError("jobId in body does not match the path.")
+        current = await self._repo.get_by_job_id(job_id)
+        if current is None:
+            raise AssessmentNotFound(job_id)
+        if data.roundType is not None and data.roundType != current.get("roundType"):
+            raise ValueError("roundType cannot be changed by PUT.")
         changes = data.to_set_paths()
         changes["updatedBy"] = updated_by
         try:

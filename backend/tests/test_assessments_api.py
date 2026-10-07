@@ -216,6 +216,26 @@ def test_route_duplicate_job_round_conflicts():
         _teardown()
 
 
+def test_route_put_accepts_echoed_identity_fields():
+    """Frontend sends jobId/roundType in the PUT body; must not 422."""
+    db = _fresh_db()
+    client, _ = _client_with(db, fetch=_ok_fetch)
+    try:
+        client.post("/api/assessments", json=_payload())
+        ok = client.put("/api/assessments/JOB-T1", json={
+            **_payload(), "version": 1,
+            "jobTitle": "Echoed",
+        })
+        assert ok.status_code == 200, ok.text
+        assert ok.json()["jobTitle"] == "Echoed"
+        mismatch = client.put("/api/assessments/JOB-T1", json={
+            **_payload(), "version": 2, "jobId": "JOB-OTHER",
+        })
+        assert mismatch.status_code == 422
+    finally:
+        _teardown()
+
+
 def test_route_version_conflict_409_with_current():
     db = _fresh_db()
     client, _ = _client_with(db, fetch=_ok_fetch)

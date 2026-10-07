@@ -63,12 +63,18 @@ class QuestionPatch(BaseModel):
 
 
 class AssessmentPut(BaseModel):
-    """Full replacement. All content fields required + version for concurrency."""
+    """Full replacement. All content fields required + version for concurrency.
+
+    jobId/roundType may be echoed by clients; when present they must match
+    the path (identity fields are never changed by PUT).
+    """
 
     version: int
+    jobId: str | None = None
     jobTitle: str
     jobDescription: str = ""
     language: str = "en"
+    roundType: Literal["TECHNICAL", "BASIC", "HR"] | None = None
     questions: list[QuestionPatch]
     startDate: str | None = None
     endDate: str | None = None
