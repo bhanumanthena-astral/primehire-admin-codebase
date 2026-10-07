@@ -16,6 +16,7 @@ from .api.directory import router as directory_router
 from .api.candidates import router as candidates_router
 from .config import settings
 from .db.mongodb import ensure_idempotency_indexes, ensure_indexes, get_database
+from .models.audit import ensure_audit_indexes
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,11 @@ async def lifespan(_app: FastAPI):
                 logger.info("Idempotency indexes ensured: %s", idem)
             except Exception as exc:  # noqa: BLE001 — degraded, writes still work
                 logger.warning("Idempotency indexes not ensured: %s", type(exc).__name__)
+            try:
+                audit_indexes = await ensure_audit_indexes(db)
+                logger.info("Audit indexes ensured: %s", audit_indexes)
+            except Exception as exc:  # noqa: BLE001 — degraded, audit is best-effort
+                logger.warning("Audit indexes not ensured: %s", type(exc).__name__)
         except Exception as exc:  # noqa: BLE001 — boot degraded, health reports it
             logger.warning("MongoDB unavailable at startup: %s", type(exc).__name__)
     yield

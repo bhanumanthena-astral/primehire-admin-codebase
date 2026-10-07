@@ -14,6 +14,7 @@ from typing import Any
 from pymongo.errors import DuplicateKeyError
 
 from ..models.assessment import AssessmentConflict, AssessmentRepository, utcnow
+from ..models import audit as audit_log
 from ..schemas.assessment import AssessmentIn
 from . import primehire_client as remote
 from .primehire_payload import PayloadError, map_assessment
@@ -51,6 +52,9 @@ class AssessmentService:
         await self._sync(stored["jobId"])
         refreshed = await self._repo.get_by_job_id(stored["jobId"])
         assert refreshed is not None
+        await audit_log.log(self._db, action="assessment.created", entity="assessment",
+                            entity_id=stored["jobId"], by=created_by,
+                            details={"roundType": stored.get("roundType")})
         return refreshed
 
     async def _sync(self, job_id: str) -> dict[str, Any]:
@@ -189,3 +193,25 @@ class AssessmentService:
     async def find_duplicates(self) -> list[dict[str, Any]]:
         """Dry-run helper: (jobId, roundType) groups blocking the unique index."""
         return await self._repo.find_duplicates()
+
+    async def soft_delete(self, job_id: str, version: int, *, deleted_by: str = "unknown") -> dict[str, Any]:
+        """Soft delete: stamps deletedAt/deletedBy, hides from reads, audits.
+
+        No endpoint may hard-delete assessment data. Repeat deletes 404.
+        """
+        raw = await self._repo.get_raw_by_job_id(job_id)
+        if raw is None or raw.get("deletedAt"):
+            raise AssessmentNotFound(job_id)
+        try:
+            updated = await self._repo.update_versioned(job_id, version, {
+                "deletedAt": utcnow(),
+                "deletedBy": deleted_by,
+                "isActive": False,
+                "updatedBy": deleted_by,
+            })
+        except KeyError:
+            raise AssessmentNotFound(job_id) from None
+        await audit_log.log(self._db, action="assessment.soft_deleted", entity="assessment",
+                            entity_id=job_id, by=deleted_by,
+                            details={"version": updated.get("version")})
+        return updated

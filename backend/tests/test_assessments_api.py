@@ -398,6 +398,46 @@ async def test_idempotency_indexes(db):
     assert "ttl_createdAt" in names and "uniq_key" in names
 
 
+async def test_soft_delete_hides_and_audits(db):
+    svc = AssessmentService(db, fetch=_ok_fetch)
+    created = await svc.create(_payload())
+    assert created["version"] == 1
+    deleted = await svc.soft_delete("JOB-T1", 1, deleted_by="tester")
+    assert deleted["version"] == 2
+    # Hidden from reads, document kept.
+    assert await svc._repo.get_by_job_id("JOB-T1") is None
+    items, total = await svc.list()
+    assert total == 0
+    raw = await db["assessments"].find_one({"jobId": "JOB-T1"})
+    assert raw["deletedBy"] == "tester" and raw["deletedAt"] is not None
+    entries = await db["audit_logs"].find({"entityId": "JOB-T1"}).to_list(length=10)
+    actions = {e["action"] for e in entries}
+    assert {"assessment.created", "assessment.soft_deleted"} <= actions
+    # Repeat delete 404s; updates on deleted docs 404 too.
+    import pytest as _pytest
+    from app.services.assessment_service import AssessmentNotFound as _NF
+
+    with _pytest.raises(_NF):
+        await svc.soft_delete("JOB-T1", 2)
+    with _pytest.raises(_NF):
+        await svc.patch("JOB-T1", {"version": 2, "jobTitle": "x"})
+
+
+def test_soft_delete_route():
+    db = _fresh_db()
+    client, _ = _client_with(db, fetch=_ok_fetch)
+    try:
+        created = client.post("/api/assessments", json=_payload()).json()
+        first = client.delete(f"/api/assessments/JOB-T1?version={created['version']}")
+        assert first.status_code == 200, first.text
+        assert client.get("/api/assessments/JOB-T1").status_code == 404
+        assert client.get("/api/assessments").json()["total"] == 0
+        again = client.delete("/api/assessments/JOB-T1?version=2")
+        assert again.status_code == 404
+    finally:
+        _teardown()
+
+
 def test_backend_env_file_selects_dev_database(tmp_path, monkeypatch):
     """BACKEND_ENV_FILE points live testing at an isolated database."""
     from app.config import Settings
@@ -414,7 +454,7 @@ def test_primehire_status_endpoint_reports_only_presence(monkeypatch):
     monkeypatch.setattr("app.config.settings.primehire_access_key", "AK")
     monkeypatch.setattr("app.config.settings.primehire_secret_key", "SK")
     ok = client.get("/api/primehire/status")
-    assert ok.status_code == 200 and ok.json() == {"configured": True}
+    assert ok.status_code == 200 and ok.json()["configured"] is True
     assert "AK" not in ok.text and "SK" not in ok.text
     monkeypatch.setattr("app.config.settings.primehire_access_key", "")
     monkeypatch.setattr("app.config.settings.primehire_secret_key", "")
@@ -422,3 +462,54 @@ def test_primehire_status_endpoint_reports_only_presence(monkeypatch):
     assert missing.status_code == 401
     assert missing.json()["detail"]["configured"] is False
     assert "mongodb" not in missing.text.lower()
+
+
+async def _fake_upstream_ok(path, payload):
+    return {"ok": True}
+
+
+async def _fake_upstream_401(path, payload):
+    from app.services import primehire_client as remote
+
+    raise remote.PrimehireError("rejected", status=401)
+
+
+def test_primehire_live_check_relays_status_only(monkeypatch):
+    import app.services.primehire_client as remote
+
+    async def _ok():
+        return 200
+
+    async def _boom():
+        from app.services import primehire_client as remote2
+
+        raise remote2.PrimehireError("down")
+
+    client = TestClient(app)
+    monkeypatch.setattr(remote, "check_upstream", _ok)
+    res = client.get("/api/primehire/check")
+    assert res.status_code == 200 and res.json() == {"upstream": 200}
+
+    monkeypatch.setattr(remote, "check_upstream", _boom)
+    res = client.get("/api/primehire/check")
+    assert res.status_code == 502
+    assert res.json()["detail"]["upstream"] == "unreachable"
+
+
+def test_primehire_live_check_401_passthrough(monkeypatch):
+    import app.services.primehire_client as remote
+
+    async def _as_401():
+        return 401
+
+    monkeypatch.setattr(remote, "check_upstream", _as_401)
+    res = TestClient(app).get("/api/primehire/check")
+    assert res.status_code == 401
+    assert res.json()["detail"] == {"upstream": 401}
+
+
+async def test_check_upstream_unit():
+    from app.services.primehire_client import PrimehireError, check_upstream
+
+    assert await check_upstream(fetch=_fake_upstream_ok) == 200
+    assert await check_upstream(fetch=_fake_upstream_401) == 401

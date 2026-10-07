@@ -69,3 +69,43 @@ async def create_assessment_remote(
     """POST /assessment on PrimeHire. Returns the decoded response."""
     do_fetch = fetch or _http_fetch
     return await do_fetch("/assessment", payload)
+
+
+async def check_upstream(fetch: FetchFn | None = None) -> int:
+    """Live credential check: server-side GET /response/report-not-generated.
+
+    Returns the upstream HTTP status ONLY (200 = keys accepted, 401 =
+    rejected). Never returns bodies or keys — callers must only relay the
+    status code. Raises PrimehireError when unreachable/misconfigured.
+    """
+    do_fetch = fetch or _http_get
+    try:
+        await do_fetch("/response/report-not-generated", {})
+    except PrimehireError as exc:
+        if exc.status is not None:
+            return exc.status
+        raise
+    return 200
+
+
+async def _http_get(path: str, _payload: dict[str, Any]) -> Any:
+    if not has_credentials(settings.primehire_access_key, settings.primehire_secret_key):
+        raise PrimehireError(
+            "PrimeHire credentials are not configured on the server "
+            "(PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY). Add them and retry."
+        )
+    base = resolve_base_url(settings.primehire_base_url, "https://api.placement.vils.ai/primehire/api/v1")
+    url = f"{base}{path}"
+    headers = auth_headers(settings.primehire_access_key, settings.primehire_secret_key)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+    except Exception as exc:  # noqa: BLE001
+        raise PrimehireError(f"PrimeHire unreachable: {type(exc).__name__}") from exc
+    if response.status_code == 401:
+        raise PrimehireError("PrimeHire rejected the keys (401).", status=401)
+    if not response.ok:
+        raise PrimehireError(
+            f"PrimeHire returned {response.status_code}.", status=response.status_code
+        )
+    return {"ok": True}

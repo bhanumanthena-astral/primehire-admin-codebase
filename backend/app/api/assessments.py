@@ -224,3 +224,27 @@ async def retry_assessment_sync(
     except Exception:  # noqa: BLE001
         logger.exception("Assessment retry failed for %s", job_id)
         raise HTTPException(status_code=500, detail="Assessment sync retry failed.") from None
+
+
+@router.delete("/assessments/{job_id}")
+async def delete_assessment(
+    job_id: str,
+    version: int,
+    service: AssessmentService = Depends(_service),
+    actor: str = Depends(_actor),
+) -> dict[str, Any]:
+    """Soft delete only (deletedAt/deletedBy + audit_logs entry). The Mongo
+    document is kept; reads hide it. Repeat deletes 404. `version` is a
+    required query param for optimistic concurrency.
+    """
+    try:
+        return await service.soft_delete(job_id.strip(), version, deleted_by=actor)
+    except AssessmentNotFound:
+        raise HTTPException(status_code=404, detail={
+            "code": "ASSESSMENT_NOT_FOUND",
+            "message": "No assessment was found for this job ID."}) from None
+    except AssessmentConflict as exc:
+        raise _conflict_response(job_id, exc) from None
+    except Exception:  # noqa: BLE001
+        logger.exception("Assessment delete failed for %s", job_id)
+        raise HTTPException(status_code=500, detail="Assessment delete failed.") from None

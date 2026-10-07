@@ -62,6 +62,10 @@ def to_document(payload: dict[str, Any], *, created_by: str = "unknown") -> dict
     doc.setdefault("syncState", {"state": "pending", "attemptedAt": now})
     doc.setdefault("primehire", {})
     doc.setdefault("origin", "portal")
+    # Soft-delete markers (Part A): deleted docs stay in MongoDB, hidden
+    # from reads. Missing field == not deleted (legacy docs match).
+    doc.setdefault("deletedAt", None)
+    doc.setdefault("deletedBy", None)
     return doc
 
 
@@ -103,12 +107,22 @@ class AssessmentRepository:
         return to_public(doc)
 
     async def get_by_job_id(self, job_id: str) -> dict[str, Any] | None:
-        doc = await self._col.find_one({"jobId": job_id})
+        doc = await self._col.find_one({"jobId": job_id, "deletedAt": None})
         return to_public(doc) if doc else None
 
     async def get_raw_by_job_id(self, job_id: str) -> dict[str, Any] | None:
         """Raw document (datetimes/ObjectId intact) for internal service use."""
         return await self._col.find_one({"jobId": job_id})
+
+    async def get_by_job_and_round(self, job_id: str, round_type: str | None) -> dict[str, Any] | None:
+        """Import matching scope: (jobId, roundType). Includes soft-deleted
+        docs (re-importing a deleted profile is a conflict, never a silent
+        re-insert against the unique index)."""
+        query: dict[str, Any] = {"jobId": job_id}
+        if round_type:
+            query["roundType"] = round_type
+        doc = await self._col.find_one(query)
+        return to_public(doc) if doc else None
 
     async def find_duplicates(self) -> list[dict[str, Any]]:
         """Groups sharing (jobId, roundType) — blocks the unique index build.
@@ -139,7 +153,7 @@ class AssessmentRepository:
         is_active: bool | None = None,
         since: datetime | None = None,
     ) -> list[dict[str, Any]]:
-        query: dict[str, Any] = {}
+        query: dict[str, Any] = {"deletedAt": None}
         if search:
             query["$or"] = [
                 {"jobTitle": {"$regex": search, "$options": "i"}},
@@ -162,7 +176,7 @@ class AssessmentRepository:
         is_active: bool | None = None,
         since: datetime | None = None,
     ) -> int:
-        query: dict[str, Any] = {}
+        query: dict[str, Any] = {"deletedAt": None}
         if search:
             query["$or"] = [
                 {"jobTitle": {"$regex": search, "$options": "i"}},
@@ -189,12 +203,12 @@ class AssessmentRepository:
         safe = dict(changes)
         safe["updatedAt"] = utcnow()
         result = await self._col.update_one(
-            {"jobId": job_id, "version": expected_version},
+            {"jobId": job_id, "version": expected_version, "deletedAt": None},
             {"$set": safe, "$inc": {"version": 1}},
         )
         if result.matched_count == 0:
             current = await self._col.find_one({"jobId": job_id})
-            if current is None:
+            if current is None or current.get("deletedAt"):
                 raise KeyError(job_id)
             if "version" not in current and expected_version == 1:
                 safe["version"] = 2

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from ..auth import require_admin_auth
 from ..config import settings
 from ..db.mongodb import get_database, ping
 
@@ -36,16 +37,37 @@ async def health() -> dict[str, object]:
 
 @router.get("/primehire/status")
 async def primehire_status() -> dict[str, object]:
-    """Read-only credential presence check (no secrets, no values, no calls).
-
-    200 = keys configured (then PrimeHire decides 200/401 on real calls).
-    401 = keys missing — sync will stay 'failed' until backend/.env is fixed.
+    """PRESENCE ONLY — reports whether keys exist, NOT whether PrimeHire
+    accepts them. A `configured: true` here passed zero upstream checks; use
+    GET /api/primehire/check (admin-only, live) or a ZZ TEST reaching
+    `synced` as proof that keys work.
     """
     if settings.has_primehire_credentials:
-        return {"configured": True}
+        return {"configured": True, "live": "unknown — use /api/primehire/check"}
     raise HTTPException(status_code=401, detail={
         "configured": False,
         "hint": "Set PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY in backend/.env "
                 "(the single canonical place) and restart the backend.",
     })
+
+
+@router.get("/primehire/check")
+async def primehire_check(_auth: object = Depends(require_admin_auth)) -> dict[str, object]:
+    """ADMIN-ONLY live credential check. Calls PrimeHire
+    GET /response/report-not-generated server-side and relays ONLY the
+    upstream HTTP status (200 = keys accepted, 401 = rejected). Response
+    bodies and keys are never returned, logged, or stored.
+    """
+    from ..services import primehire_client as remote
+
+    try:
+        upstream = await remote.check_upstream()
+    except remote.PrimehireError as exc:
+        raise HTTPException(status_code=502, detail={
+            "upstream": "unreachable",
+            "hint": str(exc)[:200],
+        }) from None
+    if upstream == 401:
+        raise HTTPException(status_code=401, detail={"upstream": 401})
+    return {"upstream": upstream}
 

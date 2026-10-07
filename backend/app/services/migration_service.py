@@ -28,6 +28,11 @@ from .candidate_service import (
     looks_mock,
 )
 
+try:
+    from pymongo.errors import DuplicateKeyError as _DuplicateKeyError
+except ImportError:  # pragma: no cover — pymongo always present with motor
+    _DuplicateKeyError = Exception  # type: ignore[assignment,misc]
+
 MIGRATION_VERSION = 1
 
 # Frontend-only fields with no Mongo counterpart (dropped on import).
@@ -53,13 +58,34 @@ _SYNC_KEYS = (
     "mailStatus",
 )
 
-_VOLATILE_KEYS = {"_id", "id", "mongoId", "createdAt", "updatedAt", "origin", "migrationMeta"}
+_VOLATILE_KEYS = {"_id", "id", "mongoId", "createdAt", "updatedAt", "origin", "migrationMeta", "importedBy",
+                  # candidateKey is a browser-generated surrogate: two testers'
+                  # browsers mint different keys for the same real person, so
+                  # identity comparison uses (assessmentId, email) instead.
+                  "candidateKey"}
 
 
 def canonical(doc: dict[str, Any]) -> str:
     """Stable comparison form (volatile/meta keys excluded)."""
     clean = {k: v for k, v in doc.items() if k not in _VOLATILE_KEYS}
     return json.dumps(clean, sort_keys=True, default=str)
+
+
+def _comparable(doc: dict[str, Any]) -> dict[str, Any]:
+    """Normalize storage-shaped differences before comparison: pruned vs
+    null-filled primehire blocks, and email case/whitespace. Matching already
+    normalizes; this keeps equality consistent with matching."""
+    out = dict(doc)
+    prime = out.get("primehire")
+    if isinstance(prime, dict):
+        pruned = {k: v for k, v in prime.items() if v not in (None, "")}
+        if pruned:
+            out["primehire"] = pruned
+        else:
+            out.pop("primehire", None)
+    if "email" in out:
+        out["email"] = _norm_email(out.get("email"))
+    return out
 
 
 def map_frontend_candidate(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, bool]]:
@@ -115,7 +141,9 @@ def map_frontend_candidate(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[st
         "candidateKey": src.pop("id", None),
         "assessmentId": src.get("assessmentId"),
         "name": src.get("name"),
-        "email": src.get("email"),
+        # Normalized (strip + lowercase) so matching, dedupe and comparison
+        # treat case/whitespace variants as the same person.
+        "email": _norm_email(src.get("email")),
         "phone": src.get("phone", ""),
         "startTime": src.get("startTime", ""),
         "endTime": src.get("endTime", ""),
@@ -139,8 +167,13 @@ def map_frontend_candidate(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[st
     return doc, flags
 
 
+def _norm_email(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
 async def find_existing_candidate(col: Any, mapped: dict[str, Any]) -> dict | None:
-    """Stable-identifier lookup order: interviewId -> UUID -> candidateKey -> email fallback."""
+    """Stable-identifier lookup order: interviewId -> UUID -> candidateKey ->
+    (assessmentId + normalized email) fallback."""
     prime = mapped.get("primehire") or {}
     interview_id = prime.get("interviewId")
     if is_real_interview_id(interview_id):
@@ -157,10 +190,12 @@ async def find_existing_candidate(col: Any, mapped: dict[str, Any]) -> dict | No
         found = await col.find_one({"candidateKey": key})
         if found:
             return found
-    if mapped.get("assessmentId") and mapped.get("email"):
-        return await col.find_one(
-            {"assessmentId": mapped["assessmentId"], "email": mapped["email"]}
-        )
+    if mapped.get("assessmentId") and _norm_email(mapped.get("email")):
+        wanted = _norm_email(mapped.get("email"))
+        cursor = col.find({"assessmentId": mapped["assessmentId"]}, {"email": 1})
+        async for row in cursor:
+            if _norm_email(row.get("email")) == wanted:
+                return await col.find_one({"_id": row["_id"]})
     return None
 
 
@@ -176,14 +211,14 @@ def _classify_against_existing(existing_public: dict[str, Any], incoming_doc: di
     """NEW/identical/different without writing. Compares canonical forms only."""
     if not existing_public:
         return "NEW"
-    normalized = dict(incoming_doc)
+    normalized = _comparable(dict(incoming_doc))
     for key in ("id", "mongoId"):
         if key in existing_public:
             normalized[key] = existing_public[key]
-    return "EXISTING_IDENTICAL" if canonical(existing_public) == canonical(normalized) else "EXISTING_DIFFERENT"
+    return "EXISTING_IDENTICAL" if canonical(_comparable(existing_public)) == canonical(normalized) else "EXISTING_DIFFERENT"
 
 
-async def dry_run(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
+async def dry_run(db: Any, payload: dict[str, Any], tester: str | None = None) -> dict[str, Any]:
     """Validate + classify WITHOUT writing. Returns the summary (dryRun: true)."""
     asm_repo = AssessmentRepository(db)
     cand_col = db["candidates"]
@@ -192,6 +227,7 @@ async def dry_run(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "dryRun": True,
         "migrationVersion": MIGRATION_VERSION,
+        "tester": tester,
         "assessments": {"total": 0, "valid": 0, "duplicates": 0, "conflicts": 0, "invalid": 0},
         "candidates": {
             "total": 0, "valid": 0, "mock": 0,
@@ -208,7 +244,7 @@ async def dry_run(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             data = AssessmentIn.model_validate(raw)
             doc = data.to_doc()
-            existing = await asm_repo.get_by_job_id(doc["jobId"])
+            existing = await asm_repo.get_by_job_and_round(doc["jobId"], doc.get("roundType"))
             if not existing:
                 summary["assessments"]["valid"] += 1
             elif _classify_against_existing(existing, asm_public(doc)) == "EXISTING_IDENTICAL":
@@ -309,8 +345,12 @@ def is_backfill_eligible_doc(mapped: dict[str, Any]) -> bool:
     return sync.get("reportStatus") == "GENERATED" and is_real_interview_id(interview_id)
 
 
-async def run_import(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
-    """Validated import with per-record counts. Restartable (no duplicates)."""
+async def run_import(db: Any, payload: dict[str, Any], tester: str | None = None) -> dict[str, Any]:
+    """Validated import with per-record counts. Restartable (no duplicates).
+
+    Inserts are stamped origin="local-import" plus importedBy=tester when a
+    tester name is supplied. Existing documents are never overwritten.
+    """
     asm_repo = AssessmentRepository(db)
     cand_repo = CandidateRepository(db)
     cand_col = db["candidates"]
@@ -319,6 +359,7 @@ async def run_import(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {
         "dryRun": False,
         "migrationVersion": MIGRATION_VERSION,
+        "tester": tester,
         "assessments": {"received": 0, "inserted": 0, "existing": 0, "conflicts": 0, "invalid": 0},
         "candidates": {
             "received": 0, "inserted": 0, "existing": 0, "conflicts": 0,
@@ -329,17 +370,33 @@ async def run_import(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
         "errors": [],
     }
 
+    def _stamp(doc: dict[str, Any]) -> dict[str, Any]:
+        doc.setdefault("origin", "local-import")
+        if tester:
+            doc["importedBy"] = tester
+        return doc
+
     for i, raw in enumerate(payload.get("assessments") or []):
         section = result["assessments"]
         section["received"] += 1
         try:
             data = AssessmentIn.model_validate(raw)
             doc = data.to_doc()
-            existing = await asm_repo.get_by_job_id(doc["jobId"])
+            existing = await asm_repo.get_by_job_and_round(doc["jobId"], doc.get("roundType"))
             if not existing:
-                await asm_repo.create(doc)
+                try:
+                    await asm_repo.create(_stamp(doc))
+                except _DuplicateKeyError:
+                    # Occupant invisible to matching (e.g. soft-deleted):
+                    # conflict, never overwrite, never crash the batch.
+                    section["conflicts"] += 1
+                    result["conflicts"].append(
+                        {"kind": "assessment", "jobId": doc["jobId"],
+                         "reason": "Unique index occupant exists (possibly soft-deleted)"}
+                    )
+                    continue
                 section["inserted"] += 1
-            elif canonical(existing) == canonical(asm_public(doc)):
+            elif canonical(_comparable(existing)) == canonical(_comparable(asm_public(doc))):
                 # canonical() excludes volatile keys (incl. id/_id/timestamps)
                 section["existing"] += 1
             else:
@@ -367,11 +424,11 @@ async def run_import(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
             doc = data.to_doc()
             existing = await find_existing_candidate(cand_col, doc)
             if not existing:
-                await cand_repo.create(doc)
+                await cand_repo.create(_stamp(doc))
                 section["inserted"] += 1
                 if doc.get("isMock"):
                     section["mock"] += 1
-            elif canonical(existing) == canonical({**doc, "id": existing.get("id")}):
+            elif canonical(_comparable(existing)) == canonical(_comparable({**doc, "id": existing.get("id")})):
                 section["existing"] += 1
                 if doc.get("isMock"):
                     section["mock"] += 1
@@ -393,9 +450,9 @@ async def run_import(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
             doc = data.to_doc()
             existing = await tmpl_repo.get_by_template_id(doc["id"])
             if not existing:
-                await tmpl_repo.create(doc)
+                await tmpl_repo.create(_stamp(doc))
                 section["inserted"] += 1
-            elif canonical(existing) == canonical({**doc, "mongoId": existing.get("mongoId")}):
+            elif canonical(_comparable(existing)) == canonical(_comparable({**doc, "mongoId": existing.get("mongoId")})):
                 section["existing"] += 1
             else:
                 section["conflicts"] += 1
