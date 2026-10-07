@@ -24,6 +24,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI):
     # Degraded boot: a bad/unreachable URI must not prevent the app (and
     # /api/health, which reports the mongo state) from serving.
+    # Credential presence is always logged at boot (presence only, never values).
+    # Canonical home: backend/.env (or $BACKEND_ENV_FILE for isolated testing).
+    if settings.has_primehire_credentials:
+        logger.info("PrimeHire credentials: configured (keys held server-side only, never logged).")
+    else:
+        logger.warning(
+            "PrimeHire credentials: MISSING — assessment/interview sync will stay "
+            "'failed' until PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY are set "
+            "in backend/.env (the single canonical place)."
+        )
     if not settings.has_mongo:
         logger.warning("MONGODB_URI not set — running without database (health only).")
     else:

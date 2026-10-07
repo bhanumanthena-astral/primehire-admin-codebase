@@ -1,5 +1,6 @@
 """PrimeHire application backend (FastAPI + MongoDB Atlas)."""
 
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,11 +9,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # (e.g. `uvicorn app.main:app --app-dir backend` run from the repo root).
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 
+# Canonical secrets home is backend/.env. Point at a different file (e.g.
+# backend/.env.dev with MONGODB_DATABASE=primehire_dev) via BACKEND_ENV_FILE
+# for isolated live testing — never test against primehire_admin.
+_ENV_FILE = os.environ.get("BACKEND_ENV_FILE", _BACKEND_DIR / ".env")
+
 
 class Settings(BaseSettings):
     """Environment-driven configuration. Secrets never leave the server."""
 
-    model_config = SettingsConfigDict(env_file=_BACKEND_DIR / ".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
     app_name: str = "primehire-backend"
     mongodb_uri: str = ""

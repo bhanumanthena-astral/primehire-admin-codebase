@@ -396,3 +396,29 @@ async def test_idempotency_indexes(db):
 
     names = await ensure_idempotency_indexes(db)
     assert "ttl_createdAt" in names and "uniq_key" in names
+
+
+def test_backend_env_file_selects_dev_database(tmp_path, monkeypatch):
+    """BACKEND_ENV_FILE points live testing at an isolated database."""
+    from app.config import Settings
+
+    dev_file = tmp_path / ".env.dev"
+    dev_file.write_text("MONGODB_URI=mongodb://dev-host:27017\nMONGODB_DATABASE=primehire_dev\n")
+    custom = Settings(_env_file=str(dev_file))
+    assert custom.mongodb_database == "primehire_dev"
+    assert custom.mongodb_uri == "mongodb://dev-host:27017"
+
+
+def test_primehire_status_endpoint_reports_only_presence(monkeypatch):
+    client = TestClient(app)
+    monkeypatch.setattr("app.config.settings.primehire_access_key", "AK")
+    monkeypatch.setattr("app.config.settings.primehire_secret_key", "SK")
+    ok = client.get("/api/primehire/status")
+    assert ok.status_code == 200 and ok.json() == {"configured": True}
+    assert "AK" not in ok.text and "SK" not in ok.text
+    monkeypatch.setattr("app.config.settings.primehire_access_key", "")
+    monkeypatch.setattr("app.config.settings.primehire_secret_key", "")
+    missing = client.get("/api/primehire/status")
+    assert missing.status_code == 401
+    assert missing.json()["detail"]["configured"] is False
+    assert "mongodb" not in missing.text.lower()
