@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api.health import router as health_router
 from .api.migration import router as migration_router
+from .api.templates import router as templates_router
 from .api.reports import router as reports_router
 from .api.assessments import router as assessments_router
 from .api.directory import router as directory_router
@@ -60,19 +61,37 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-if settings.extra_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.extra_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-        max_age=86400,
-    )
+_DEFAULT_LOCAL_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+_allow_origins = list(dict.fromkeys(_DEFAULT_LOCAL_ORIGINS + settings.extra_origins))
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allow_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Accept",
+        # Write-path headers used by the admin UI / API.
+        "Idempotency-Key",
+        "X-Admin-Key",
+        "Cf-Access-Jwt-Assertion",
+    ],
+    max_age=86400,
+)
 
 app.include_router(health_router, prefix="/api")
 app.include_router(migration_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
+app.include_router(templates_router, prefix="/api")
 app.include_router(assessments_router, prefix="/api")
 app.include_router(directory_router, prefix="/api")
 app.include_router(candidates_router, prefix="/api")

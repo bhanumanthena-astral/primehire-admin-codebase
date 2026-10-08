@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { MailTemplate } from '../types';
-import { Mail, Plus, Edit2, Save, Eye, Sparkles, CheckCheck } from 'lucide-react';
+import { Mail, Plus, Edit2, Save, Eye, Sparkles, CheckCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SectionHeader, Panel, PanelTitle, Pill, PAButton, IconSquare, EmptyNote } from './ui/primitives';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 interface MailTemplatesProps {
   templates: MailTemplate[];
   onSaveTemplate: (template: MailTemplate) => void;
+  onDeleteTemplate: (id: string) => void;
 }
 
 const TYPE_META: Record<string, { label: string; tone: 'info' | 'warning' | 'success'; icon: string }> = {
@@ -21,10 +22,11 @@ const TYPE_META: Record<string, { label: string; tone: 'info' | 'warning' | 'suc
   CUSTOM: { label: 'Custom', tone: 'success', icon: '✏️' },
 };
 
-export default function MailTemplates({ templates, onSaveTemplate }: MailTemplatesProps) {
+export default function MailTemplates({ templates, onSaveTemplate, onDeleteTemplate }: MailTemplatesProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templates[0]?.id || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [copiedVar, setCopiedVar] = useState<string | null>(null);
 
   const [editSubject, setEditSubject] = useState('');
@@ -127,7 +129,7 @@ export default function MailTemplates({ templates, onSaveTemplate }: MailTemplat
                   key={tpl.id}
                   role="option"
                   aria-selected={isSelected}
-                  onClick={() => { setSelectedTemplateId(tpl.id); setIsEditing(false); setIsCreating(false); }}
+                  onClick={() => { setSelectedTemplateId(tpl.id); setIsEditing(false); setIsCreating(false); setConfirmingDelete(false); }}
                   className={cn(
                     'w-full text-left p-4 rounded-2xl border transition-all duration-200 flex items-start gap-3 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/40',
                     isSelected
@@ -167,12 +169,31 @@ export default function MailTemplates({ templates, onSaveTemplate }: MailTemplat
                     {isEditing ? 'Editing Template' : 'Template Details'}
                   </span>
                   {!isEditing ? (
-                    <button
-                      onClick={startEdit}
-                      className="text-xs font-semibold inline-flex items-center gap-1 text-accent hover:opacity-80 cursor-pointer transition"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" /> Edit
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={startEdit}
+                        className="text-xs font-semibold inline-flex items-center gap-1 text-accent hover:opacity-80 cursor-pointer transition"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!selectedTemplate) return;
+                          if (!confirmingDelete) {
+                            setConfirmingDelete(true);
+                            return;
+                          }
+                          setConfirmingDelete(false);
+                          onDeleteTemplate(selectedTemplate.id);
+                        }}
+                        onBlur={() => setConfirmingDelete(false)}
+                        className="text-xs font-semibold inline-flex items-center gap-1 text-destructive hover:opacity-80 cursor-pointer transition"
+                        title={confirmingDelete ? 'Click again to confirm deletion' : 'Delete this template'}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {confirmingDelete ? 'Confirm delete?' : 'Delete'}
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2">
                       <PAButton onClick={handleSave} className="!px-3 !py-1.5">

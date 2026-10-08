@@ -18,6 +18,21 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def as_utc_iso(value: Any) -> Any:
+    """Serialize a datetime as timezone-aware UTC ISO 8601 (+00:00).
+
+    PyMongo/Motor return naive UTC datetimes on read (no tz_aware codec), so
+    a raw ``.isoformat()`` emits a suffix-less string that browsers parse as
+    *local* time (IST shift of +5:30). Naive values are UTC by contract, so
+    attach UTC before serializing. Non-datetimes pass through untouched.
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
+    return value
+
+
 def upstream_hash(raw: Any) -> str:
     """Stable sha256 of the canonical raw payload (change detection)."""
     canonical = json.dumps(raw, sort_keys=True, default=str)
@@ -66,9 +81,7 @@ def to_public(doc: dict[str, Any]) -> dict[str, Any]:
     oid = out.pop("_id", None)
     out["id"] = str(oid) if oid is not None else out.get("id", "")
     for key in ("fetchedAt", "createdAt", "updatedAt"):
-        value = out.get(key)
-        if isinstance(value, datetime):
-            out[key] = value.isoformat()
+        out[key] = as_utc_iso(out.get(key))
     return out
 
 

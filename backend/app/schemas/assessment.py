@@ -11,7 +11,7 @@ class QuestionIn(BaseModel):
     id: str = ""
     text: str = Field(default="", alias="question")
     type: Literal["SPEAK_TO_ANSWER", "MCQ"] = "SPEAK_TO_ANSWER"
-    maxDuration: int = Field(default=120, alias="max_duration")
+    maxDuration: int = Field(default=120, ge=1, le=120, alias="max_duration")
     referenceAnswer: str | None = Field(default=None, alias="answer")
     criteria: str | None = None
     options: list[str] | None = None
@@ -51,7 +51,7 @@ class QuestionPatch(BaseModel):
     id: str = ""
     text: str = ""
     type: Literal["SPEAK_TO_ANSWER", "MCQ"] = "SPEAK_TO_ANSWER"
-    maxDuration: int = 120
+    maxDuration: int = Field(default=120, ge=1, le=120)
     referenceAnswer: str | None = None
     criteria: str | None = None
     options: list[str] | None = None

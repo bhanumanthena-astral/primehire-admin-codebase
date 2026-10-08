@@ -2,7 +2,8 @@
 
 Routes are keyed by the stable application ``candidateKey`` (the UI ``id``) —
 never by the Mongo ``_id`` and never by the rotatable legacy ``CAND-`` ids
-except as the key value itself. DELETE removes the Mongo document only;
+except as the key value itself. DELETE soft-deletes (deletedAt/deletedBy +
+audit_logs entry); the Mongo document is kept and hidden from reads.
 PrimeHire interviews/reports are never touched here.
 """
 
@@ -38,6 +39,12 @@ def _db() -> Any:
 
 def _service(db: Any = Depends(_db)) -> CandidateService:
     return CandidateService(db)
+
+
+def _actor(auth: Any = Depends(require_admin_auth)) -> str:
+    if isinstance(auth, dict) and auth.get("sub"):
+        return str(auth["sub"])
+    return "admin"
 
 
 @router.post("/candidates/bulk", status_code=status.HTTP_201_CREATED)
@@ -111,11 +118,15 @@ async def update_candidate(
 
 @router.delete("/candidates/{candidate_key}")
 async def delete_candidate(
-    candidate_key: str, service: CandidateService = Depends(_service)
+    candidate_key: str, service: CandidateService = Depends(_service),
+    actor: str = Depends(_actor),
 ) -> dict[str, Any]:
+    """Soft delete only (deletedAt/deletedBy + audit_logs entry). The Mongo
+    document is kept; reads hide it. Repeat deletes 404.
+    """
     key = candidate_key.strip()
     try:
-        await service.delete(key)
+        await service.delete(key, deleted_by=actor)
     except CandidateNotFound:
         raise HTTPException(status_code=404, detail={
             "code": "CANDIDATE_NOT_FOUND",

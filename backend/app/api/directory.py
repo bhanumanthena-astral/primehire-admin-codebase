@@ -71,12 +71,15 @@ async def list_candidates(
     limit, skip = _page(limit, skip)
     try:
         repo = CandidateRepository(db)
+        not_deleted: dict[str, Any] = {"deletedAt": None}
         if assessment_id:
             items = await repo.list_by_assessment(assessment_id, limit=limit, skip=skip)
-            total = await db["candidates"].count_documents({"assessmentId": assessment_id})
+            total = await db["candidates"].count_documents(
+                {"assessmentId": assessment_id, **not_deleted}
+            )
         else:
             items = await repo.list_all(limit=limit, skip=skip)
-            total = await db["candidates"].count_documents({})
+            total = await db["candidates"].count_documents(not_deleted)
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="Candidate lookup failed.") from None
     return {"items": items, "total": total, "limit": limit, "skip": skip}

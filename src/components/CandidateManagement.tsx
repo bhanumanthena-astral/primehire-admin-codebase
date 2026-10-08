@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Candidate, AssessmentProfile } from '../types';
 import { mockGetInterviewStatus, mockResetCandidatePassword, mockRegenerateReport } from '../mockData';
-import { syncCandidateToServer } from '../lib/mongoApi';
+import { deleteCandidate, syncCandidateToServer } from '../lib/mongoApi';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
@@ -24,9 +24,11 @@ import {
   Plus,
   ChevronRight,
   Users,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Trash2
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { SectionHeader, Panel, Pill, PAButton, IconSquare, EmptyNote } from './ui/primitives';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,13 +106,20 @@ function getScoreScale(round: string, layer2: string | null, layer3: string | nu
 
 function checkScoreFilter(score: number, scale: 'scale5' | 'scale3', filterValue: string): boolean {
   if (score < 0) return false;
-  
+
   if (scale === 'scale5') {
-    if (filterValue === 'E') return score <= 20;
-    if (filterValue === 'D') return score > 20 && score <= 40;
-    if (filterValue === 'C') return score > 40 && score <= 60;
-    if (filterValue === 'B') return score > 60 && score <= 80;
-    if (filterValue === 'A') return score > 80;
+    // Authoritative bands mirror getGrade() in normalizeReport.ts:
+    // A+ >=90, A >=80, B+ >=70, B >=60, C+ >=50, C >=40, D >=30, E >=20, F <20.
+    // Single-letter filters are inclusive (C includes C+, B includes B+, A includes A+).
+    if (filterValue === 'A+') return score >= 90;
+    if (filterValue === 'A') return score >= 80;
+    if (filterValue === 'B+') return score >= 70 && score < 90;
+    if (filterValue === 'B') return score >= 60 && score < 80;
+    if (filterValue === 'C+') return score >= 50 && score < 60;
+    if (filterValue === 'C') return score >= 40 && score < 60;
+    if (filterValue === 'D') return score >= 30 && score < 40;
+    if (filterValue === 'E') return score >= 20 && score < 30;
+    if (filterValue === 'F') return score < 20;
   }
   
   if (scale === 'scale3') {
@@ -177,11 +186,15 @@ function buildBadgeId(round: string, l2: string | null, l3: string | null, l4: s
 function getRangeLabel(scale: 'scale5' | 'scale3', value: string): string {
   if (scale === 'scale5') {
     switch (value) {
-      case 'A': return 'Grade A (> 80)';
-      case 'B': return 'Grade B (61–80)';
-      case 'C': return 'Grade C (41–60)';
-      case 'D': return 'Grade D (21–40)';
-      case 'E': return 'Grade E (0–20)';
+      case 'A+': return 'Grade A+ (90–100)';
+      case 'A': return 'Grade A (80–100)';
+      case 'B+': return 'Grade B+ (70–89)';
+      case 'B': return 'Grade B (60–79)';
+      case 'C+': return 'Grade C+ (50–59)';
+      case 'C': return 'Grade C (40–59, incl. C+)';
+      case 'D': return 'Grade D (30–39)';
+      case 'E': return 'Grade E (20–29)';
+      case 'F': return 'Grade F (0–19)';
     }
   }
   if (scale === 'scale3') {
@@ -242,9 +255,26 @@ export default function CandidateManagement({
 }: CandidateManagementProps) {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [openMenuCandId, setOpenMenuCandId] = useState<string | null>(null);
+  const menuContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!openMenuCandId) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
+        setOpenMenuCandId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [openMenuCandId]);
+
   const [passwordEditCandId, setPasswordEditCandId] = useState<string | null>(null);
   const [newCandPassword, setNewCandPassword] = useState('');
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [deleteTargetCandId, setDeleteTargetCandId] = useState<string | null>(null);
+  const [isDeletingCandidate, setIsDeletingCandidate] = useState(false);
 
   // Multi-Select Badge Filter State
   const [activeFilters, setActiveFilters] = useState<ActiveFilterBadge[]>([]);
@@ -261,6 +291,28 @@ export default function CandidateManagement({
     setPickerL3(null);
     setPickerL4(null);
   };
+
+  // Auto re-sync candidates stuck in GENERATING (Analyzing) so the list
+  // does not stay stale until a manual click. Silent, throttled, stops
+  // when no GENERATING rows remain.
+  const autoSyncRef = useRef(false);
+  useEffect(() => {
+    if (!candidates.some(c => c.reportStatus === 'GENERATING')) return;
+    if (autoSyncRef.current) return;
+    autoSyncRef.current = true;
+    const timer = setInterval(async () => {
+      const pending = candidates.filter(c => c.reportStatus === 'GENERATING' && c.linkGenerated && c.interviewId);
+      if (pending.length === 0) return;
+      for (const c of pending.slice(0, 3)) {
+        try {
+          const updated = await mockGetInterviewStatus(c.id as any, candidates);
+          onSetCandidates(updated);
+        } catch { /* keep Analyzing state; manual sync still available */ }
+      }
+    }, 15000);
+    return () => { clearInterval(timer); autoSyncRef.current = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidates.some(c => c.reportStatus === 'GENERATING')]);
 
   const handleCheckStatus = async (candId: string) => {
     setSyncingId(candId);
@@ -313,6 +365,36 @@ export default function CandidateManagement({
       }
     } catch (err: any) {
       toast.error('Failed to regenerate report: ' + err.message);
+    }
+  };
+
+  // Server-first delete: the Mongo record is soft-deleted (kept with
+  // deletedAt/deletedBy + audit trail, hidden from reads). Local state only
+  // changes on server success — a failed delete keeps the row with an error.
+  // Rows never saved to the server (no mongoId) are removed locally only.
+  const handleConfirmDeleteCandidate = async () => {
+    if (!deleteTargetCandId || isDeletingCandidate) return;
+    const target = candidates.find(c => c.id === deleteTargetCandId);
+    if (!target) {
+      setDeleteTargetCandId(null);
+      return;
+    }
+    setIsDeletingCandidate(true);
+    try {
+      if (target.mongoId) {
+        await deleteCandidate(target.id);
+      }
+      onSetCandidates(prev => prev.filter(c => c.id !== target.id));
+      toast.success(
+        target.mongoId
+          ? `Candidate "${target.name}" deleted from the server.`
+          : `Candidate "${target.name}" removed locally (was never saved to server).`,
+      );
+      setDeleteTargetCandId(null);
+    } catch (err: any) {
+      toast.error(`Delete failed on server (${err?.message || err}) — candidate kept.`);
+    } finally {
+      setIsDeletingCandidate(false);
     }
   };
 
@@ -516,11 +598,15 @@ export default function CandidateManagement({
             <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border/60">
               <span className="eyebrow mr-1">Select Range Filter:</span>
               {pickerScale === 'scale5' && ([
-                { value: 'A', label: 'Grade A (> 80)', tone: 'success' as const },
-                { value: 'B', label: 'Grade B (61–80)', tone: 'info' as const },
-                { value: 'C', label: 'Grade C (41–60)', tone: 'warning' as const },
-                { value: 'D', label: 'Grade D (21–40)', tone: 'warning' as const },
-                { value: 'E', label: 'Grade E (0–20)', tone: 'danger' as const },
+                { value: 'A+', label: 'Grade A+ (90–100)', tone: 'success' as const },
+                { value: 'A', label: 'Grade A (80–100)', tone: 'success' as const },
+                { value: 'B+', label: 'Grade B+ (70–89)', tone: 'info' as const },
+                { value: 'B', label: 'Grade B (60–79)', tone: 'info' as const },
+                { value: 'C+', label: 'Grade C+ (50–59)', tone: 'warning' as const },
+                { value: 'C', label: 'Grade C (40–59)', tone: 'warning' as const },
+                { value: 'D', label: 'Grade D (30–39)', tone: 'warning' as const },
+                { value: 'E', label: 'Grade E (20–29)', tone: 'danger' as const },
+                { value: 'F', label: 'Grade F (0–19)', tone: 'danger' as const },
               ]).map(opt => (
                 <button
                   key={opt.value}
@@ -590,8 +676,9 @@ export default function CandidateManagement({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredCandidates.map(c => {
+              {filteredCandidates.map((c, idx) => {
                 const assessment = assessments.find(a => a.id === c.assessmentId);
+                const isLast = idx >= Math.max(0, filteredCandidates.length - 2);
                 return (
                   <TableRow key={c.id} className="hover:bg-muted/40">
                     <TableCell>
@@ -655,7 +742,7 @@ export default function CandidateManagement({
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
-                        <div className="relative inline-block">
+                        <div className="relative inline-block" ref={openMenuCandId === c.id ? menuContainerRef : undefined}>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -666,9 +753,7 @@ export default function CandidateManagement({
                             <MoreVertical className="w-4 h-4" />
                           </button>
                           {openMenuCandId === c.id && (
-                            <>
-                              <div className="fixed inset-0 z-30" onClick={() => setOpenMenuCandId(null)} />
-                              <div className="absolute right-0 mt-1 w-44 bg-card border border-border/70 rounded-2xl shadow-[var(--shadow-card)] py-1.5 z-40 text-left">
+                              <div className={cn("absolute right-0 w-44 bg-card border border-border/70 rounded-2xl shadow-[var(--shadow-card)] py-1.5 z-40 text-left max-h-64 overflow-y-auto", isLast ? "bottom-full mb-1" : "top-full mt-1")}>
                                 <button
                                   onClick={() => { setOpenMenuCandId(null); onToggleCandidateStatus(c.id); }}
                                   className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer transition"
@@ -690,8 +775,14 @@ export default function CandidateManagement({
                                 >
                                   <RefreshCw className="w-3.5 h-3.5 text-info" /> Regenerate Report
                                 </button>
+                                <div className="my-1 border-t border-border/60" />
+                                <button
+                                  onClick={() => { setOpenMenuCandId(null); setDeleteTargetCandId(c.id); }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10 cursor-pointer transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Delete Candidate
+                                </button>
                               </div>
-                            </>
                           )}
                         </div>
                       </div>
@@ -751,6 +842,54 @@ export default function CandidateManagement({
           </Panel>
         </div>
       )}
+
+      {/* Delete Candidate Confirm Modal (server-first soft-delete) */}
+      {deleteTargetCandId && (() => {
+        const target = candidates.find(c => c.id === deleteTargetCandId);
+        const assessment = target ? assessments.find(a => a.id === target.assessmentId) : undefined;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-sm">
+            <Panel className="w-full max-w-md space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <Trash2 className="w-4 h-4 text-destructive" /> Delete Candidate
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {target ? (
+                    <>Remove <strong className="text-foreground">{target.name}</strong>{' '}
+                    <span className="font-mono">({target.email})</span>
+                    {assessment ? <> from <strong className="text-foreground">{assessment.jobTitle}</strong></> : null}?
+                    </>
+                  ) : (
+                    'Remove this candidate?'
+                  )}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  The record is soft-deleted on the server (kept with an audit trail, hidden from
+                  lists). Assessment profiles, PrimeHire interviews, and generated reports are untouched.
+                </p>
+              </div>
+              <div className="flex gap-2 pt-3 border-t border-border/60">
+                <PAButton
+                  variant="secondary"
+                  onClick={() => setDeleteTargetCandId(null)}
+                  disabled={isDeletingCandidate}
+                  className="flex-1"
+                >
+                  Cancel
+                </PAButton>
+                <PAButton
+                  onClick={handleConfirmDeleteCandidate}
+                  disabled={isDeletingCandidate}
+                  className="flex-1 bg-destructive text-destructive-foreground hover:opacity-90"
+                >
+                  {isDeletingCandidate ? 'Deleting…' : 'Delete Candidate'}
+                </PAButton>
+              </div>
+            </Panel>
+          </div>
+        );
+      })()}
 
     </div>
   );

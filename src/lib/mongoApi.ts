@@ -1,4 +1,5 @@
-import { AssessmentProfile, Candidate } from '../types';
+import { AssessmentProfile, Candidate, MailTemplate } from '../types';
+import { asUtcIso } from '../utils/dates';
 
 /**
  * FastAPI read client (Phase 3C read cutover).
@@ -152,11 +153,11 @@ export function mapMongoAssessment(doc: any): AssessmentProfile {
       weightage: q.weightage,
     })) : [],
     isActive: doc.isActive ?? true,
-    createdAt: doc.createdAt ?? new Date().toISOString(),
-    updatedAt: doc.updatedAt,
-    deactivatedAt: doc.deactivatedAt ?? null,
-    startDate: doc.startDateIso ?? doc.startDate,
-    endDate: doc.endDateIso ?? doc.endDate,
+    createdAt: asUtcIso(doc.createdAt ?? new Date().toISOString()),
+    updatedAt: asUtcIso(doc.updatedAt),
+    deactivatedAt: asUtcIso(doc.deactivatedAt ?? null),
+    startDate: asUtcIso(doc.startDateIso ?? doc.startDate),
+    endDate: asUtcIso(doc.endDateIso ?? doc.endDate),
     mongoId: doc.id,
     version: doc.version ?? 1,
     syncState: doc.syncState,
@@ -173,22 +174,22 @@ export function mapMongoCandidate(doc: any): Candidate {
     name: doc.name ?? '',
     email: doc.email ?? '',
     phone: doc.phone ?? '',
-    startTime: doc.startTime ?? '',
-    endTime: doc.endTime ?? '',
+    startTime: asUtcIso(doc.startTime ?? ''),
+    endTime: asUtcIso(doc.endTime ?? ''),
     link: doc.link ?? null,
     password: null,
-    assignedDate: doc.assignedDate ?? null,
-    submittedDate: sync.submittedDate ?? null,
+    assignedDate: asUtcIso(doc.assignedDate ?? null),
+    submittedDate: asUtcIso(sync.submittedDate ?? null),
     status: doc.status ?? 'ACTIVE',
     reportStatus: sync.reportStatus ?? null,
-    lastInviteSentAt: sync.lastInviteSentAt,
+    lastInviteSentAt: asUtcIso(sync.lastInviteSentAt),
     interviewId: prime.interviewId ?? null,
     responseId: prime.responseId ?? null,
     verifiedCandidateUUID: prime.candidateUUID ?? null,
     linkGenerated: doc.link ? true : undefined,
     inviteSent: sync.inviteSent,
-    inviteSentAt: sync.inviteSentAt ?? null,
-    lastReminderSentAt: sync.lastReminderSentAt ?? null,
+    inviteSentAt: asUtcIso(sync.inviteSentAt ?? null),
+    lastReminderSentAt: asUtcIso(sync.lastReminderSentAt ?? null),
     reminderCount: sync.reminderCount ?? 0,
     assessmentStatus: sync.assessmentStatus,
     mailStatus: sync.mailStatus,
@@ -306,6 +307,74 @@ export async function fetchCandidates(assessmentId?: string): Promise<Candidate[
   const qs = assessmentId ? `?assessment_id=${encodeURIComponent(assessmentId)}&limit=500` : '?limit=500';
   const body = await getJson<Page<any>>(`/api/candidates${qs}`);
   return (body.items ?? []).map(mapMongoCandidate);
+}
+
+/**
+ * Shared mail templates (server-truth so every user sees the same list).
+ * localStorage remains as an offline cache/fallback only.
+ */
+
+/** Map a Mongo template document to the UI MailTemplate shape. */
+export function mapMongoTemplate(doc: any): MailTemplate {
+  return {
+    id: String(doc.id ?? ''),
+    name: doc.name ?? '',
+    type: doc.type ?? 'CUSTOM',
+    subject: doc.subject ?? '',
+    body: doc.body ?? '',
+  };
+}
+
+export async function fetchTemplates(): Promise<MailTemplate[]> {
+  const body = await getJson<{ items: any[] }>('/api/templates');
+  return (body.items ?? []).map(mapMongoTemplate);
+}
+
+export async function createTemplate(t: MailTemplate): Promise<MailTemplate> {
+  const doc = await sendJson<any>('POST', '/api/templates', {
+    id: t.id,
+    name: t.name,
+    type: t.type,
+    subject: t.subject,
+    body: t.body,
+  });
+  return mapMongoTemplate(doc);
+}
+
+export async function deleteTemplate(id: string): Promise<void> {
+  await sendJson<unknown>('DELETE', `/api/templates/${encodeURIComponent(id)}`);
+}
+
+export async function updateTemplate(
+  id: string, patch: Partial<MailTemplate>,
+): Promise<MailTemplate> {
+  const body: Record<string, unknown> = {};
+  if (patch.name !== undefined) body.name = patch.name;
+  if (patch.type !== undefined) body.type = patch.type;
+  if (patch.subject !== undefined) body.subject = patch.subject;
+  if (patch.body !== undefined) body.body = patch.body;
+  const doc = await sendJson<any>(
+    'PUT', `/api/templates/${encodeURIComponent(id)}`, body,
+  );
+  return mapMongoTemplate(doc);
+}
+
+/**
+ * Live View Report via the application backend (secure proxy).
+ *
+ * The browser sends ONLY the Job ID + Candidate ID it already knows, using
+ * the existing app session. The backend resolves the PrimeHire interview
+ * identifier from its own records, injects the PrimeHire API key
+ * server-side, and relays the upstream report. The PrimeHire key is never
+ * sent to, stored in, or returned to the browser — pass no credentials here.
+ *
+ * Returns the upstream report envelope verbatim (same shape the View Report
+ * UI already renders: `{ status, message, data }` or the unwrapped report).
+ */
+export async function fetchLiveReport(jobId: string, candidateKey: string): Promise<any> {
+  return getJson<any>(
+    `/api/reports/jobs/${encodeURIComponent(jobId)}/candidates/${encodeURIComponent(candidateKey)}`,
+  );
 }
 
 /** Outbound payload. Allowlist-built: password/rowLoading/answers/

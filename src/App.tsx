@@ -14,7 +14,6 @@ import ReportDialog from './components/ReportDialog';
 import { Toaster } from '@/components/ui/sonner';
 import {
   FrostedDetailPanel,
-  ModeToggle,
   Pill,
 } from './components/ui/primitives';
 import {
@@ -32,7 +31,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { fetchAssessments, fetchCandidates, updateCandidate, API_BASE, fetchHealth } from './lib/mongoApi';
+import { fetchAssessments, fetchCandidates, updateCandidate, API_BASE, fetchHealth, fetchTemplates, createTemplate, updateTemplate, deleteTemplate } from './lib/mongoApi';
 
 const MODULE_TABS = [
   { id: 'dashboard', label: 'Dashboard Overview', short: 'Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
@@ -79,9 +78,18 @@ export default function App() {
 
   // Slice 2A: assessments are server-truth only. No localStorage read here —
   // the list loads from FastAPI on mount (loading state until then) and
-  // syncs on focus + every 30s. localStorage keeps candidates/templates
-  // until Slices 2B/2C.
-  const [assessments, setAssessments] = useState<AssessmentProfile[]>([]);
+  // syncs on focus + every 30s. localStorage acts as cache so counts are instantly
+  // available on page load.
+  const [assessments, setAssessments] = useState<AssessmentProfile[]>(() => {
+    try {
+      const stored = localStorage.getItem('primehire_assessments');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch { /* ignore */ }
+    return [];
+  });
   const [assessmentsLoading, setAssessmentsLoading] = useState(true);
   const [assessmentsError, setAssessmentsError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -106,10 +114,16 @@ export default function App() {
     } catch { return INITIAL_TEMPLATES; }
   });
 
-  // Server-truth setter (no localStorage). Accepts a full list or an
+  // Server-truth setter with localStorage cache. Accepts a full list or an
   // updater; used for sync merges and server-confirmed writes.
   const handleSetAssessments = (newAsms: AssessmentProfile[] | ((prev: AssessmentProfile[]) => AssessmentProfile[])) => {
-    setAssessments(prev => (typeof newAsms === 'function' ? newAsms(prev) : newAsms));
+    setAssessments(prev => {
+      const next = typeof newAsms === 'function' ? newAsms(prev) : newAsms;
+      try {
+        localStorage.setItem('primehire_assessments', JSON.stringify(next));
+      } catch { /* ignore */ }
+      return next;
+    });
   };
 
   const handleSetCandidates = (newCands: Candidate[] | ((prev: Candidate[]) => Candidate[])) => {
@@ -140,6 +154,8 @@ export default function App() {
 
   const candidatesRef = useRef(candidates);
   candidatesRef.current = candidates;
+  const templatesRef = useRef(templates);
+  templatesRef.current = templates;
   const assessmentsRef = useRef(assessments);
   assessmentsRef.current = assessments;
 
@@ -147,21 +163,46 @@ export default function App() {
   const loadInFlightRef = useRef(false);
   const lastSyncedRef = useRef<string | null>(null);
 
-  // Assessments sync: full load on mount/refresh, incremental (`since`) on
-  // focus + 30s poll. Never overlaps; abortable; never wipes good state on
-  // empty/failed responses (assessments are server-truth, so a successful
-  // empty list IS the truth — only errors preserve state).
+  // Assessments sync (stale-while-revalidate, no manual refresh):
+  // - Full load on app mount and when returning to the Assessments tab with
+  //   stale cache. Full replace is authoritative: it propagates creates,
+  //   edits, deactivations AND deletions by any user (incremental `since`
+  //   merges can only upsert — the backend hides soft-deleted records).
+  // - Cheap incremental (`since`) merge on window focus + 30s poll.
+  // - Mutations update their record from the server response directly.
+  // Never overlaps (loadInFlightRef); out-of-order responses are dropped by
+  // sequence number; errors preserve good state (a successful empty list IS
+  // the truth — only errors preserve state).
+  const ASSESSMENT_STALE_MS = 45000;
+  const assessSeqRef = useRef(0);
+
+  const isAssessmentsFresh = () => {
+    if (assessmentsRef.current.length === 0 || !lastSyncedRef.current) return false;
+    return Date.now() - new Date(lastSyncedRef.current).getTime() < ASSESSMENT_STALE_MS;
+  };
+
   const loadAssessments = async (opts?: { incremental?: boolean; signal?: AbortSignal }) => {
+    const seq = ++assessSeqRef.current;
     const params: { since?: string; signal?: AbortSignal } = {};
     if (opts?.signal) params.signal = opts.signal;
     if (opts?.incremental && lastSyncedRef.current) params.since = lastSyncedRef.current;
     const fresh = await fetchAssessments(params);
+    if (seq !== assessSeqRef.current) return fresh; // a newer load won: drop this response
     setAssessments(prev => {
-      if (!opts?.incremental || !lastSyncedRef.current) return fresh;
-      if (fresh.length === 0) return prev; // unchanged data costs a cheap empty page
-      const byId = new Map(prev.map(a => [a.id, a]));
-      for (const a of fresh) byId.set(a.id, a);
-      return [...byId.values()];
+      let next: AssessmentProfile[];
+      if (!opts?.incremental || !lastSyncedRef.current) {
+        next = fresh;
+      } else if (fresh.length === 0) {
+        return prev; // unchanged data costs a cheap empty page
+      } else {
+        const byId = new Map<string, AssessmentProfile>(prev.map(a => [a.id, a]));
+        for (const a of fresh) byId.set(a.id, a);
+        next = [...byId.values()];
+      }
+      try {
+        localStorage.setItem('primehire_assessments', JSON.stringify(next));
+      } catch { /* ignore */ }
+      return next;
     });
     const nowIso = new Date().toISOString();
     lastSyncedRef.current = nowIso;
@@ -171,20 +212,41 @@ export default function App() {
     return fresh;
   };
 
+  // Stale-gated revalidation entry point for tab returns, focus, and polling.
+  // Cache shows immediately; a request fires only when stale. `full` replaces
+  // the list (delete-safe); incremental merges cheaply. `force` bypasses the
+  // gate (used by the error-state Retry action).
+  const revalidateAssessments = (opts?: { full?: boolean; force?: boolean }) => {
+    if (loadInFlightRef.current) return; // a full load is already running
+    if (!opts?.force && isAssessmentsFresh()) return; // cache fresh: no request
+    if (opts?.full) {
+      const wasEmpty = assessmentsRef.current.length === 0;
+      if (wasEmpty) setAssessmentsLoading(true); // skeleton only when nothing to show
+      void loadAssessments()
+        .catch((err: any) => {
+          if (wasEmpty) setAssessmentsError(err?.message || 'Server unreachable');
+        })
+        .finally(() => {
+          if (wasEmpty) setAssessmentsLoading(false);
+        });
+    } else {
+      void loadAssessments({ incremental: assessmentsRef.current.length > 0 }).catch(() => {});
+    }
+  };
+
   const loadData = async (refreshSignal?: AbortSignal) => {
     if (loadInFlightRef.current) return; // no overlapping requests
     loadInFlightRef.current = true;
-    const ctrl = new AbortController();
-    loadAbortRef.current?.abort();
-    loadAbortRef.current = ctrl;
-    const signal = refreshSignal ?? ctrl.signal;
     setIsRetrying(true);
     try {
       const [health, cands] = await Promise.all([
         fetchHealth().catch(() => null),
-        fetchCandidates(),
+        fetchCandidates().catch(err => {
+          console.warn('[DataSource] Failed to fetch candidates:', err);
+          return [];
+        }),
       ]);
-      await loadAssessments({ signal });
+      await loadAssessments({ signal: refreshSignal });
 
       if (health) {
         setBackendMeta({ url: API_BASE, db: health.database || 'unknown', counts: health.counts });
@@ -225,31 +287,46 @@ export default function App() {
       setIsRetrying(false);
       setAssessmentsLoading(false);
     }
+    // Independent step: template sync must run even when the
+    // candidates/assessments load above fails — it has its own fallback.
+    await loadTemplatesFromServer();
   };
 
   useEffect(() => {
     void loadData();
-    // Light incremental sync (uses `since`, so unchanged data costs little).
+    // Stale-gated background sync: focus + 30s poll refetch only when the
+    // cache is older than ASSESSMENT_STALE_MS (cheap incremental merge).
     const onRefocus = () => {
-      if (document.visibilityState !== 'visible' || loadInFlightRef.current) return;
-      loadAssessments({ incremental: true }).catch(() => {});
+      if (document.visibilityState !== 'visible') return;
+      revalidateAssessments();
     };
     window.addEventListener('focus', onRefocus);
     document.addEventListener('visibilitychange', onRefocus);
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible' && !loadInFlightRef.current) {
-        loadAssessments({ incremental: true }).catch(() => {});
+      if (document.visibilityState === 'visible') {
+        revalidateAssessments();
       }
     }, 30000);
     return () => {
       window.removeEventListener('focus', onRefocus);
       document.removeEventListener('visibilitychange', onRefocus);
       clearInterval(timer);
-      loadAbortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Returning to the Assessments or Dashboard tab revalidates with an authoritative full
+  // load when stale (propagates other users' creates/edits/deletes); fresh
+  // cache shows instantly with zero network requests.
+  useEffect(() => {
+    if (activeTab === 'assessments' || activeTab === 'dashboard') {
+      revalidateAssessments({ full: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Force full reload. No longer bound to any visible Refresh button — used
+  // only by the error-state Retry action and conflict-recovery toast actions.
   const handleRefreshAssessments = () => {
     void loadData();
   };
@@ -293,12 +370,79 @@ export default function App() {
     }
   };
 
-  const handleSaveMailTemplate = (updated: MailTemplate) => {
-    const exists = templates.some(t => t.id === updated.id);
-    if (exists) {
-      setTemplates(templates.map(t => t.id === updated.id ? updated : t));
-    } else {
-      setTemplates([...templates, updated]);
+  // Shared templates: MongoDB is the source of truth so every user sees
+  // the same list; localStorage stays as an offline cache only.
+  // Templates created while on old code (or offline) exist only locally —
+  // adopt them into the server so they become shared instead of lost.
+  const loadTemplatesFromServer = async () => {
+    try {
+      let server = await fetchTemplates();
+      const local = templatesRef.current.length > 0 ? templatesRef.current : INITIAL_TEMPLATES;
+      const serverIds = new Set(server.map(t => t.id));
+      const missing = local.filter(t => t && t.id && !serverIds.has(t.id));
+      for (const t of missing) {
+        // 409 = another profile seeded/adopted it concurrently: keep server's.
+        try { await createTemplate(t); } catch { /* duplicate or validation: skip */ }
+      }
+      if (missing.length > 0) {
+        server = await fetchTemplates();
+      }
+      if (server.length === 0) return; // keep local cache
+      handleSetTemplates(server);
+      console.info(`[DataSource] templates: mongodb (${server.length})`);
+    } catch {
+      console.warn('[DataSource] templates API unreachable — keeping local cache.');
+    }
+  };
+
+  // Server-confirmed save: create or update in MongoDB, then sync state
+  // (which also refreshes the localStorage cache). Offline saves stay
+  // local-only with a warning that other users cannot see them yet.
+  const handleSaveMailTemplate = async (updated: MailTemplate) => {
+    const mergeSaved = (saved: MailTemplate) => {
+      handleSetTemplates(prev => {
+        const exists = prev.some(t => t.id === saved.id);
+        if (exists) {
+          return prev.map(t => (t.id === saved.id ? saved : t));
+        }
+        return [...prev, saved];
+      });
+    };
+    try {
+      let saved: MailTemplate;
+      try {
+        saved = await updateTemplate(updated.id, updated);
+      } catch (err: any) {
+        if (err?.status === 404) {
+          try {
+            saved = await createTemplate(updated);
+          } catch (createErr: any) {
+            if (createErr?.status === 409) {
+              saved = await updateTemplate(updated.id, updated);
+            } else {
+              throw createErr;
+            }
+          }
+        } else {
+          throw err;
+        }
+      }
+      mergeSaved(saved);
+    } catch {
+      mergeSaved(updated);
+      toast.warning('Template saved locally only — server unreachable. Other users cannot see it yet.');
+    }
+  };
+
+  // Server-first delete: the Mongo record is removed only on server success —
+  // a failed delete keeps the template with an error.
+  const handleDeleteMailTemplate = async (id: string) => {
+    try {
+      await deleteTemplate(id);
+      handleSetTemplates(prev => prev.filter(t => t.id !== id));
+      toast.success('Template deleted from the server.');
+    } catch (err: any) {
+      toast.error(`Delete failed on server (${err?.message || err}) — template kept.`);
     }
   };
 
@@ -413,7 +557,6 @@ export default function App() {
                   <div className="text-[10px] uppercase tracking-wide text-primary-foreground/70 font-medium">Administrator</div>
                 </div>
               </div>
-              <ModeToggle />
               <button
                 onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
                 aria-label="Toggle navigation"
@@ -668,6 +811,8 @@ export default function App() {
               filterStatus={filterStatus}
               searchQuery={searchQuery}
               onNavigate={(tab) => setActiveTab(tab)}
+              onInspectEvaluated={() => { setFilterStatus('GENERATED'); setActiveTab('candidates'); }}
+              onMonitorProcessing={() => { setFilterStatus('GENERATING'); setActiveTab('candidates'); }}
             />
           )}
           {activeTab === 'candidates' && (
@@ -700,28 +845,13 @@ export default function App() {
             <MailTemplates
               templates={templates}
               onSaveTemplate={handleSaveMailTemplate}
+              onDeleteTemplate={handleDeleteMailTemplate}
             />
           )}
         </FrostedDetailPanel>
       </main>
 
-      {/* Dev-only backend connection indicator */}
-      <footer className="relative z-10 max-w-7xl w-full mx-auto px-6 pb-6 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border/40 bg-card/60 backdrop-blur text-[11px] text-muted-foreground font-mono">
-          <span className={cn('w-2 h-2 rounded-full inline-block', backendMeta?.db && backendMeta.db !== 'unreachable' ? 'bg-emerald-500' : 'bg-rose-500')} />
-          <span>API: <strong className="text-foreground">{API_BASE}</strong></span>
-          <span>•</span>
-          <span>DB: <strong className="text-foreground">{backendMeta?.db || 'probing...'}</strong></span>
-          {backendMeta?.counts && (
-            <>
-              <span>•</span>
-              <span>Cands: <strong className="text-foreground">{backendMeta.counts.candidates ?? 0}</strong></span>
-              <span>•</span>
-              <span>Asms: <strong className="text-foreground">{backendMeta.counts.assessments ?? 0}</strong></span>
-            </>
-          )}
-        </div>
-      </footer>
+
 
       {/* Candidate Evaluation Report Workspace */}
       <ReportDialog

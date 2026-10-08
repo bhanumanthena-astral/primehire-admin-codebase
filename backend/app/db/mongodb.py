@@ -55,6 +55,7 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
         ([("assessmentId", 1)], {"name": "by_assessmentId"}),
         ([("candidateKey", 1)], {"name": "by_candidateKey"}),
         ([("email", 1)], {"name": "by_email"}),
+        ([("deletedAt", 1)], {"name": "by_deletedAt"}),
         # Partial (not sparse): only real string identifiers are indexed, so
         # any number of pre-link candidates may coexist. The previous sparse
         # unique indexes indexed explicit nulls and raised E11000 on the

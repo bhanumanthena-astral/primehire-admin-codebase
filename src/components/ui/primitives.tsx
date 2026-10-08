@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowUpRight, Check, ChevronDown, Moon, Sun } from 'lucide-react';
+import React from 'react';
+import { ArrowUpRight, Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /* ── SectionHeader ─────────────────────────────────────────── */
@@ -24,7 +24,7 @@ export function SectionHeader({
         {icon && <IconSquare>{icon}</IconSquare>}
         <div className="min-w-0">
           <span className="eyebrow block">{eyebrow}</span>
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
             {title}
           </h2>
           {subtitle && (
@@ -61,7 +61,7 @@ export function Panel({
 }
 
 export function PanelTitle({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <h3 className={cn('text-sm font-semibold text-white', className)}>{children}</h3>;
+  return <h3 className={cn('text-sm font-semibold text-foreground', className)}>{children}</h3>;
 }
 
 export function PanelSubtitle({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -84,7 +84,7 @@ export function IconSquare({
         'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border',
         tone === 'on-brand'
           ? 'bg-primary-foreground/10 border-primary-foreground/15 text-primary-foreground backdrop-blur'
-          : 'bg-accent/10 border-accent/15 text-accent dark:bg-primary/15 dark:text-primary-glow dark:border-primary/20',
+          : 'bg-accent/10 border-accent/15 text-accent',
         className
       )}
     >
@@ -297,43 +297,6 @@ export function FilterSelect({
         {children}
       </select>
     </label>
-  );
-}
-
-/* ── ModeToggle ────────────────────────────────────────────── */
-export function ModeToggle({ className }: { className?: string }) {
-  const [dark, setDark] = useState(false);
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('placement-theme');
-      setDark(
-        stored === 'dark' ||
-          (!stored && document.documentElement.classList.contains('dark'))
-      );
-    } catch {
-      setDark(document.documentElement.classList.contains('dark'));
-    }
-  }, []);
-  const toggle = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle('dark', next);
-    try {
-      localStorage.setItem('placement-theme', next ? 'dark' : 'light');
-    } catch {}
-  };
-  return (
-    <button
-      onClick={toggle}
-      aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className={cn(
-        'w-9 h-9 rounded-full inline-flex items-center justify-center border border-primary-foreground/25 bg-primary-foreground/10 backdrop-blur text-primary-foreground hover:bg-primary-foreground/20 transition-all duration-200 cursor-pointer',
-        className
-      )}
-    >
-      {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-    </button>
   );
 }
 

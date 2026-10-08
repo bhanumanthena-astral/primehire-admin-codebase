@@ -45,7 +45,8 @@ async def _http_fetch(path: str, payload: dict[str, Any]) -> Any:
             "PRIMEHIRE_SECRET_KEY in the server environment.",
             status=401,
         )
-    if not response.ok:
+    # NOTE: httpx.Response has no `.ok` (that is `requests`). Use `.is_success`.
+    if not response.is_success:
         detail: str = response.text[:500]
         try:
             body = response.json()
@@ -104,8 +105,59 @@ async def _http_get(path: str, _payload: dict[str, Any]) -> Any:
         raise PrimehireError(f"PrimeHire unreachable: {type(exc).__name__}") from exc
     if response.status_code == 401:
         raise PrimehireError("PrimeHire rejected the keys (401).", status=401)
-    if not response.ok:
+    # NOTE: httpx.Response has no `.ok` (that is `requests`). Use `.is_success`.
+    if not response.is_success:
         raise PrimehireError(
             f"PrimeHire returned {response.status_code}.", status=response.status_code
         )
     return {"ok": True}
+
+
+ReportFetchFn = Callable[[str], Awaitable[Any]]
+
+
+async def _http_fetch_report(interview_id: str) -> Any:
+    """Production GET /interview/{id}/report (server-to-server only)."""
+    if not has_credentials(settings.primehire_access_key, settings.primehire_secret_key):
+        raise PrimehireError(
+            "PrimeHire credentials are not configured on the server "
+            "(PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY). Add them and retry."
+        )
+    base = resolve_base_url(settings.primehire_base_url, "https://api.placement.vils.ai/primehire/api/v1")
+    url = f"{base}/interview/{interview_id}/report"
+    headers = auth_headers(settings.primehire_access_key, settings.primehire_secret_key)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+    except httpx.TimeoutException as exc:
+        raise PrimehireError("PrimeHire request timed out.", status=504) from exc
+    except Exception as exc:  # noqa: BLE001 — DNS/refused/reset become 502
+        raise PrimehireError(f"PrimeHire unreachable: {type(exc).__name__}", status=502) from exc
+    if response.status_code == 401:
+        raise PrimehireError("PrimeHire rejected the keys (401).", status=401)
+    if response.status_code == 404:
+        raise PrimehireError("PrimeHire has no report for this interview (404).", status=404)
+    # NOTE: httpx.Response has no `.ok` (that is `requests`). Use `.is_success`.
+    if not response.is_success:
+        raise PrimehireError(
+            f"PrimeHire returned {response.status_code}.", status=response.status_code
+        )
+    try:
+        return response.json()
+    except Exception as exc:  # noqa: BLE001 — non-JSON upstream is a 502
+        raise PrimehireError("PrimeHire returned a non-JSON report.", status=502) from exc
+
+
+async def fetch_interview_report(
+    interview_id: str, fetch: ReportFetchFn | None = None
+) -> Any:
+    """GET /interview/{interview_id}/report on PrimeHire.
+
+    Returns the decoded upstream JSON body verbatim (callers relay it to
+    the authorized browser client). ``fetch`` is injectable so routes and
+    tests can substitute a mock without touching the network. Raises
+    PrimehireError with .status in {401, 404, 502, 504, ...}; messages
+    never contain key material.
+    """
+    do_fetch = fetch or _http_fetch_report
+    return await do_fetch(interview_id)

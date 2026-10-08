@@ -260,3 +260,75 @@ def test_duplicate_real_interview_id_conflicts_end_to_end():
         assert dup.json()["detail"]["code"] == "DUPLICATE_KEY"
     finally:
         app.dependency_overrides.pop(candidates_api._db, None)
+
+
+def test_soft_delete_hides_reads_and_audits():
+    """Professional delete: doc kept with deletedAt/deletedBy, hidden from
+    reads/lists, updates 404, key reuse conflicts, audit logged."""
+    import asyncio
+
+    async def _flow():
+        from app.services.candidate_service import CandidateService
+
+        db = _fresh_db()
+        svc = CandidateService(db)
+        created = await svc.create(_valid_candidate(candidateKey="CAND-DEL1"))
+        assert created["candidateKey"] == "CAND-DEL1"
+
+        await svc.delete("CAND-DEL1", deleted_by="tester")
+
+        # Hidden from reads.
+        try:
+            await svc.get_by_key("CAND-DEL1")
+            raise AssertionError("deleted candidate still readable")
+        except Exception as exc:
+            assert type(exc).__name__ == "CandidateNotFound"
+
+        # Doc kept with markers.
+        raw = await db["candidates"].find_one({"candidateKey": "CAND-DEL1"})
+        assert raw is not None and raw.get("deletedAt") is not None
+        assert raw.get("deletedBy") == "tester"
+
+        # Repeat delete 404s.
+        try:
+            await svc.delete("CAND-DEL1", deleted_by="tester")
+            raise AssertionError("repeat delete should raise")
+        except Exception as exc:
+            assert type(exc).__name__ == "CandidateNotFound"
+
+        # Key reuse is a conflict, never a silent second document.
+        try:
+            await svc.create(_valid_candidate(candidateKey="CAND-DEL1"))
+            raise AssertionError("key reuse should conflict")
+        except Exception as exc:
+            assert type(exc).__name__ == "CandidateConflict"
+
+        entries = await db["audit_logs"].find(
+            {"entity": "candidate", "entityId": "CAND-DEL1"}
+        ).to_list(length=10)
+        assert any(e.get("action") == "candidate.soft_deleted" for e in entries)
+
+    asyncio.get_event_loop().run_until_complete(_flow())
+
+
+def test_delete_route_soft_deletes_and_hides_from_list():
+    db = _fresh_db()
+    app.dependency_overrides[candidates_api._db] = lambda: db
+    try:
+        client = TestClient(app)
+        created = client.post(
+            "/api/candidates",
+            json=_valid_candidate(candidateKey="CAND-R1", email="r1@x.com"),
+        ).json()
+        key = created["candidateKey"]
+        assert client.get(f"/api/candidates/{key}").status_code == 200
+
+        deleted = client.delete(f"/api/candidates/{key}")
+        assert deleted.status_code == 200 and deleted.json() == {"deleted": key}
+        assert client.get(f"/api/candidates/{key}").status_code == 404
+        assert client.delete(f"/api/candidates/{key}").status_code == 404
+        # Deleted rows stay out of directory lists.
+        listed = client.get("/api/candidates?limit=200").json()
+        assert all(i.get("candidateKey") != key for i in listed.get("items", []))
+    finally:
+        app.dependency_overrides.pop(candidates_api._db, None)

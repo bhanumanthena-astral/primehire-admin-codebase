@@ -1,9 +1,79 @@
 import express from "express";
+import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 
+// Primary env home is the repo-root `.env` (see `.env.example`).
 dotenv.config();
+
+// Fallback env home is `backend/.env` (see `backend/.env.example`).
+// Keys placed there (e.g. PRIMEHIRE_ACCESS_KEY) are honored when the
+// root `.env` does not define them, so moving the PrimeHire secret into
+// the backend env file keeps the `/api/backend/*` proxy working.
+// Root `.env` values always take precedence; nothing here overrides them.
+const BACKEND_ENV_KEYS = [
+  "BACKEND_URL",
+  "PRIMEHIRE_ACCESS_KEY",
+  "PRIMEHIRE_SECRET_KEY",
+  "PROXY_ORIGIN",
+] as const;
+
+// Resolve `backend/.env` relative to this file first (CWD-independent),
+// then relative to the process working directory. Records which file
+// actually supplied the credentials for /api/health diagnostics.
+let primehireEnvSource: "root .env" | "backend/.env" | "missing" =
+  (process.env.PRIMEHIRE_ACCESS_KEY || "").trim() &&
+  (process.env.PRIMEHIRE_SECRET_KEY || "").trim()
+    ? "root .env"
+    : "missing";
+
+try {
+  const serverDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(serverDir, "backend", ".env"),
+    path.join(process.cwd(), "backend", ".env"),
+  ];
+  for (const backendEnvPath of candidates) {
+    if (primehireEnvSource !== "missing") break;
+    if (!fs.existsSync(backendEnvPath)) continue;
+    const parsed = dotenv.parse(fs.readFileSync(backendEnvPath, "utf8"));
+    for (const key of BACKEND_ENV_KEYS) {
+      if (!process.env[key] && parsed[key]) {
+        process.env[key] = parsed[key];
+      }
+    }
+    if (
+      (process.env.PRIMEHIRE_ACCESS_KEY || "").trim() &&
+      (process.env.PRIMEHIRE_SECRET_KEY || "").trim()
+    ) {
+      primehireEnvSource = "backend/.env";
+    }
+  }
+} catch {
+  // A malformed backend/.env must never prevent the server from booting;
+  // missing credentials are reported per-request as CONFIGURATION_ERROR.
+}
+
+function primehireConfigured(): boolean {
+  return primehireEnvSource !== "missing";
+}
+
+// Startup validation (presence only — values are never logged).
+{
+  if (primehireConfigured()) {
+    console.log(
+      `[Config] PrimeHire credentials: configured via ${primehireEnvSource} (held server-side only, never logged).`
+    );
+  } else {
+    console.warn(
+      "[Config] PrimeHire credentials: MISSING — /api/backend/* will return " +
+        "CONFIGURATION_ERROR until PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY " +
+        "are set in .env (or backend/.env) and the server is restarted."
+    );
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -14,7 +84,11 @@ async function startServer() {
 
   // API routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    // Presence-only diagnostics: never includes key material.
+    res.json({
+      status: "ok",
+      primehire: { configured: primehireConfigured(), source: primehireEnvSource },
+    });
   });
 
   // In-memory rate limiting and allowlist rules
@@ -140,7 +214,7 @@ async function startServer() {
         status: "ERROR",
         type: "CONFIGURATION_ERROR",
         message:
-          "PrimeHire credentials are not configured on the server (.env missing PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY). Add them and restart the server, then retry.",
+          "PrimeHire credentials are not configured on the server (missing PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY in .env or backend/.env). Add them and restart the server, then retry. Check GET /api/health for which env file supplied the credentials.",
       });
     }
 
@@ -165,6 +239,74 @@ async function startServer() {
       console.log(`[Request Payload] ↓↓↓`);
       console.log(JSON.stringify(req.body, null, 2));
       console.log(`[Request Payload] ↑↑↑`);
+    }
+
+    // ── Interview time validation (Requirement 9) ──────────────────────
+    // Reject past-start or invalid-window requests BEFORE they reach PrimeHire
+    // so the operator gets a clear, actionable error.
+    const isInterviewCreate = req.method === 'POST' && /^\/interview\/?$/.test(subpath);
+    const isInterviewReschedule = req.method === 'PUT' && /^\/interview\/[^/]+\/reschedule\/?$/.test(subpath);
+
+    if ((isInterviewCreate || isInterviewReschedule) && req.body) {
+      const nowUtc = new Date();
+
+      if (isInterviewCreate && Array.isArray(req.body.candidates)) {
+        for (const cand of req.body.candidates) {
+          const start = cand.start_time ? new Date(cand.start_time) : null;
+          const end = cand.end_time ? new Date(cand.end_time) : null;
+
+          if (start && !isNaN(start.getTime()) && start.getTime() <= nowUtc.getTime()) {
+            console.warn(`[Proxy Validation] Blocked: start_time in the past for candidate ${cand.candidate_id}`);
+            return res.status(422).json({
+              code: "INTERVIEW_START_IN_PAST",
+              message: `Interview start time must be in the future (start_time: ${cand.start_time}, server now: ${nowUtc.toISOString()})`,
+            });
+          }
+          if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime()) && end.getTime() <= start.getTime()) {
+            console.warn(`[Proxy Validation] Blocked: end_time <= start_time for candidate ${cand.candidate_id}`);
+            return res.status(422).json({
+              code: "INTERVIEW_END_BEFORE_START",
+              message: "Interview end time must be after start time",
+            });
+          }
+        }
+      }
+
+      if (isInterviewReschedule) {
+        const start = req.body.start_time ? new Date(req.body.start_time) : null;
+        const end = req.body.end_time ? new Date(req.body.end_time) : null;
+
+        if (start && !isNaN(start.getTime()) && start.getTime() <= nowUtc.getTime()) {
+          console.warn(`[Proxy Validation] Blocked: rescheduled start_time in the past`);
+          return res.status(422).json({
+            code: "INTERVIEW_START_IN_PAST",
+            message: `Interview start time must be in the future (start_time: ${req.body.start_time}, server now: ${nowUtc.toISOString()})`,
+          });
+        }
+        if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime()) && end.getTime() <= start.getTime()) {
+          console.warn(`[Proxy Validation] Blocked: rescheduled end_time <= start_time`);
+          return res.status(422).json({
+            code: "INTERVIEW_END_BEFORE_START",
+            message: "Interview end time must be after start time",
+          });
+        }
+      }
+    }
+
+    // ── Assessment question duration validation (Bug #7) ───────────────
+    const isAssessmentWrite = (req.method === 'POST' || req.method === 'PUT') && /^\/assessment\/?$/.test(subpath);
+    if (isAssessmentWrite && req.body && Array.isArray(req.body.questions)) {
+      for (let i = 0; i < req.body.questions.length; i++) {
+        const q = req.body.questions[i];
+        const dur = Number(q.max_duration ?? q.maxDuration);
+        if (!Number.isFinite(dur) || dur < 1 || dur > 120) {
+          console.warn(`[Proxy Validation] Blocked: question #${i + 1} max_duration out of range (${dur})`);
+          return res.status(422).json({
+            code: "INVALID_MAX_DURATION",
+            message: `Question #${i + 1} max_duration must be between 1 and 120 seconds`,
+          });
+        }
+      }
     }
 
     try {

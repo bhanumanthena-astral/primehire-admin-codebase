@@ -101,6 +101,7 @@ notepad backend\.env
 | Blank page / HMR flicker | Normal Vite dev; hard refresh `Ctrl+Shift+R` |
 | `npm install` fails | Delete `node_modules`, `package-lock.json` stays, run `npm install` again; ensure Node 20+ |
 | Backend `mongo: not_configured` | Normal without `MONGODB_URI` in `backend/.env`; app still boots |
+| `Dashboard shows 0 for everything` | Check `curl http://localhost:8000/api/health` for DB name & counts. Ensure `VITE_API_URL=http://localhost:8000` in `.env` and restart Vite (`npm run dev`). Kill any stale backend on 8001. |
 
 ---
 

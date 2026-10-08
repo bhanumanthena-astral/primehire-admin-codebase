@@ -62,7 +62,11 @@ _VOLATILE_KEYS = {"_id", "id", "mongoId", "createdAt", "updatedAt", "origin", "m
                   # candidateKey is a browser-generated surrogate: two testers'
                   # browsers mint different keys for the same real person, so
                   # identity comparison uses (assessmentId, email) instead.
-                  "candidateKey"}
+                  "candidateKey",
+                  # Soft-delete lifecycle markers (mirrors assessments): stored
+                  # as null on live docs, absent from incoming payloads — never
+                  # content. Deleted docs never match as "existing identical".
+                  "deletedAt", "deletedBy"}
 
 
 def canonical(doc: dict[str, Any]) -> str:

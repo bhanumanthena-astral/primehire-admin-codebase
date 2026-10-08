@@ -33,6 +33,8 @@ interface DashboardProps {
   filterStatus?: string;
   searchQuery?: string;
   onNavigate: (tab: string) => void;
+  onInspectEvaluated?: () => void;
+  onMonitorProcessing?: () => void;
 }
 
 export default function Dashboard({
@@ -41,7 +43,9 @@ export default function Dashboard({
   filterRound = 'ALL',
   filterStatus = 'ALL',
   searchQuery = '',
-  onNavigate
+  onNavigate,
+  onInspectEvaluated,
+  onMonitorProcessing
 }: DashboardProps) {
   // Apply active filter state
   const filteredAssessments = assessments.filter(a => {
@@ -101,7 +105,7 @@ export default function Dashboard({
           label="Total assessments"
           value={assessments.length}
           unit="profiles"
-          pill={<Pill tone="info">{activeAssessments.length} Active</Pill>}
+          pill={<Pill tone="success">{activeAssessments.length} Active</Pill>}
           footer="Accepting submissions"
           action={<ViewMoreButton onClick={() => onNavigate('assessments')}>View profiles</ViewMoreButton>}
         />
@@ -119,7 +123,7 @@ export default function Dashboard({
           unit="reports"
           pill={<Pill tone="success"><CheckCircle2 className="w-3 h-3" /> Ready</Pill>}
           footer="AI evaluation compiled"
-          action={<ViewMoreButton onClick={() => onNavigate('candidates')}>Inspect</ViewMoreButton>}
+          action={<ViewMoreButton onClick={() => (onInspectEvaluated ? onInspectEvaluated() : onNavigate('candidates'))}>Inspect</ViewMoreButton>}
         />
         <Stat
           label="Report processing"
@@ -131,7 +135,7 @@ export default function Dashboard({
               : <Pill tone="neutral">Queue Clear</Pill>
           }
           footer="Real-time status sync"
-          action={<ViewMoreButton onClick={() => onNavigate('candidates')}>Monitor</ViewMoreButton>}
+          action={<ViewMoreButton onClick={() => (onMonitorProcessing ? onMonitorProcessing() : onNavigate('candidates'))}>Monitor</ViewMoreButton>}
         />
       </div>
 

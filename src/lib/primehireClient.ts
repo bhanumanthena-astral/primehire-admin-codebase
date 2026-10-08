@@ -90,7 +90,7 @@ async function apiRequest<T = any>(method: string, path: string, body?: any): Pr
         errorJson?.type === 'CONFIGURATION_ERROR' || response.status === 500;
       throw new Error(
         isMissingConfig
-          ? `${msg} — The server has no PrimeHire x-access-key / x-secret-key configured. Create a .env file (see .env.example: PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY) and restart the server, then retry creating the assessment.`
+          ? `${msg} — The server has no PrimeHire x-access-key / x-secret-key configured. Set PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY in .env or backend/.env (see .env.example), restart the server, verify GET /api/health shows primehire.configured=true, then retry.`
           : `PrimeHire authentication failed (401: Invalid Credentials) on ${method} ${path}. The x-access-key / x-secret-key sent by the server were rejected. Verify PRIMEHIRE_ACCESS_KEY / PRIMEHIRE_SECRET_KEY in the server .env are correct and restart the server, then retry.`
       );
     }

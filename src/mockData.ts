@@ -1,5 +1,6 @@
 import { AssessmentProfile, Candidate, MailTemplate, Question } from './types';
 import { primehireClient } from './lib/primehireClient';
+import { fetchLiveReport } from './lib/mongoApi';
 import { toast } from 'sonner';
 import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, ResponseId, asJobId, asLocalCandidateId, asInterviewId, asResponseId, toVerifiedCandidateUUID, generate32BitId } from './lib/primehireIds';
 
@@ -447,6 +448,13 @@ export async function mockGenerateLink(
     }
 
     console.warn('[PrimeHire Client] Generate link failed, falling back:', error);
+    // QA #12: schedule rejections must NOT be masked by a simulated local
+    // link — the operator must see the failure and reschedule. Re-throw so
+    // the caller shows "Link generation failed: ..." with the upstream text.
+    if (/pass(ed)?\b|expir|past window|start.*past|window.*(end|over)/i.test(errorMsg)) {
+      toast.error(`Link generation rejected: ${errorMsg} Reschedule to a future window first.`);
+      throw error;
+    }
     toast.error(`API Error: ${error.message || error}. Simulating links locally.`);
 
     const nowStr = new Date().toISOString();
@@ -779,6 +787,28 @@ export async function mockGetReport(candidateId: LocalCandidateId, storeCandidat
     };
   }
 
+  // Secure backend proxy (preferred): the browser sends ONLY the Job ID +
+  // Candidate ID to OUR backend, which injects the PrimeHire API key
+  // server-side. No PrimeHire key ever leaves the browser here.
+  if (candidate && candidate.assessmentId && candidate.id) {
+    try {
+      const live = await fetchLiveReport(candidate.assessmentId, candidate.id);
+      const liveReport = (live as any)?.data ?? live;
+      if (liveReport) {
+        return {
+          candidateId,
+          _isRealReport: true,
+          ...liveReport
+        };
+      }
+    } catch (err) {
+      console.warn('[Report] Backend live-report proxy failed, falling back to interview proxy:', err);
+    }
+  }
+
+  // Fallback: existing same-origin interview proxy (/api/backend/*), which
+  // likewise keeps the PrimeHire key server-side (Express/Cloudflare inject
+  // x-access-key / x-secret-key from backend env, never from the browser).
   // If candidate has a real interview ID (not starting with 'int-'), query real API
   if (candidate && candidate.interviewId && !candidate.interviewId.startsWith('int-')) {
     try {

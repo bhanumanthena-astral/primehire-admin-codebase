@@ -206,6 +206,32 @@ export async function onRequest(context: ProxyContext): Promise<Response> {
     if (body.byteLength > 0) {
       init.body = body;
       if (!outgoing.has('Content-Type')) outgoing.set('Content-Type', 'application/json');
+
+      // Assessment question duration validation (Bug #7)
+      if ((request.method === 'POST' || request.method === 'PUT') && /^\/assessment\/?$/.test(normalizedPath)) {
+        try {
+          const text = new TextDecoder().decode(body);
+          const parsed = JSON.parse(text);
+          if (Array.isArray(parsed?.questions)) {
+            for (let i = 0; i < parsed.questions.length; i++) {
+              const q = parsed.questions[i];
+              const dur = Number(q.max_duration ?? q.maxDuration);
+              if (!Number.isFinite(dur) || dur < 1 || dur > 120) {
+                return jsonResponse(
+                  {
+                    code: 'INVALID_MAX_DURATION',
+                    message: `Question #${i + 1} max_duration must be between 1 and 120 seconds`,
+                  },
+                  422,
+                  corsOrigin
+                );
+              }
+            }
+          }
+        } catch {
+          // Fall through to upstream if parsing fails
+        }
+      }
     }
   }
 

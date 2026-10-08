@@ -21,19 +21,23 @@ import ReportView from './report/ReportView';
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getGrade(score: number): { grade: string; color: string; bg: string; border: string; label: string } {
+  if (score >= 90) return { grade: 'A+', color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', label: 'Outstanding' };
   if (score >= 80) return { grade: 'A', color: 'text-success', bg: 'bg-success/10', border: 'border-success/20', label: 'Excellent' };
+  if (score >= 70) return { grade: 'B+', color: 'text-info', bg: 'bg-accent/10', border: 'border-accent/20', label: 'Very Good' };
   if (score >= 60) return { grade: 'B', color: 'text-info', bg: 'bg-accent/10', border: 'border-accent/20', label: 'Good' };
+  if (score >= 50) return { grade: 'C+', color: 'text-warning', bg: 'bg-warning/15', border: 'border-warning/25', label: 'Above Average' };
   if (score >= 40) return { grade: 'C', color: 'text-warning', bg: 'bg-warning/15', border: 'border-warning/25', label: 'Average' };
-  if (score >= 20) return { grade: 'D', color: 'text-warning', bg: 'bg-warning/15', border: 'border-warning/25', label: 'Below Average' };
-  return { grade: 'E', color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', label: 'Needs Improvement' };
+  if (score >= 30) return { grade: 'D', color: 'text-warning', bg: 'bg-warning/15', border: 'border-warning/25', label: 'Below Average' };
+  if (score >= 20) return { grade: 'E', color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', label: 'Needs Improvement' };
+  return { grade: 'F', color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20', label: 'Fail' };
 }
 
 function getBarColor(score: number): string {
-  // locked grade palette: A #16a34a B #6366f1 C #eab308 D #f97316 E #ef4444
+  // locked grade palette: A+/A #16a34a B+/B #6366f1 C+/C #eab308 D #f97316 E/F #ef4444
   if (score >= 80) return '#16a34a';
   if (score >= 60) return '#6366f1';
   if (score >= 40) return '#eab308';
-  if (score >= 20) return '#f97316';
+  if (score >= 30) return '#f97316';
   return '#ef4444';
 }
 
@@ -554,7 +558,11 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
       toast.success('Evaluation report has been successfully regenerated!');
       await fetchReport();
     } catch (err: any) {
-      toast.error('Failed to regenerate report: ' + err.message);
+      const msg = String(err?.message || 'regeneration failed');
+      const hint = msg.includes('response ID')
+        ? ' No valid submitted response was found for this candidate — sync interview status first, then retry once the interview is submitted.'
+        : '';
+      toast.error('Failed to regenerate report: ' + msg + hint);
     } finally {
       setRegenerating(false);
     }
@@ -566,7 +574,7 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl lg:max-w-6xl max-h-[92vh] overflow-y-auto text-foreground bg-card border border-border/60 shadow-2xl p-0 font-sans rounded-2xl">
+      <DialogContent showCloseButton={false} className="max-w-5xl lg:max-w-6xl max-h-[92vh] overflow-y-auto text-foreground bg-card border border-border/60 shadow-2xl p-0 font-sans rounded-2xl">
         
         {/* ── Executive Header Banner ── */}
         <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-md border-b border-border/60 px-6 py-4 shadow-2xs">
@@ -594,8 +602,16 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
               </div>
             </div>
 
-            {/* Status Tags */}
+            {/* Status Tags + accessible close (sticky-safe, never clipped) */}
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={onClose}
+                aria-label="Close report"
+                title="Close report"
+                className="p-1.5 rounded-full border border-border/70 text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
               <span className="text-[10px] font-extrabold tracking-wider px-2.5 py-1 rounded-lg border border-border/60 bg-muted text-foreground uppercase">
                 {assessment.roundType} Round
               </span>

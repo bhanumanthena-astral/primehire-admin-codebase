@@ -11,11 +11,10 @@
       rel="stylesheet"
     />
     <script>
+      // Light-only theme: drop any previously stored dark preference.
       try {
-        var t = localStorage.getItem('placement-theme');
-        if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-          document.documentElement.classList.add('dark');
-        }
+        localStorage.removeItem('placement-theme');
+        document.documentElement.classList.remove('dark');
       } catch (e) {}
     </script>
   </head>

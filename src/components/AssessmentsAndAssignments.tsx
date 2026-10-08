@@ -5,6 +5,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { AssessmentProfile, Question, Candidate, MailTemplate, RoundType, QuestionType, CandidateStatus } from '../types';
+import { cn } from '@/lib/utils';
 import { 
   mockGenerateLink,
   mockRegenerateLink,
@@ -32,6 +33,16 @@ import {
 } from '../lib/mongoApi';
 import { asJobId, asLocalCandidateId, JobId, LocalCandidateId, generate32BitId } from '../lib/primehireIds';
 import { primehireClient } from '../lib/primehireClient';
+import {
+  SCHEDULE_GRACE_MS,
+  MIN_GENERATE_BUFFER_MS,
+  MIN_RESCHEDULE_BUFFER_MS,
+  formatUtcInstant,
+  formatLocalInstant,
+  formatInterviewWindow,
+  parseServerDate,
+  formatToDatetimeLocal,
+} from '../utils/dates';
 import { 
   ChevronRight, 
   Plus, 
@@ -146,13 +157,18 @@ function getScoreScale(round: string, layer2: string | null, layer3: string | nu
 
 function checkScoreFilter(score: number, scale: 'scale5' | 'scale3', filterValue: string): boolean {
   if (score < 0) return false;
-  
+
   if (scale === 'scale5') {
-    if (filterValue === 'E') return score <= 20;
-    if (filterValue === 'D') return score > 20 && score <= 40;
-    if (filterValue === 'C') return score > 40 && score <= 60;
-    if (filterValue === 'B') return score > 60 && score <= 80;
-    if (filterValue === 'A') return score > 80;
+    // Mirrors getGrade() in normalizeReport.ts. Single letters are inclusive.
+    if (filterValue === 'A+') return score >= 90;
+    if (filterValue === 'A') return score >= 80;
+    if (filterValue === 'B+') return score >= 70 && score < 90;
+    if (filterValue === 'B') return score >= 60 && score < 80;
+    if (filterValue === 'C+') return score >= 50 && score < 60;
+    if (filterValue === 'C') return score >= 40 && score < 60;
+    if (filterValue === 'D') return score >= 30 && score < 40;
+    if (filterValue === 'E') return score >= 20 && score < 30;
+    if (filterValue === 'F') return score < 20;
   }
   
   if (scale === 'scale3') {
@@ -249,7 +265,7 @@ export default function AssessmentsAndAssignments({
   const [formLanguage, setFormLanguage] = useState('ENGLISH');
   const [formRoundType, setFormRoundType] = useState<RoundType>('TECHNICAL');
   const [formQuestions, setFormQuestions] = useState<Question[]>([
-    { id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 50 }
+    { id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }
   ]);
   const [formStartDate, setFormStartDate] = useState('');
   const [formEndDate, setFormEndDate] = useState('');
@@ -265,6 +281,20 @@ export default function AssessmentsAndAssignments({
   const [deleteConfirmCandId, setDeleteConfirmCandId] = useState<string | null>(null); // Step 1 delete
   const [doubleConfirmCandId, setDoubleConfirmCandId] = useState<string | null>(null); // Step 2 delete
   const [openMenuCandId, setOpenMenuCandId] = useState<string | null>(null); // Candidate actions dropdown menu
+  const menuContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!openMenuCandId) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
+        setOpenMenuCandId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [openMenuCandId]);
 
   // ==========================================
   // 3b. RESCHEDULE MODAL STATE
@@ -279,7 +309,14 @@ export default function AssessmentsAndAssignments({
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   // ==========================================
-  // 5. LINKEDIN FILTERS STATE
+  // 3c. SEND INVITE TEMPLATE PICKER STATE
+  // ==========================================
+  const [inviteDialogCandIds, setInviteDialogCandIds] = useState<LocalCandidateId[]>([]);
+  const [inviteTemplateId, setInviteTemplateId] = useState<string>('');
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+
+  // ==========================================
+  // 5. PIPELINE FILTERS STATE
   // ==========================================
   const [filterRound, setFilterRound] = useState<'ALL' | 'BASIC' | 'TECHNICAL' | 'HR'>('ALL');
   const [filterLayer2, setFilterLayer2] = useState<string | null>(null);
@@ -405,19 +442,22 @@ export default function AssessmentsAndAssignments({
       let isStartValid = false;
       let isEndValid = false;
 
+      const ISO_8601_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
       if (startTime && startTime.trim() !== '') {
-        const d = Date.parse(startTime);
-        if (isNaN(d)) {
-          errors.push({ row: rowNum, col: 'Start Time', type: 'red', message: 'Start Time must be ISO 8601.' });
+        const s = startTime.trim();
+        const d = Date.parse(s);
+        if (isNaN(d) || !ISO_8601_RE.test(s)) {
+          errors.push({ row: rowNum, col: 'Start Time', type: 'red', message: 'Start Time must be ISO 8601 (e.g. 2026-07-05T09:00:00Z).' });
         } else {
           isStartValid = true;
         }
       }
 
       if (endTime && endTime.trim() !== '') {
-        const d = Date.parse(endTime);
-        if (isNaN(d)) {
-          errors.push({ row: rowNum, col: 'End Time', type: 'red', message: 'End Time must be ISO 8601.' });
+        const s = endTime.trim();
+        const d = Date.parse(s);
+        if (isNaN(d) || !ISO_8601_RE.test(s)) {
+          errors.push({ row: rowNum, col: 'End Time', type: 'red', message: 'End Time must be ISO 8601 (e.g. 2026-07-05T12:00:00Z).' });
         } else {
           isEndValid = true;
         }
@@ -426,6 +466,15 @@ export default function AssessmentsAndAssignments({
       if (isStartValid && isEndValid) {
         if (new Date(endTime).getTime() <= new Date(startTime).getTime()) {
           errors.push({ row: rowNum, col: 'Times', type: 'red', message: 'End Time must be after Start Time.' });
+        }
+        // QA #12: PrimeHire rejects windows that already started ("interview
+        // time has been passed"). Warn here (yellow, non-blocking for record
+        // keeping); the Generate-link action blocks with an error instead.
+        const now = Date.now();
+        if (new Date(startTime).getTime() < now - SCHEDULE_GRACE_MS) {
+          errors.push({ row: rowNum, col: 'Start Time', type: 'yellow', message: 'Start Time is in the past — PrimeHire will reject link generation. Pick a future window.' });
+        } else if (new Date(endTime).getTime() <= now) {
+          errors.push({ row: rowNum, col: 'End Time', type: 'yellow', message: 'End Time already passed — PrimeHire will reject link generation. Pick a future window.' });
         }
       }
     });
@@ -443,7 +492,7 @@ export default function AssessmentsAndAssignments({
   const activeAssessment = assessments.find(a => a.id === selectedAssessmentId);
   const activeAssessmentCandidates = candidates.filter(c => c.assessmentId === selectedAssessmentId);
 
-  // LinkedIn Cascading Filter Helpers
+  // Cascading pipeline filter helpers
   const shouldShowLayer3 = (() => {
     if (filterRound === 'BASIC' && filterLayer2 === 'Communication') return true;
     if (filterRound === 'TECHNICAL' && filterLayer2 === 'Communication') return true;
@@ -478,7 +527,7 @@ export default function AssessmentsAndAssignments({
 
   const activeScale = getScoreScale(filterRound, filterLayer2, filterLayer3, filterLayer4);
 
-  // Filtered Candidates according to LinkedIn Filter rules
+  // Filtered candidates according to cascading pipeline filter rules
   const filteredCandidates = activeAssessmentCandidates.filter(c => {
     // 1. If Round selection is ALL, return all candidates (optional & additive!)
     if (filterRound === 'ALL') return true;
@@ -537,6 +586,13 @@ export default function AssessmentsAndAssignments({
     setFormQuestions(prev => prev.map((q, i) => {
       if (i === idx) {
         const updated = { ...q, ...updates };
+        // Keep correctOption in sync when options are edited (BUG#14)
+        if (updates.options && !updates.correctOption) {
+          const nextOpts = updates.options;
+          if (!nextOpts.includes(updated.correctOption || '')) {
+            updated.correctOption = nextOpts[0] || '';
+          }
+        }
         // Clean conditional fields if question type changes
         if (updates.type === 'MCQ') {
           delete updated.referenceAnswer;
@@ -587,25 +643,34 @@ export default function AssessmentsAndAssignments({
       return;
     }
 
-    // 2. Validate Start and End Dates
-    if (!formStartDate) {
-      toast.error('Start Date is required.');
-      return;
-    }
-    if (!formEndDate) {
-      toast.error('End Date is required.');
-      return;
-    }
-    if (new Date(formEndDate) <= new Date(formStartDate)) {
+    // 2. Validate Start and End Dates (optional; only check order when both set)
+    if (formStartDate && formEndDate && new Date(formEndDate) <= new Date(formStartDate)) {
       toast.error('End Date must be after the Start Date.');
       return;
     }
 
-    // 3. Validate Questions text
+    // 3. Validate Questions text + per-question bounds
     for (let i = 0; i < formQuestions.length; i++) {
       if (!formQuestions[i].text.trim()) {
         toast.error(`Question #${i + 1} text is required.`);
         return;
+      }
+      const dur = Number(formQuestions[i].maxDuration);
+      if (!Number.isFinite(dur) || dur < 1 || dur > 120) {
+        toast.error(`Question #${i + 1} Max Duration must be between 1 and 120 seconds.`);
+        return;
+      }
+      if (formRoundType !== 'HR') {
+        const ms = Number(formQuestions[i].maxScore);
+        const wt = Number(formQuestions[i].weightage);
+        if (!Number.isFinite(ms) || ms < 1) {
+          toast.error(`Question #${i + 1} Max Score is required and must be at least 1.`);
+          return;
+        }
+        if (!Number.isFinite(wt) || wt < 0) {
+          toast.error(`Question #${i + 1} Weightage % is required.`);
+          return;
+        }
       }
       // MCQ Validation
       if (formQuestions[i].type === 'MCQ') {
@@ -676,7 +741,7 @@ export default function AssessmentsAndAssignments({
         setFormJobId('JOB-' + generate32BitId());
         setFormJobTitle('');
         setFormJobDescription('');
-        setFormQuestions([{ id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 50 }]);
+        setFormQuestions([{ id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }]);
         setFormStartDate('');
         setFormEndDate('');
         setCurrentView('LIST');
@@ -727,7 +792,7 @@ export default function AssessmentsAndAssignments({
       setFormJobId('JOB-' + generate32BitId());
       setFormJobTitle('');
       setFormJobDescription('');
-      setFormQuestions([{ id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 50 }]);
+      setFormQuestions([{ id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }]);
       setFormStartDate('');
       setFormEndDate('');
       setCurrentView('LIST');
@@ -845,6 +910,51 @@ export default function AssessmentsAndAssignments({
       toast.error('Cannot generate link for an Inactive candidate.');
       return;
     }
+    // QA #12: PrimeHire rejects windows that already started ("interview time
+    // has been passed"). Block client-side with the stored window + now, so a
+    // stale calendar pick never reaches POST /interview.
+    if (cand) {
+      const start = parseServerDate(cand.startTime);
+      const end = parseServerDate(cand.endTime);
+      const nowMs = Date.now();
+      const now = new Date(nowMs);
+      if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
+        toast.error('Cannot generate link: this candidate has an invalid interview window. Reschedule first.', {
+          action: { label: 'Reschedule', onClick: () => handleOpenRescheduleModal(candId) },
+        });
+        return;
+      }
+      if (end.getTime() <= nowMs) {
+        toast.error(
+          `Interview cannot be generated because the window has ended.\n\nCurrent window:\nStart: ${formatLocalInstant(start)}\nEnd: ${formatLocalInstant(end)}\n\nPlease reschedule to a future window and try again.`,
+          {
+            duration: 8000,
+            action: { label: 'Reschedule', onClick: () => handleOpenRescheduleModal(candId) },
+          },
+        );
+        return;
+      }
+      if (start.getTime() < nowMs + MIN_GENERATE_BUFFER_MS) {
+        toast.error(
+          `Interview cannot be generated because the stored start time has already passed.\n\nCurrent window:\nStart: ${formatLocalInstant(start)}\nEnd: ${formatLocalInstant(end)}\n\nPlease reschedule the start time to a future time and try again.`,
+          {
+            duration: 8000,
+            action: { label: 'Reschedule', onClick: () => handleOpenRescheduleModal(candId) },
+          },
+        );
+        return;
+      }
+      if (end.getTime() <= start.getTime()) {
+        toast.error(
+          `Interview cannot be generated because the end time is not after the start time.\n\nCurrent window:\nStart: ${formatLocalInstant(start)}\nEnd: ${formatLocalInstant(end)}\n\nPlease reschedule with a valid window and try again.`,
+          {
+            duration: 8000,
+            action: { label: 'Reschedule', onClick: () => handleOpenRescheduleModal(candId) },
+          },
+        );
+        return;
+      }
+    }
 
     // Set rowLoading to true for this specific candidate to disable the button and show a spinner
     onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: true } : c));
@@ -871,24 +981,11 @@ export default function AssessmentsAndAssignments({
       toast.error('Cannot reschedule for an Inactive candidate.');
       return;
     }
-    if (!cand?.interviewId) {
-      toast.error('No interview found for this candidate. Generate a link first.');
-      return;
-    }
+    // Allow reschedule even without interviewId — the operator may need to
+    // fix a stale start time before the first link is generated.
     // Pre-fill with current schedule or empty
-    const formatToDatetimeLocal = (isoStr?: string | null) => {
-      if (!isoStr) return '';
-      try {
-        const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return '';
-        const pad = (num: number) => num.toString().padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      } catch {
-        return '';
-      }
-    };
-    setRescheduleStartTime(formatToDatetimeLocal(cand.startTime));
-    setRescheduleEndTime(formatToDatetimeLocal(cand.endTime));
+    setRescheduleStartTime(formatToDatetimeLocal(cand?.startTime));
+    setRescheduleEndTime(formatToDatetimeLocal(cand?.endTime));
     setRescheduleCandId(candId);
   };
 
@@ -907,18 +1004,60 @@ export default function AssessmentsAndAssignments({
       toast.error('End Time must be after Start Time.');
       return;
     }
+    // Strict future-start validation: PrimeHire rejects windows that have
+    // already started. Use MIN_RESCHEDULE_BUFFER_MS for a safe operational
+    // margin, giving the operator time to generate the link.
+    {
+      const nowMs = Date.now();
+      const startMs = new Date(rescheduleStartTime).getTime();
+      const endMs = new Date(rescheduleEndTime).getTime();
+      if (endMs <= nowMs) {
+        toast.error('Cannot reschedule: End Time has already passed. Pick a future window.');
+        return;
+      }
+      if (startMs < nowMs + MIN_RESCHEDULE_BUFFER_MS) {
+        const bufferMin = Math.ceil(MIN_RESCHEDULE_BUFFER_MS / 60_000);
+        toast.error(
+          `Cannot reschedule: Start Time must be at least ${bufferMin} minutes in the future. Pick a later time.`,
+        );
+        return;
+      }
+    }
 
     setIsRescheduling(true);
     try {
       const startIso = new Date(rescheduleStartTime).toISOString();
       const endIso = new Date(rescheduleEndTime).toISOString();
 
-      const updated = await mockRescheduleInterview(rescheduleCandId, candidates, startIso, endIso);
-      onSetCandidates(updated);
-      toast.success('Interview rescheduled successfully! New schedule window applied.');
-      if (await pushCandidatesToServer(updated.filter(c => c.id === rescheduleCandId)) > 0) {
-        toast.warning('Rescheduled, but server sync failed — the change may not appear in other browsers.');
+      const cand = candidates.find(c => c.id === rescheduleCandId);
+
+      if (cand?.interviewId) {
+        // Candidate has an existing interview — call PrimeHire reschedule API
+        const updated = await mockRescheduleInterview(rescheduleCandId, candidates, startIso, endIso);
+        onSetCandidates(updated);
+        toast.success('Interview rescheduled successfully! New schedule window applied.');
+        if (await pushCandidatesToServer(updated.filter(c => c.id === rescheduleCandId)) > 0) {
+          toast.warning('Rescheduled, but server sync failed — the change may not appear in other browsers.');
+        }
+      } else {
+        // No interview yet — just update the stored times locally + MongoDB
+        onSetCandidates(prev => prev.map(c =>
+          c.id === rescheduleCandId
+            ? { ...c, startTime: startIso, endTime: endIso }
+            : c
+        ));
+        toast.success('Interview window updated. You can now generate a link.');
+        // Sync the updated candidate to MongoDB
+        const updatedCand = { ...cand!, startTime: startIso, endTime: endIso };
+        if (updatedCand.mongoId) {
+          try {
+            await updateCandidate(updatedCand.id, { startTime: startIso, endTime: endIso });
+          } catch {
+            toast.warning('Window updated locally, but server sync failed.');
+          }
+        }
       }
+
       setRescheduleCandId(null);
       setRescheduleStartTime('');
       setRescheduleEndTime('');
@@ -1040,65 +1179,127 @@ export default function AssessmentsAndAssignments({
     return await response.json();
   };
 
-  const handleSendInvite = async (candId: LocalCandidateId) => {
-    const target = candidates.find(c => c.id === candId);
-    if (!target) return;
-    
-    if (!target.link) {
-      toast.error('Cannot send invitation before a valid credentials link is generated.');
-      return;
-    }
-    if (target.submittedDate) {
-      toast.error('Cannot send invitation to a student who has completed the assessment.');
-      return;
-    }
-    if (target.status === 'INACTIVE') {
-      toast.error('Cannot send email to an inactive candidate.');
-      return;
-    }
+  // Invitation eligibility: generated link + active + not completed + window not ended.
+  const isInviteEligible = (c: Candidate) =>
+    (c.link !== null && c.link !== '') &&
+    c.status === 'ACTIVE' &&
+    !c.submittedDate &&
+    !(new Date() > new Date(c.endTime) || c.interviewExpired);
 
-    // Set row loading & mailStatus
-    onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: true, mailStatus: 'Sending' } : c));
-
-    try {
-      const template = templates.find(t => t.type === 'STANDARD_INVITATION') || templates[0];
-      if (!template) {
-        throw new Error('No invitation email template found.');
+  // Opens the template picker instead of sending immediately — the mail is
+  // sent only with the template the operator selects in the dialog.
+  const openInviteDialog = (candIds: LocalCandidateId[]) => {
+    const targets = activeAssessmentCandidates.filter(c => candIds.includes(c.id));
+    if (targets.length === 1) {
+      const t = targets[0];
+      if (!t.link) {
+        toast.error('Cannot send invitation before a valid credentials link is generated.');
+        return;
       }
-      
-      const { subject, body } = renderTemplate(template, target, activeAssessment!);
-      
-      await sendEmailViaApi(target.email, target.name, subject, body);
-
-      const nowIso = new Date().toISOString();
-      onSetCandidates(prev => prev.map(c => {
-        if (c.id === candId) {
-          return {
-            ...c,
-            rowLoading: false,
-            inviteSent: true,
-            inviteSentAt: nowIso,
-            lastInviteSentAt: nowIso,
-            mailStatus: 'Invite Sent' as const
-          };
-        }
-        return c;
-      }));
-      toast.success(`Invitation email transmitted successfully to ${target.name}.`);
-      const inviteSynced: Candidate = {
-        ...target,
-        rowLoading: false,
-        inviteSent: true,
-        inviteSentAt: nowIso,
-        lastInviteSentAt: nowIso,
-        mailStatus: 'Invite Sent' as const,
-      };
-      if (await syncCandidateToServer(inviteSynced) === 'failed') {
-        toast.warning('Invite sent, but server sync failed — invite state may not appear in other browsers.');
+      if (t.submittedDate) {
+        toast.error('Cannot send invitation to a student who has completed the assessment.');
+        return;
       }
-    } catch (err: any) {
-      onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: false, mailStatus: 'Failed' } : c));
-      toast.error(`Failed to send invite: ${err.message}`);
+      if (t.status === 'INACTIVE') {
+        toast.error('Cannot send email to an inactive candidate.');
+        return;
+      }
+      if (new Date() > new Date(t.endTime) || t.interviewExpired) {
+        toast.error('Cannot send invitation for an expired assessment.');
+        return;
+      }
+    }
+    const eligible = targets.filter(isInviteEligible);
+    if (eligible.length === 0) {
+      toast.error('No selected active candidates meet invitation criteria (must have generated links, not be completed, and be active).');
+      return;
+    }
+    if (templates.length === 0) {
+      toast.error('No mail templates available. Create one under Mail Templates first.');
+      return;
+    }
+    const def = templates.find(t => t.type === 'STANDARD_INVITATION') || templates[0];
+    setInviteTemplateId(def.id);
+    setInviteDialogCandIds(eligible.map(c => c.id));
+  };
+
+  // Sends using ONLY the dialog-selected template (single or bulk).
+  const executeSendInvites = async () => {
+    const template = templates.find(t => t.id === inviteTemplateId);
+    if (!template) {
+      toast.error('Select a mail template first.');
+      return;
+    }
+    const targets = activeAssessmentCandidates
+      .filter(c => inviteDialogCandIds.includes(c.id))
+      .filter(isInviteEligible);
+    if (targets.length === 0) {
+      toast.error('No eligible candidates left to invite.');
+      setInviteDialogCandIds([]);
+      return;
+    }
+    const single = targets.length === 1;
+    setIsSendingInvite(true);
+    onSetCandidates(prev => prev.map(c =>
+      targets.some(tc => tc.id === c.id)
+        ? { ...c, rowLoading: true, mailStatus: 'Sending' as const }
+        : c
+    ));
+    let successCount = 0;
+    let failCount = 0;
+    let inviteSyncFailCount = 0;
+    for (const cand of targets) {
+      try {
+        const { subject, body } = renderTemplate(template, cand, activeAssessment!);
+        await sendEmailViaApi(cand.email, cand.name, subject, body);
+        successCount++;
+        const nowIso = new Date().toISOString();
+        onSetCandidates(prev => prev.map(c => {
+          if (c.id === cand.id) {
+            return {
+              ...c,
+              rowLoading: false,
+              inviteSent: true,
+              inviteSentAt: nowIso,
+              lastInviteSentAt: nowIso,
+              mailStatus: 'Invite Sent' as const
+            };
+          }
+          return c;
+        }));
+        const synced: Candidate = {
+          ...cand,
+          rowLoading: false,
+          inviteSent: true,
+          inviteSentAt: nowIso,
+          lastInviteSentAt: nowIso,
+          mailStatus: 'Invite Sent' as const,
+        };
+        if (await syncCandidateToServer(synced) === 'failed') inviteSyncFailCount++;
+      } catch (err: any) {
+        console.error(`Invite fail for ${cand.email}:`, err);
+        failCount++;
+        onSetCandidates(prev => prev.map(c => {
+          if (c.id === cand.id) {
+            return { ...c, rowLoading: false, mailStatus: 'Failed' as const };
+          }
+          return c;
+        }));
+      }
+    }
+    setIsSendingInvite(false);
+    setInviteDialogCandIds([]);
+    setSelectedCandidateIds([]);
+    if (single && successCount === 1) {
+      toast.success(`Invitation email transmitted successfully to ${targets[0].name}.`);
+    } else if (successCount > 0) {
+      toast.success(`Bulk dispatched invitations for ${successCount} candidate(s).`);
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to dispatch invitations for ${failCount} candidate(s).`);
+    }
+    if (inviteSyncFailCount > 0) {
+      toast.warning(`Server sync failed for ${inviteSyncFailCount} invited candidate(s).`);
     }
   };
 
@@ -1180,116 +1381,54 @@ export default function AssessmentsAndAssignments({
       toast.error('None of the selected candidates are Active. Cannot generate links.');
       return;
     }
+    // QA #12: skip windows PrimeHire would reject (already started/ended).
+    const nowMs = Date.now();
+    const sendableIds = activeSelectedIds.filter(id => {
+      const cand = candidates.find(c => c.id === id);
+      if (!cand) return false;
+      const start = parseServerDate(cand.startTime);
+      const end = parseServerDate(cand.endTime);
+      return (
+        !!start && !!end &&
+        end.getTime() > nowMs &&
+        start.getTime() >= nowMs + MIN_GENERATE_BUFFER_MS &&
+        end.getTime() > start.getTime()
+      );
+    });
+    const skipped = activeSelectedIds.filter(id => !sendableIds.includes(id));
+    if (skipped.length > 0) {
+      toast.error(
+        `${skipped.length} candidate(s) skipped: interview window already started or ended. Reschedule them to a future window first.`,
+      );
+      if (sendableIds.length === 0) return;
+    }
 
-    // Set rowLoading to true for all active selected candidates to show spinners and disable actions
-    onSetCandidates(prev => prev.map(c => activeSelectedIds.includes(c.id) ? { ...c, rowLoading: true } : c));
+    // Set rowLoading to true for all sendable candidates to show spinners and disable actions
+    onSetCandidates(prev => prev.map(c => sendableIds.includes(c.id) ? { ...c, rowLoading: true } : c));
 
     try {
-      const updated = await mockGenerateLink(activeSelectedIds, candidates, activeAssessment.roundType, activeAssessment.jobId);
+      const updated = await mockGenerateLink(sendableIds, candidates, activeAssessment.roundType, activeAssessment.jobId);
       onSetCandidates(updated);
-      if (activeSelectedIds.length < selectedCandidateIds.length) {
-        toast.success(`Generated links for ${activeSelectedIds.length} Active candidate(s). Inactive candidates were skipped.`);
+      if (sendableIds.length < selectedCandidateIds.length) {
+        toast.success(`Generated links for ${sendableIds.length} candidate(s). Others were skipped (inactive or past window).`);
       } else {
         toast.success('All of the links generated.');
       }
-      if (await pushCandidatesToServer(updated.filter(c => activeSelectedIds.includes(c.id))) > 0) {
+      if (await pushCandidatesToServer(updated.filter(c => sendableIds.includes(c.id))) > 0) {
         toast.warning('Links created, but server sync failed for some candidates.');
       }
       setSelectedCandidateIds([]);
     } catch (err: any) {
       // Revert loading states on error
-      onSetCandidates(prev => prev.map(c => activeSelectedIds.includes(c.id) ? { ...c, rowLoading: false } : c));
+      onSetCandidates(prev => prev.map(c => sendableIds.includes(c.id) ? { ...c, rowLoading: false } : c));
       toast.error('Bulk generation failed: ' + err.message);
     }
   };
 
-  const handleBulkSendInvites = async () => {
-    const selectedActiveCands = activeAssessmentCandidates.filter(c => selectedCandidateIds.includes(c.id));
-    // Rule: selected rows with generated links only, must be active and not completed
-    const targetCands = selectedActiveCands.filter(c => (c.link !== null && c.link !== '') && c.status === 'ACTIVE' && !c.submittedDate);
-    
-    if (targetCands.length === 0) {
-      toast.error('No selected active candidates meet invitation criteria (must have generated links, not be completed, and be active).');
-      return;
-    }
-
-    // Set row loading for all targets
-    onSetCandidates(prev => prev.map(c => 
-      targetCands.some(tc => tc.id === c.id) 
-        ? { ...c, rowLoading: true, mailStatus: 'Sending' } 
-        : c
-    ));
-
-    const template = templates.find(t => t.type === 'STANDARD_INVITATION') || templates[0];
-    if (!template) {
-      toast.error('No invitation template found.');
-      onSetCandidates(prev => prev.map(c => 
-        targetCands.some(tc => tc.id === c.id) ? { ...c, rowLoading: false } : c
-      ));
-      return;
-    }
-
-    let successCount = 0;
-    let failCount = 0;
-    let inviteSyncFailCount = 0;
-
-    const promises = targetCands.map(async (cand) => {
-      try {
-        const { subject, body } = renderTemplate(template, cand, activeAssessment!);
-        await sendEmailViaApi(cand.email, cand.name, subject, body);
-        successCount++;
-        
-        const nowIso = new Date().toISOString();
-        onSetCandidates(prev => prev.map(c => {
-          if (c.id === cand.id) {
-            return {
-              ...c,
-              rowLoading: false,
-              inviteSent: true,
-              inviteSentAt: nowIso,
-              lastInviteSentAt: nowIso,
-              mailStatus: 'Invite Sent' as const
-            };
-          }
-          return c;
-        }));
-        const synced: Candidate = {
-          ...cand,
-          rowLoading: false,
-          inviteSent: true,
-          inviteSentAt: nowIso,
-          lastInviteSentAt: nowIso,
-          mailStatus: 'Invite Sent' as const,
-        };
-        if (await syncCandidateToServer(synced) === 'failed') inviteSyncFailCount++;
-      } catch (err: any) {
-        console.error(`Bulk invite fail for ${cand.email}:`, err);
-        failCount++;
-        onSetCandidates(prev => prev.map(c => {
-          if (c.id === cand.id) {
-            return {
-              ...c,
-              rowLoading: false,
-              mailStatus: 'Failed' as const
-            };
-          }
-          return c;
-        }));
-      }
-    });
-
-    await Promise.all(promises);
-
-    if (successCount > 0) {
-      toast.success(`Bulk dispatched invitations for ${successCount} candidate(s).`);
-    }
-    if (failCount > 0) {
-      toast.error(`Failed to dispatch invitations for ${failCount} candidate(s).`);
-    }
-    if (inviteSyncFailCount > 0) {
-      toast.warning(`Server sync failed for ${inviteSyncFailCount} invited candidate(s).`);
-    }
-    setSelectedCandidateIds([]);
+  // Bulk invites go through the same template picker dialog (one template
+  // chosen by the operator is applied to every selected candidate).
+  const handleBulkSendInvites = () => {
+    openInviteDialog(selectedCandidateIds);
   };
 
   const handleBulkSendReminders = async () => {
@@ -1443,7 +1582,8 @@ export default function AssessmentsAndAssignments({
     setDoubleConfirmCandId(id);
   };
 
-  // Server-first delete: the Mongo document is removed (PrimeHire
+  // Server-first delete: the candidate is soft-deleted on the server (kept
+  // with deletedAt/deletedBy + audit trail, hidden from reads; PrimeHire
   // interviews/reports are never touched). Local state only changes on
   // server success — a failed delete keeps the candidate with an error.
   const handleFinalDeleteCandidate = async (id: string) => {
@@ -1774,7 +1914,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 setFormLanguage('ENGLISH');
                 setFormRoundType('TECHNICAL');
                 setFormQuestions([
-                  { id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 50 }
+                  { id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }
                 ]);
                 setFormStartDate('');
                 setFormEndDate('');
@@ -1786,37 +1926,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             </PAButton>
           </div>
 
-          {/* Info bar explaining where filters are */}
-          <div className="bg-accent/10 border border-accent/15 rounded-2xl p-4 flex items-start gap-3">
-            <Info className="w-5 h-5 text-accent shrink-0 mt-0.5" />
-            <div className="text-xs text-foreground space-y-1">
-              <p className="font-bold">Looking for Candidate Evaluation Filters?</p>
-              <p className="text-muted-foreground font-medium">
-                We've integrated the <strong className="text-accent font-bold">LinkedIn-style cascading pipeline filters</strong> in two prominent places:
-              </p>
-              <ul className="list-disc list-inside mt-1 space-y-0.5 font-medium text-muted-foreground">
-                <li>Globally under the <strong className="text-accent font-bold">Candidate Directory</strong> tab (to filter candidates from all assessments at once).</li>
-                <li>Individually by clicking <strong className="text-accent font-bold">"View Detail"</strong> on any assessment card below (to focus on candidates for that specific profile).</li>
-              </ul>
-            </div>
-          </div>
 
-          {/* Sync status bar: last-synced indicator + manual refresh */}
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card px-4 py-2.5 text-xs text-muted-foreground shadow-[var(--shadow-card)]">
-            <span className="inline-flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full inline-block ${assessmentsError ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-              {assessmentsLoading ? 'Loading assessments…' : `Last synced ${lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : 'never'}`}
-            </span>
-            <span className="text-muted-foreground/70">· auto-refreshes every 30s and on focus</span>
-            <button
-              onClick={onRefreshAssessments}
-              disabled={assessmentsLoading}
-              className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/70 hover:bg-muted text-foreground font-semibold transition disabled:opacity-50 cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${assessmentsLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
 
           {assessmentsLoading && assessments.length === 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="Loading assessments">
@@ -1900,15 +2010,6 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                 onClick={() => setActiveDropdownAsmId(null)} 
                               />
                               <div className="absolute right-0 mt-1.5 w-36 rounded-lg bg-card border border-border/70 shadow-md z-20 py-1 text-left">
-                                <button
-                                  onClick={() => {
-                                    handleStartEditAssessment(asm);
-                                    setActiveDropdownAsmId(null);
-                                  }}
-                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/40 text-foreground flex items-center gap-2"
-                                >
-                                  <Edit className="w-3 h-3 text-muted-foreground" /> Edit Profile
-                                </button>
                                 <button
                                   onClick={() => {
                                     handleToggleAssessmentActiveState(asm.id);
@@ -2030,6 +2131,12 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               onClick={() => {
                 setCurrentView('LIST');
                 setEditingAssessmentId(null);
+                setFormJobId('JOB-' + generate32BitId());
+                setFormJobTitle('');
+                setFormJobDescription('');
+                setFormQuestions([{ id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }]);
+                setFormStartDate('');
+                setFormEndDate('');
               }}
               className="p-1.5 rounded-md border border-border/70 bg-card hover:bg-muted/40 text-foreground transition cursor-pointer"
             >
@@ -2137,7 +2244,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         ]);
                       } else {
                         setFormQuestions([
-                          { id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 50 }
+                          { id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }
                         ]);
                       }
                     }}
@@ -2156,7 +2263,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-150 pt-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground">
-                    Start Date <span className="text-destructive">*</span>
+                    Start Date <span className="text-[10px] text-gray-400 font-normal">(Optional)</span>
                   </label>
                   <Input
                     type="datetime-local"
@@ -2168,7 +2275,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground">
-                    End Date <span className="text-destructive">*</span>
+                    End Date <span className="text-[10px] text-gray-400 font-normal">(Optional)</span>
                   </label>
                   <Input
                     type="datetime-local"
@@ -2199,7 +2306,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       {/* Close button */}
                       <button
                         onClick={() => handleRemoveQuestion(idx)}
-                        className="absolute right-3 top-3 p-1 rounded-lg hover:bg-muted dark:hover:bg-slate-800 text-muted-foreground hover:text-destructive transition"
+                        className="absolute right-3 top-3 p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-destructive transition"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -2207,7 +2314,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       {/* Header block within card */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase">Question Type</label>
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase">Question Type <span className="text-destructive">*</span></label>
                           <select
                             value={q.type}
                             onChange={(e) => handleUpdateQuestion(idx, { type: e.target.value as QuestionType })}
@@ -2219,32 +2326,94 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase">Max Duration (Seconds)</label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Max Duration (Seconds) <span className="text-destructive">*</span></label>
+                            <span className="text-[9px] text-muted-foreground font-mono">1–120s</span>
+                          </div>
                           <Input
                             type="number"
-                            value={q.maxDuration}
-                            onChange={(e) => handleUpdateQuestion(idx, { maxDuration: Number(e.target.value) })}
-                            className="text-xs bg-card"
+                            min={1}
+                            max={120}
+                            value={q.maxDuration ?? ''}
+                            placeholder="120"
+                            onChange={(e) => {
+                              const raw = e.target.value.trim();
+                              if (raw === '') {
+                                handleUpdateQuestion(idx, { maxDuration: '' as any });
+                                return;
+                              }
+                              const cleaned = raw.replace(/^0+(?=\d)/, '');
+                              const num = Number(cleaned);
+                              if (!isNaN(num)) {
+                                e.target.value = cleaned;
+                                handleUpdateQuestion(idx, { maxDuration: num });
+                              }
+                            }}
+                            className={`text-xs bg-card ${
+                              (typeof q.maxDuration === 'number' && (q.maxDuration > 120 || q.maxDuration < 1))
+                                ? 'border-destructive focus-visible:ring-destructive/30'
+                                : ''
+                            }`}
                           />
+                          {typeof q.maxDuration === 'number' && q.maxDuration > 120 && (
+                            <p className="text-[10px] text-destructive font-medium">
+                              Max duration must be between 1 and 120 seconds.
+                            </p>
+                          )}
+                          {typeof q.maxDuration === 'number' && q.maxDuration < 1 && (
+                            <p className="text-[10px] text-destructive font-medium">
+                              Max duration must be at least 1 second.
+                            </p>
+                          )}
                         </div>
 
                         {formRoundType !== 'HR' && (
                           <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-muted-foreground uppercase">Max Score</label>
+                              <label className="text-[10px] font-bold text-muted-foreground uppercase">Max Score <span className="text-destructive">*</span></label>
                               <Input
                                 type="number"
-                                value={q.maxScore || 0}
-                                onChange={(e) => handleUpdateQuestion(idx, { maxScore: Number(e.target.value) })}
+                                min={1}
+                                value={q.maxScore === undefined ? '' : q.maxScore}
+                                placeholder="0"
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  if (raw === '') {
+                                    handleUpdateQuestion(idx, { maxScore: undefined });
+                                    return;
+                                  }
+                                  const cleaned = raw.replace(/^0+(?=\d)/, '');
+                                  const num = Number(cleaned);
+                                  if (!isNaN(num)) {
+                                    e.target.value = cleaned;
+                                    handleUpdateQuestion(idx, { maxScore: Math.max(1, num) });
+                                  }
+                                }}
                                 className="text-xs bg-card"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-muted-foreground uppercase">Weightage %</label>
+                              <label className="text-[10px] font-bold text-muted-foreground uppercase">Weightage % <span className="text-destructive">*</span></label>
                               <Input
                                 type="number"
-                                value={q.weightage || 0}
-                                onChange={(e) => handleUpdateQuestion(idx, { weightage: Number(e.target.value) })}
+                                min={0}
+                                max={100}
+                                value={q.weightage === undefined ? '' : q.weightage}
+                                placeholder="0"
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  if (raw === '') {
+                                    handleUpdateQuestion(idx, { weightage: undefined });
+                                    return;
+                                  }
+                                  // Strip unwanted leading zero (e.g. '05' -> '5', '050' -> '50', while preserving '0')
+                                  const cleaned = raw.replace(/^0+(?=\d)/, '');
+                                  const num = Number(cleaned);
+                                  if (!isNaN(num)) {
+                                    e.target.value = cleaned;
+                                    handleUpdateQuestion(idx, { weightage: Math.min(100, Math.max(0, num)) });
+                                  }
+                                }}
                                 className="text-xs bg-card"
                               />
                             </div>
@@ -2254,7 +2423,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                       {/* Question Content Input */}
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Question Prompt / Text</label>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Question Prompt / Text <span className="text-destructive">*</span></label>
                         <Textarea
                           placeholder="e.g. Write a React hook to manage debounce input schedules..."
                           rows={2}
@@ -2268,7 +2437,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       {/* 1. TECHNICAL + SPEAK_TO_ANSWER -> Reference Answer */}
                       {formRoundType === 'TECHNICAL' && q.type === 'SPEAK_TO_ANSWER' && (
                         <div className="space-y-1.5 border-t border-slate-100 pt-3.5">
-                          <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase flex items-center gap-1">
+                          <label className="text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1">
                             <Sparkles className="w-3 h-3" /> Expected Reference Answer <span className="text-destructive">*</span>
                           </label>
                           <Textarea
@@ -2284,7 +2453,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       {/* 2. BASIC + SPEAK_TO_ANSWER -> Rubric Criteria */}
                       {formRoundType === 'BASIC' && q.type === 'SPEAK_TO_ANSWER' && (
                         <div className="space-y-1.5 border-t border-slate-100 pt-3.5">
-                          <label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                          <label className="text-[10px] font-bold text-emerald-600 uppercase">
                             Grading Rubric Criteria <span className="text-destructive">*</span>
                           </label>
                           <Textarea
@@ -2450,6 +2619,12 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     onClick={() => {
                       setCurrentView('LIST');
                       setEditingAssessmentId(null);
+                      setFormJobId('JOB-' + generate32BitId());
+                      setFormJobTitle('');
+                      setFormJobDescription('');
+                      setFormQuestions([{ id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }]);
+                      setFormStartDate('');
+                      setFormEndDate('');
                     }}
                     className="w-full py-2 bg-card border border-border/70 hover:bg-muted/40 text-foreground rounded text-xs font-semibold text-center transition cursor-pointer"
                   >
@@ -2491,7 +2666,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             <div className="border-b border-border/70">
               <button
                 onClick={() => setExpandedDetails(!expandedDetails)}
-                className="w-full flex items-center justify-between p-4 font-bold text-xs text-muted-foreground dark:text-muted-foreground uppercase tracking-wider bg-muted/40/50 dark:bg-slate-950/20"
+                className="w-full flex items-center justify-between p-4 font-bold text-xs text-muted-foreground uppercase tracking-wider bg-muted/40/50"
               >
                 <span>Assessment Profile Details</span>
                 {expandedDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -2539,7 +2714,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             <div className="border-b border-border/70">
               <button
                 onClick={() => setExpandedQuestions(!expandedQuestions)}
-                className="w-full flex items-center justify-between p-4 font-bold text-xs text-muted-foreground dark:text-muted-foreground uppercase tracking-wider bg-muted/40/50 dark:bg-slate-950/20"
+                className="w-full flex items-center justify-between p-4 font-bold text-xs text-muted-foreground uppercase tracking-wider bg-muted/40/50"
               >
                 <span>Questions Formulation ({activeAssessment.questions.length})</span>
                 {expandedQuestions ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -2587,13 +2762,13 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
           {/* Scoped Candidate Table Workspace */}
           <div className="space-y-4">
-            {/* LinkedIn-Style Cascading Filters Container */}
+            {/* Cascading pipeline filters container */}
             <div className="bg-muted/40 border border-border/70/80 rounded-xl p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal className="w-4 h-4 text-foreground" />
                   <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                    LinkedIn-Style Pipeline Filters
+                    Pipeline Filters
                   </span>
                   {filterRound !== 'ALL' && (
                     <span className="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-semibold border border-sky-100">
@@ -2706,11 +2881,15 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     <option value="">-- All Scores (No Filter) --</option>
                     {activeScale === 'scale5' && (
                       <>
-                        <option value="A">Grade A: Elite Performance (&gt; 80)</option>
-                        <option value="B">Grade B: Accomplished (61 - 80)</option>
-                        <option value="C">Grade C: Competent (41 - 60)</option>
-                        <option value="D">Grade D: Emerging (21 - 40)</option>
-                        <option value="E">Grade E: Developing (0 - 20)</option>
+                        <option value="A+">Grade A+: Outstanding (90 - 100)</option>
+                        <option value="A">Grade A: Elite Performance (80 - 100)</option>
+                        <option value="B+">Grade B+: Strong (70 - 89)</option>
+                        <option value="B">Grade B: Accomplished (60 - 79)</option>
+                        <option value="C+">Grade C+: Above Average (50 - 59)</option>
+                        <option value="C">Grade C: Competent (40 - 59, incl. C+)</option>
+                        <option value="D">Grade D: Emerging (30 - 39)</option>
+                        <option value="E">Grade E: Developing (20 - 29)</option>
+                        <option value="F">Grade F: Fail (0 - 19)</option>
                       </>
                     )}
                     {activeScale === 'scale3' && (
@@ -2788,18 +2967,28 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {/* Select All */}
+                {/* Select All / Deselect All toggle */}
                 <button
                   onClick={() => {
-                    setSelectedCandidateIds(filteredCandidates.map(c => c.id));
-                    toast.success(`Selected all ${filteredCandidates.length} students.`);
+                    if (filteredCandidates.length === 0) {
+                      toast.error('No students in this view to select.');
+                      return;
+                    }
+                    if (selectedCandidateIds.length === filteredCandidates.length && filteredCandidates.length > 0) {
+                      setSelectedCandidateIds([]);
+                      toast.success('Cleared all selected students.');
+                    } else {
+                      setSelectedCandidateIds(filteredCandidates.map(c => c.id));
+                      toast.success(`Selected all ${filteredCandidates.length} students.`);
+                    }
                   }}
-                  className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition cursor-pointer"
+                  disabled={filteredCandidates.length === 0}
+                  className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition cursor-pointer disabled:opacity-50"
                   style={{ background: 'rgba(2,132,199,0.06)', border: '1px solid rgba(2,132,199,0.2)', color: '#0369a1' }}
-                  title="Select all students registered under this profile"
+                  title="Select or clear all students registered under this profile"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  Select All
+                  {selectedCandidateIds.length === filteredCandidates.length && filteredCandidates.length > 0 ? 'Deselect All' : 'Select All'}
                 </button>
 
                 {/* Deactivate Students */}
@@ -2971,15 +3160,16 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCandidates.map((c) => {
+                  {filteredCandidates.map((c, idx) => {
                     const hasLink = c.link !== null && c.link !== '';
                     const isCompleted = !!c.submittedDate;
                     const isActive = c.status === 'ACTIVE';
                     const isExpired = new Date() > new Date(c.endTime) || c.interviewExpired;
+                    const isLast = idx >= Math.max(0, filteredCandidates.length - 2);
                     const hasInvite = c.inviteSent || !!c.lastInviteSentAt;
 
                     // Compute individual button states based on strict business rules
-                    const inviteEnabled = hasLink && isActive && !isCompleted;
+                    const inviteEnabled = hasLink && isActive && !isCompleted && !isExpired;
                     const reminderEnabled = hasInvite && !isCompleted && isActive && !isExpired;
 
                     const isReportReady = c.reportStatus === 'GENERATED';
@@ -3014,11 +3204,45 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                           </span>
                         </TableCell>
 
-                        {/* 2. Candidate Info */}
+                        {/* 2. Candidate Info + Interview Window */}
                         <TableCell className="px-3 py-3.5">
                           <div className="font-bold text-foreground text-xs">{c.name}</div>
                           <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{c.email}</div>
                           {c.phone && <div className="text-[10px] text-muted-foreground font-mono">{c.phone}</div>}
+                          {/* Interview Window display */}
+                          {(() => {
+                            const s = parseServerDate(c.startTime);
+                            const e = parseServerDate(c.endTime);
+                            if (!s || !e) return null;
+                            const nowMs = Date.now();
+                            const startPast = s.getTime() < nowMs;
+                            const endPast = e.getTime() < nowMs;
+                            return (
+                              <div className={`mt-1.5 text-[10px] font-semibold flex items-start gap-1 rounded px-1.5 py-1 border ${
+                                startPast
+                                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                                  : 'bg-sky-50 border-sky-200 text-sky-700'
+                              }`}>
+                                <Clock className="w-3 h-3 mt-0.5 shrink-0" />
+                                <div>
+                                  <div className="text-[9px] font-bold uppercase tracking-wider opacity-70">Interview Window</div>
+                                  <div className="font-mono text-[10px]">
+                                    {formatInterviewWindow(s, e)}
+                                  </div>
+                                  {startPast && !endPast && (
+                                    <div className="text-[9px] text-amber-600 font-bold mt-0.5 flex items-center gap-0.5">
+                                      <AlertTriangle className="w-2.5 h-2.5" /> Start time has passed — reschedule required
+                                    </div>
+                                  )}
+                                  {endPast && (
+                                    <div className="text-[9px] text-red-600 font-bold mt-0.5 flex items-center gap-0.5">
+                                      <AlertTriangle className="w-2.5 h-2.5" /> Window expired
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </TableCell>
 
                         {/* 3. Candidate Status (Static Status Badge) */}
@@ -3113,7 +3337,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                             <div className="flex flex-col gap-1.5 max-w-[120px] mx-auto">
                               {/* Send Invite */}
                               <button
-                                onClick={() => handleSendInvite(c.id)}
+                                onClick={() => openInviteDialog([c.id])}
                                 disabled={!inviteEnabled}
                                 className="text-[10px] font-bold px-2 py-1.5 rounded-lg border inline-flex items-center justify-center gap-1 transition cursor-pointer"
                                 style={inviteEnabled ? {
@@ -3332,7 +3556,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               </button>
                             </div>
                           ) : (
-                            <div className="inline-block text-left">
+                            <div className="inline-block text-left" ref={openMenuCandId === c.id ? menuContainerRef : undefined}>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -3345,16 +3569,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                               </button>
 
                               {openMenuCandId === c.id && (
-                                <>
-                                  <div 
-                                    className="fixed inset-0 z-30" 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setOpenMenuCandId(null);
-                                    }}
-                                  />
-                                  
-                                  <div className="absolute right-0 mt-1 w-44 bg-card border border-border/70 rounded-lg shadow-lg py-1.5 z-40 text-left font-sans">
+                                  <div className={cn("absolute right-0 w-44 bg-card border border-border/70 rounded-lg shadow-lg py-1.5 z-40 text-left font-sans max-h-64 overflow-y-auto", isLast ? "bottom-full mb-1" : "top-full mt-1")}>
                                     {/* Option: Activate */}
                                     <button
                                       onClick={(e) => {
@@ -3433,21 +3648,19 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                         setOpenMenuCandId(null);
                                         handleOpenRescheduleModal(c.id);
                                       }}
-                                      disabled={!hasLink || !isActive}
+                                      disabled={!isActive}
                                       title={
                                         !isActive
                                           ? 'Disabled: Candidate must be Active to reschedule.'
-                                          : !hasLink
-                                          ? 'Disabled: Link must be generated first.'
-                                          : 'Reschedule interview to a new time window via API'
+                                          : 'Reschedule interview to a new time window'
                                       }
                                       className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
-                                        !hasLink || !isActive
+                                        !isActive
                                           ? 'text-slate-300 bg-muted/40 cursor-not-allowed'
                                           : 'text-foreground hover:bg-muted/40 cursor-pointer'
                                       }`}
                                     >
-                                      <Calendar className={`w-3.5 h-3.5 ${hasLink && isActive ? 'text-amber-500' : 'text-slate-300'}`} />
+                                      <Calendar className={`w-3.5 h-3.5 ${isActive ? 'text-amber-500' : 'text-slate-300'}`} />
                                       Reschedule
                                     </button>
 
@@ -3470,7 +3683,6 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                                       Regenerate Report
                                     </button>
                                   </div>
-                                </>
                               )}
                             </div>
                           )}
@@ -3506,7 +3718,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div>
-              <h2 className="text-lg font-bold text-foreground dark:text-slate-100">
+              <h2 className="text-lg font-bold text-foreground">
                 CSV Candidate Importer
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -3520,11 +3732,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
             <div className="lg:col-span-1 space-y-4">
               {/* Manual Student Registration Form Space */}
               <form onSubmit={handleAddManualCandidate} className="bg-card border border-border/70 rounded-xl p-5 space-y-3.5 shadow-xs">
-                <div className="border-b border-slate-100 dark:border-slate-850 pb-2 flex items-center justify-between">
+                <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
                     <UserPlus className="w-3.5 h-3.5 text-blue-500" /> Manual Student Registration
                   </h3>
-                  <span className="text-[9px] bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 px-1.5 py-0.5 rounded-sm font-bold">
+                  <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-sm font-bold">
                     Quick Add
                   </span>
                 </div>
@@ -3598,8 +3810,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
                   {/* Warning and consent check for empty Start/End times */}
                   {(!manualStartTime.trim() || !manualEndTime.trim()) && (
-                    <div className="p-2.5 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40 rounded-lg space-y-1.5">
-                      <p className="text-[10px] text-amber-700 dark:text-amber-300 font-semibold leading-normal">
+                    <div className="p-2.5 bg-amber-50/50 border border-amber-100 rounded-lg space-y-1.5">
+                      <p className="text-[10px] text-amber-700 font-semibold leading-normal">
                         ⚠️ Start Time and End Time are empty. They will default to <strong>current time</strong> and <strong>3 days from now</strong> respectively.
                       </p>
                       <label className="flex items-start gap-2 cursor-pointer">
@@ -3609,7 +3821,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                           onChange={(e) => setTimeConsent(e.target.checked)}
                           className="mt-0.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
                         />
-                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold select-none">
+                        <span className="text-[10px] text-amber-600 font-bold select-none">
                           I consent to proceed with empty times.
                         </span>
                       </label>
@@ -3652,14 +3864,15 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     : 'border-border/70 bg-card hover:bg-muted/40/50'
                 }`}
               >
-                <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-full mb-3">
+                <div className="p-3.5 bg-blue-50 text-blue-600 rounded-full mb-3">
                   <Upload className="w-6 h-6" />
                 </div>
-                <span className="text-xs font-semibold text-foreground dark:text-slate-100">Drag and drop candidate list here</span>
+                <span className="text-xs font-semibold text-foreground">Drag and drop candidate list here</span>
                 <span className="text-[10px] text-muted-foreground mt-1 block">Supports .csv file types (10MB max)</span>
+                <span className="text-[10px] text-muted-foreground mt-1 block font-mono">Columns: Name, Email, Phone, Start Time, End Time — dates must be ISO 8601 (e.g. 2026-07-05T09:00:00Z)</span>
                 
                 <div className="mt-4">
-                  <label className="bg-muted dark:bg-slate-800 hover:bg-muted text-foreground text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer">
+                  <label className="bg-muted hover:bg-muted text-foreground text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer">
                     Choose File
                     <input
                       type="file"
@@ -3672,8 +3885,8 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               </div>
 
               {/* Sample loader card */}
-              <div className="bg-gradient-to-br from-indigo-50/30 to-blue-50/30 p-5 rounded-xl border border-indigo-100/40 dark:border-slate-850 space-y-3">
-                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1">
+              <div className="bg-gradient-to-br from-indigo-50/30 to-blue-50/30 p-5 rounded-xl border border-indigo-100/40 space-y-3">
+                <span className="text-xs font-bold text-indigo-700 flex items-center gap-1">
                   <Sparkles className="w-4 h-4 animate-pulse" /> Sandbox Template Generator
                 </span>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
@@ -3720,7 +3933,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                             {err.type.toUpperCase()}
                           </span>
                           <span className="text-muted-foreground font-semibold">Row {err.row}:</span>
-                          <span className="text-muted-foreground dark:text-muted-foreground">{err.message} ({err.col})</span>
+                          <span className="text-muted-foreground">{err.message} ({err.col})</span>
                         </div>
                       ))}
                       {validationErrors.length === 0 && (
@@ -3735,7 +3948,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   <div className="bg-card border border-border/70 rounded-xl overflow-hidden shadow-xs">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-muted/40/50 dark:bg-slate-950/20">
+                        <TableRow className="bg-muted/40/50">
                           <TableHead className="font-semibold text-foreground">Name</TableHead>
                           <TableHead className="font-semibold text-foreground">Email</TableHead>
                           <TableHead className="font-semibold text-foreground">Phone</TableHead>
@@ -3813,7 +4026,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       disabled={validationErrors.some(e => e.type === 'red')}
                       className={`px-5 py-2 rounded-lg text-xs font-semibold text-white transition ${
                         validationErrors.some(e => e.type === 'red')
-                          ? 'bg-slate-300 cursor-not-allowed dark:bg-slate-800 dark:text-muted-foreground'
+                          ? 'bg-slate-300 cursor-not-allowed'
                           : 'bg-blue-600 hover:bg-blue-700 shadow-xs cursor-pointer'
                       }`}
                     >
@@ -3852,26 +4065,65 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               <div>
                 <h3 className="text-sm font-bold text-foreground">Reschedule Interview</h3>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Set a new scheduling window for this candidate. This calls{' '}
-                  <span className="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded border border-border/70">PUT /interview/{'{id}'}/reschedule</span>.
+                  Set a new scheduling window for this candidate.
+                  {(() => {
+                    const c = candidates.find(c => c.id === rescheduleCandId);
+                    return c?.interviewId
+                      ? <> This calls <span className="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded border border-border/70">PUT /interview/{'{id}'}/reschedule</span>.</>
+                      : <> Updates the stored times so Generate Link can proceed.</>;
+                  })()}
                 </p>
               </div>
 
-              {/* Candidate Info */}
+              {/* Candidate Info + Current Window */}
               {(() => {
                 const cand = candidates.find(c => c.id === rescheduleCandId);
-                return cand ? (
-                  <div className="bg-muted/40 border border-border/70 rounded-lg p-3 text-xs space-y-1">
+                if (!cand) return null;
+                const s = parseServerDate(cand.startTime);
+                const e = parseServerDate(cand.endTime);
+                const startPast = s ? s.getTime() < Date.now() : false;
+                const endPast = e ? e.getTime() < Date.now() : false;
+                return (
+                  <div className="bg-muted/40 border border-border/70 rounded-lg p-3 text-xs space-y-2">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground font-semibold">Candidate:</span>
                       <span className="font-bold text-foreground">{cand.name}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground font-semibold">Interview ID:</span>
-                      <span className="font-mono text-[10px] text-muted-foreground">{cand.interviewId || '—'}</span>
-                    </div>
+                    {cand.interviewId && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground font-semibold">Interview ID:</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">{cand.interviewId}</span>
+                      </div>
+                    )}
+                    {s && e && (
+                      <div className={`mt-1 p-2 rounded border text-[10px] ${
+                        startPast
+                          ? 'bg-amber-50 border-amber-200 text-amber-800'
+                          : 'bg-sky-50 border-sky-200 text-sky-700'
+                      }`}>
+                        <div className="font-bold uppercase tracking-wider text-[9px] opacity-70 mb-0.5">Current Window</div>
+                        <div className="flex justify-between font-semibold">
+                          <span>Start:</span>
+                          <span className={startPast ? 'text-red-600 line-through' : ''}>{formatLocalInstant(s)}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold">
+                          <span>End:</span>
+                          <span className={endPast ? 'text-red-600 line-through' : ''}>{formatLocalInstant(e)}</span>
+                        </div>
+                        {startPast && !endPast && (
+                          <div className="mt-1 text-[9px] text-amber-700 font-bold flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" /> Start time is in the past — select a future start below
+                          </div>
+                        )}
+                        {endPast && (
+                          <div className="mt-1 text-[9px] text-red-600 font-bold flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" /> Entire window has expired — set new times below
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ) : null;
+                );
               })()}
 
               {/* Time Inputs */}
@@ -3900,10 +4152,15 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   />
                 </div>
 
-                {/* Validation hint */}
+                {/* Validation hints */}
                 {rescheduleStartTime && rescheduleEndTime && new Date(rescheduleEndTime) <= new Date(rescheduleStartTime) && (
                   <div className="text-[10px] text-destructive font-semibold flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" /> End Time must be after Start Time.
+                  </div>
+                )}
+                {rescheduleStartTime && new Date(rescheduleStartTime).getTime() < Date.now() + MIN_RESCHEDULE_BUFFER_MS && (
+                  <div className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> Start Time must be at least {Math.ceil(MIN_RESCHEDULE_BUFFER_MS / 60_000)} minutes in the future.
                   </div>
                 )}
               </div>
@@ -4019,6 +4276,130 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   }`}
                 >
                   Save Password
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      {/* =========================================================================
+          SEND INVITE — TEMPLATE PICKER DIALOG
+          ========================================================================= */}
+      {inviteDialogCandIds.length > 0 && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/40 z-40"
+            onClick={() => {
+              if (!isSendingInvite) setInviteDialogCandIds([]);
+            }}
+          />
+          {/* Dialog Container */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-card rounded-xl border border-border/70 shadow-xl w-full max-w-lg p-6 space-y-4 text-left max-h-[90vh] overflow-y-auto">
+              <div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Send className="w-4 h-4 text-muted-foreground" /> Send Invitation
+                </h3>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {(() => {
+                    const names = candidates
+                      .filter(c => inviteDialogCandIds.includes(c.id))
+                      .map(c => c.name);
+                    return names.length === 1
+                      ? <>Choose the mail template for <strong className="text-foreground">{names[0]}</strong>. The mail is sent only with the selected template.</>
+                      : <>Choose one mail template for <strong className="text-foreground">{names.length} candidates</strong>. The same template is used for every mail.</>;
+                  })()}
+                </p>
+              </div>
+
+              {/* Template options */}
+              <div className="space-y-2" role="radiogroup" aria-label="Mail template">
+                {templates.map(t => {
+                  const selected = t.id === inviteTemplateId;
+                  return (
+                    <button
+                      key={t.id}
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setInviteTemplateId(t.id)}
+                      disabled={isSendingInvite}
+                      className={`w-full text-left p-3 rounded-xl border transition flex items-start gap-3 cursor-pointer ${
+                        selected
+                          ? 'border-primary bg-primary-soft shadow-[var(--shadow-card)]'
+                          : 'border-border/70 bg-card hover:border-primary/40'
+                      }`}
+                    >
+                      <span className={`mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        selected ? 'border-primary' : 'border-border'
+                      }`}>
+                        {selected && <span className="w-2 h-2 rounded-full bg-primary" />}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-foreground truncate">{t.name}</span>
+                          <Pill tone={t.type === 'STANDARD_INVITATION' ? 'info' : t.type === 'REMINDER' ? 'warning' : 'success'}>
+                            <span className="uppercase tracking-wide text-[10px]">{t.type}</span>
+                          </Pill>
+                        </span>
+                        <span className="block text-[11px] text-muted-foreground truncate mt-0.5">{t.subject}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Rendered preview for the first recipient */}
+              {(() => {
+                const template = templates.find(t => t.id === inviteTemplateId);
+                const previewCand = candidates.find(c => c.id === inviteDialogCandIds[0]);
+                if (!template || !previewCand || !activeAssessment) return null;
+                const rendered = renderTemplate(template, previewCand, activeAssessment);
+                return (
+                  <div className="rounded-xl border border-border/60 bg-muted/40 overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-border/60 text-xs">
+                      <span className="font-semibold text-accent">Subject: </span>
+                      <span className="font-semibold text-foreground">{rendered.subject}</span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5">
+                        To: {previewCand.name} &lt;{previewCand.email}&gt;
+                        {inviteDialogCandIds.length > 1 && ` (+${inviteDialogCandIds.length - 1} more)`}
+                      </span>
+                    </div>
+                    <div className="px-4 py-3 text-xs leading-relaxed text-foreground whitespace-pre-wrap max-h-40 overflow-y-auto">
+                      {rendered.body}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex gap-2 pt-2 border-t border-gray-150">
+                <button
+                  onClick={() => setInviteDialogCandIds([])}
+                  disabled={isSendingInvite}
+                  className="flex-1 py-2 bg-card border border-border/70 hover:bg-muted/40 text-foreground rounded-md text-xs font-semibold text-center transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeSendInvites}
+                  disabled={isSendingInvite || !inviteTemplateId}
+                  className={`flex-1 py-2 rounded-md text-xs font-semibold text-center text-white transition flex items-center justify-center gap-2 ${
+                    isSendingInvite || !inviteTemplateId
+                      ? 'bg-[#111827]/70 cursor-wait'
+                      : 'bg-[#111827] hover:bg-[#111827]/90 cursor-pointer'
+                  }`}
+                >
+                  {isSendingInvite ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      Send Invite{inviteDialogCandIds.length > 1 ? ` (${inviteDialogCandIds.length})` : ''}
+                    </>
+                  )}
                 </button>
               </div>
             </div>

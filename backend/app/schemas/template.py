@@ -16,3 +16,14 @@ class TemplateIn(BaseModel):
 
     def to_doc(self) -> dict[str, Any]:
         return self.model_dump()
+
+
+class TemplateUpdate(BaseModel):
+    """Partial update. Only provided fields are applied (never the id)."""
+
+    name: str | None = None
+    type: Literal["STANDARD_INVITATION", "REMINDER", "CUSTOM"] | None = None
+    subject: str | None = None
+    body: str | None = None
+
+    model_config = {"extra": "forbid"}

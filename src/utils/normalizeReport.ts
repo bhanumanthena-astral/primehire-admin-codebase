@@ -65,6 +65,9 @@ export interface NormalizedQuestion {
   confidenceScore: number | null;
   communication: Record<string, any> | null;
   videoUrl: string | null;
+  feedback: string | null;
+  strengths?: string[];
+  weaknesses?: string[];
 }
 
 export interface NormalizedOverall {
@@ -155,6 +158,12 @@ export function normalizeReport(raw: any): NormalizedReport | null {
     const maxScore = q.max_score ?? q.maxScore ?? 100;
     const obtained = q.obtained_score ?? q.obtainedScore ?? null;
     const pct = obtained !== undefined && obtained !== null && maxScore ? Math.round((obtained / maxScore) * 100) : null;
+    
+    // Evaluation feedback is how the candidate performed (evaluator remarks/observations)
+    const feedback = r.feedback || r.evaluator_feedback || r.evaluatorFeedback || tech.feedback || tech.summary || q.feedback || q.evaluation || q.message || null;
+    const strengths = r.strengths || tech.strengths || q.strengths || [];
+    const weaknesses = r.weaknesses || r.improvements || tech.weaknesses || q.weaknesses || [];
+
     return {
       key: String(q.id || q._id || q.video_id || q.videoId || idx),
       index: idx + 1,
@@ -165,12 +174,15 @@ export function normalizeReport(raw: any): NormalizedReport | null {
       weightage: q.weightage ?? null,
       obtainedScore: obtained,
       percentage: pct,
-      transcript: r.transcript ?? null,
+      transcript: r.transcript ?? q.transcript ?? null,
       relevancy: r.relevancy ?? null,
       technicalScore: tech?.overall_score ?? tech?.overallScore ?? null,
       confidenceScore: interview?.confidence_score ?? interview?.confidenceScore ?? null,
       communication: r.communication_analysis ?? r.communicationAnalysis ?? null,
       videoUrl: q.video_url || q.videoUrl || null,
+      feedback: feedback || null,
+      strengths: Array.isArray(strengths) ? strengths : [],
+      weaknesses: Array.isArray(weaknesses) ? weaknesses : [],
     };
   });
 
@@ -190,12 +202,15 @@ export function normalizeReport(raw: any): NormalizedReport | null {
         weightage: null,
         obtainedScore: pct,
         percentage: pct,
-        transcript: a.feedback || null,
-        relevancy: null,
+        transcript: a.transcript || a.candidateAnswer || null,
+        relevancy: a.relevancy || null,
         technicalScore: pct,
         confidenceScore: null,
         communication: null,
         videoUrl: null,
+        feedback: a.feedback || null,
+        strengths: a.strengths || [],
+        weaknesses: a.weaknesses || [],
       });
     });
   }

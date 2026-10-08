@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from ..models.candidate import CandidateRepository
+from ..models import audit as audit_log
 from ..schemas.candidate import CandidateIn, CandidateUpdate
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ def generate_candidate_key() -> str:
 class CandidateService:
     def __init__(self, db: Any) -> None:
         self._repo = CandidateRepository(db)
+        self._db = db
 
     async def get_by_key(self, candidate_key: str) -> dict[str, Any]:
         doc = await self._repo.get_by_key(candidate_key)
@@ -121,7 +123,7 @@ class CandidateService:
         if not doc.get("candidateKey"):
             doc["candidateKey"] = generate_candidate_key()
         else:
-            existing = await self._repo.get_by_key(doc["candidateKey"])
+            existing = await self._repo.get_raw_by_key(doc["candidateKey"])
             if existing is not None:
                 raise CandidateConflict(doc["candidateKey"])
         prime = doc.get("primehire") or {}
@@ -168,10 +170,17 @@ class CandidateService:
             raise CandidateNotFound(candidate_key)
         return doc
 
-    async def delete(self, candidate_key: str) -> None:
-        """Delete the Mongo document only. PrimeHire interviews/reports are untouched."""
-        if not await self._repo.delete_by_key(candidate_key):
+    async def delete(self, candidate_key: str, *, deleted_by: str = "unknown") -> None:
+        """Soft delete: stamp deletedAt/deletedBy, hide from reads, audit.
+
+        The Mongo document is kept; reads hide it. Repeat deletes raise
+        CandidateNotFound (HTTP 404). PrimeHire interviews/reports untouched.
+        """
+        if not await self._repo.soft_delete_by_key(candidate_key, deleted_by=deleted_by):
             raise CandidateNotFound(candidate_key)
+        await audit_log.log(self._db, action="candidate.soft_deleted", entity="candidate",
+                            entity_id=candidate_key, by=deleted_by,
+                            details={})
 
     async def get_by_interview_id(self, interview_id: str) -> dict[str, Any] | None:
         return await self._repo.get_by_interview_id(interview_id)
