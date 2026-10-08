@@ -40,36 +40,68 @@ const MODULE_TABS = [
   { id: 'templates', label: 'Mail Templates', short: 'Templates', icon: Mail, desc: 'Invites & reminder sequences' },
 ];
 
-function useCompactHeader() {
+/**
+ * Scroll-driven header state WITHOUT a scroll feedback loop.
+ *
+ * Previous implementation read window.scrollY and toggled a header whose own
+ * height depended on that state (collapsing ~90-120px of title/padding while
+ * stuck). Resizing a sticky element's in-flow placeholder above the viewport
+ * makes Chrome scroll-anchoring adjust window.scrollY, which re-crossed the
+ * 72/32 thresholds — an oscillation (flicker) the 40px hysteresis band could
+ * never absorb, since the height delta exceeded the band.
+ *
+ * Now: a 1px × 72px sentinel sits at document top in normal flow, positioned
+ * BEFORE all header chrome. An IntersectionObserver maps
+ * "sentinel visible ⇒ expanded / sentinel out ⇒ compact". Nothing the header
+ * does (it is fixed-height in every state) can move the sentinel or the
+ * scroll position, so the threshold crossing is strictly user-driven and can
+ * fire only once per crossing. No scroll listener, no rAF, no DOM reads.
+ */
+function useCompactHeader(thresholdPx = 72) {
   const [compact, setCompact] = useState(false);
-  const rafRef = useRef<number | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
-    const onScroll = () => {
-      if (rafRef.current) return;
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        const y = window.scrollY;
-        setCompact((prev) => {
-          if (!prev && y > 72) return true;
-          if (prev && y < 32) return false;
-          return prev;
-        });
-      });
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-  return compact;
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    // Legacy fallback (no layout dependency on header state either).
+    if (typeof IntersectionObserver === 'undefined') {
+      let raf = 0;
+      const update = () => {
+        raf = 0;
+        setCompact(window.scrollY > thresholdPx);
+      };
+      const onScroll = () => {
+        if (!raf) raf = requestAnimationFrame(update);
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      setCompact(window.scrollY > thresholdPx);
+      return () => {
+        window.removeEventListener('scroll', onScroll);
+        if (raf) cancelAnimationFrame(raf);
+      };
+    }
+
+    // Fires on mount too, so a refresh while scrolled restores correctly.
+    // React bails out when the value is unchanged — no render churn.
+    const io = new IntersectionObserver(
+      (entries) => {
+        setCompact(!(entries[0]?.isIntersecting ?? true));
+      },
+      { threshold: 0 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [thresholdPx]);
+
+  return { compact, sentinelRef };
 }
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const compact = useCompactHeader();
+  const { compact, sentinelRef } = useCompactHeader();
 
   // Global Filter State (preserved across navigation views)
   const [filterRound, setFilterRound] = useState<string>('ALL');
@@ -481,7 +513,17 @@ export default function App() {
   const hasActiveFilters = filterRound !== 'ALL' || filterStatus !== 'ALL' || searchQuery;
 
   return (
-    <div className="min-h-screen bg-gradient-app text-foreground font-sans antialiased">
+    <div className="relative min-h-screen bg-gradient-app text-foreground font-sans antialiased">
+      {/* Scroll sentinel: a layout-independent 72px threshold marker pinned to
+          document top, ahead of all header chrome. The sticky bars below keep
+          a constant height in every state, so header state can never move this
+          marker or the scroll position — threshold crossings are strictly
+          user-driven (one transition per crossing, no oscillation). */}
+      <div
+        ref={sentinelRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0 h-[72px] w-px"
+      />
       {/* fixed radial glows behind content */}
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
         <div
@@ -500,51 +542,47 @@ export default function App() {
         />
       </div>
 
-      {/* ── Collapsing purple header ─────────────────────────── */}
-      <header className="sticky top-0 z-30 bg-gradient-primary shadow-[var(--shadow-glow)] text-primary-foreground">
+      {/* ── Sticky brand bar — FIXED h-16 in every state. Scroll state drives
+          only opacity/transform cues inside it (mini-title fade, logo scale),
+          never height/padding, so sticking it cannot shift page layout. ── */}
+      <header className="sticky top-0 z-30 bg-gradient-primary text-primary-foreground shadow-[var(--shadow-glow)]">
         <div className="max-w-7xl mx-auto px-6">
-          {/* top row: brand + mode + mobile toggle */}
-          <div
-            className={cn(
-              'flex items-center justify-between gap-4 transition-all duration-[300ms] ease-out',
-              compact ? 'py-2.5 gap-3' : 'py-4 gap-4'
-            )}
-          >
+          <div className="relative flex items-center justify-between gap-3 h-16">
             <div className="flex items-center gap-3 min-w-0">
               <div
                 className={cn(
-                  'rounded-xl bg-primary-foreground/10 border border-primary-foreground/15 backdrop-blur flex items-center justify-center text-primary-foreground font-extrabold transition-all duration-[300ms] ease-out shrink-0',
-                  compact ? 'w-8 h-8 scale-95' : 'w-10 h-10 scale-100'
+                  'rounded-xl bg-primary-foreground/10 border border-primary-foreground/15 backdrop-blur flex items-center justify-center text-primary-foreground font-extrabold shrink-0 w-10 h-10 transition-transform duration-300 ease-out',
+                  compact ? 'scale-95' : 'scale-100'
                 )}
               >
-                <Zap className={cn('transition-all duration-[300ms] ease-out', compact ? 'w-4 h-4' : 'w-5 h-5')} />
+                <Zap className="w-5 h-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      'font-semibold tracking-tight truncate transition-all duration-[300ms] ease-out',
-                      compact ? 'text-base' : 'text-lg leading-[1.6rem]'
-                    )}
-                  >
+                  <span className="font-semibold tracking-tight truncate text-lg leading-[1.6rem]">
                     PrimeHire Analytics
                   </span>
                   <span className="inline-flex items-center rounded-full border border-primary-foreground/25 bg-primary-foreground/10 backdrop-blur px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
                     v1.0
                   </span>
                 </div>
-                {/* collapsible eyebrow — never unmounted */}
-                <div
-                  className={cn(
-                    'overflow-hidden transition-all duration-[300ms] ease-out',
-                    compact ? 'max-h-0 opacity-0' : 'max-h-6 opacity-100'
-                  )}
-                >
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
-                    Placement Analytics · Assignment Portal
-                  </span>
-                </div>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
+                  Placement Analytics · Assignment Portal
+                </span>
               </div>
+            </div>
+
+            {/* Mini module title: absolute + opacity-only, so it reserves no
+                space and fades without touching layout. aria-hidden because
+                the hero below owns the real H1. */}
+            <div
+              aria-hidden="true"
+              className={cn(
+                'pointer-events-none absolute left-1/2 top-1/2 hidden lg:block max-w-md -translate-x-1/2 -translate-y-1/2 truncate text-sm font-semibold tracking-tight text-white transition-opacity duration-300',
+                compact ? 'opacity-100' : 'opacity-0'
+              )}
+            >
+              {moduleContext.title}
             </div>
 
             <div className="flex items-center gap-2.5 shrink-0">
@@ -566,40 +604,30 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      </header>
 
-          {/* collapsible title block — never unmounted */}
-          <div
-            className={cn(
-              'overflow-hidden transition-all duration-[300ms] ease-out',
-              compact ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
-            )}
-          >
-            <div className="pb-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
-                PrimeHire Agent Module
-              </div>
-              <h1 className="text-[1.875rem] leading-[2.25rem] font-semibold tracking-tight text-white">
-                {moduleContext.title}
-              </h1>
-              <p className="text-xs sm:text-sm text-primary-foreground/85 max-w-2xl font-medium leading-relaxed">
-                {moduleContext.subtitle}
-              </p>
-            </div>
+      {/* ── Static hero: module title lives in normal flow and scrolls away
+          under the opaque sticky bar. It is never collapsed by scroll state,
+          so there is exactly one H1 and no ghost heading behind the nav. ── */}
+      <div className="bg-gradient-primary text-primary-foreground">
+        <div className="max-w-7xl mx-auto px-6 pb-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
+            PrimeHire Agent Module
           </div>
+          <h1 className="text-[1.875rem] leading-[2.25rem] font-semibold tracking-tight text-white">
+            {moduleContext.title}
+          </h1>
+          <p className="text-xs sm:text-sm text-primary-foreground/85 max-w-2xl font-medium leading-relaxed">
+            {moduleContext.subtitle}
+          </p>
+        </div>
+      </div>
 
-          {/* compact title (visible only when collapsed, kept mounted for animation) */}
-          <div
-            aria-hidden={!compact}
-            className={cn(
-              'overflow-hidden transition-all duration-[300ms] ease-out',
-              compact ? 'max-h-10 opacity-100 pb-2' : 'max-h-0 opacity-0'
-            )}
-          >
-            <div className="text-sm font-semibold tracking-tight truncate text-white">{moduleContext.title}</div>
-          </div>
-
-          {/* desktop module pills */}
-          <nav aria-label="Modules" className="hidden md:flex items-center gap-2 pb-3 overflow-x-auto no-scrollbar">
+      {/* ── Sticky module pills — fixed h-12, sticks under the brand bar ── */}
+      <nav aria-label="Modules" className="sticky top-16 z-30 hidden md:block bg-gradient-primary text-primary-foreground">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex items-center gap-2 h-12 overflow-x-auto no-scrollbar">
             {MODULE_TABS.map(({ id, short, icon: Icon }) => {
               const isActive = activeTab === id;
               return (
@@ -623,15 +651,16 @@ export default function App() {
             <span className="ml-auto hidden lg:inline-flex items-center rounded-full border border-primary-foreground/25 bg-primary-foreground/10 px-2.5 py-1 text-[11px] font-medium tabular-nums">
               {assessments.length} assessments · {candidates.length} candidates
             </span>
-          </nav>
+          </div>
+        </div>
+      </nav>
 
-          {/* filter row — on-brand glass */}
-          <div
-            className={cn(
-              'flex flex-wrap items-center gap-2 transition-all duration-[300ms] ease-out',
-              compact ? 'pb-2.5' : 'pb-4'
-            )}
-          >
+      {/* ── Sticky filter row — sticks under pills on desktop (top-28 =
+          64px brand + 48px pills), directly under the brand bar on mobile
+          where pills are hidden. Constant padding; never resized by scroll. */}
+      <div className="sticky top-16 md:top-28 z-30 bg-gradient-primary text-primary-foreground shadow-[var(--shadow-glow)]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-wrap items-center gap-2 py-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70 mr-1">
               <SlidersHorizontal className="w-3.5 h-3.5" /> Filters
             </span>
@@ -717,7 +746,7 @@ export default function App() {
             </div>
           )}
         </div>
-      </header>
+      </div>
 
       {/* ── Main: selectable cards + single frosted workspace ── */}
       {(apiDown || apiError) && (
