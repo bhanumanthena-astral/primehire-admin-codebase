@@ -832,6 +832,8 @@ export default function App() {
               assessments={assessments}
               candidates={candidates}
               templates={templates}
+              globalRoundFilter={filterRound}
+              globalSearchQuery={searchQuery}
               assessmentsLoading={assessmentsLoading}
               assessmentsError={assessmentsError}
               lastSyncedAt={lastSyncedAt}
@@ -844,6 +846,7 @@ export default function App() {
           {activeTab === 'templates' && (
             <MailTemplates
               templates={templates}
+              searchQuery={searchQuery}
               onSaveTemplate={handleSaveMailTemplate}
               onDeleteTemplate={handleDeleteMailTemplate}
             />

@@ -221,6 +221,8 @@ interface AssessmentsAndAssignmentsProps {
   assessments: AssessmentProfile[];
   candidates: Candidate[];
   templates: MailTemplate[];
+  globalRoundFilter?: string;
+  globalSearchQuery?: string;
   assessmentsLoading: boolean;
   assessmentsError: string | null;
   lastSyncedAt: string | null;
@@ -234,6 +236,8 @@ export default function AssessmentsAndAssignments({
   assessments,
   candidates,
   templates,
+  globalRoundFilter = 'ALL',
+  globalSearchQuery = '',
   assessmentsLoading,
   assessmentsError,
   lastSyncedAt,
@@ -1928,34 +1932,70 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
 
 
 
-          {assessmentsLoading && assessments.length === 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="Loading assessments">
-              {[0, 1, 2].map(i => (
-                <div key={i} className="bg-card rounded-2xl border border-border/70 p-5 shadow-[var(--shadow-card)] animate-pulse">
-                  <div className="h-4 w-2/3 rounded bg-muted" />
-                  <div className="h-3 w-1/3 rounded bg-muted mt-2" />
-                  <div className="flex gap-2 mt-4">
-                    <div className="h-5 w-16 rounded bg-muted" />
-                    <div className="h-5 w-20 rounded bg-muted" />
-                  </div>
-                  <div className="h-9 rounded bg-muted mt-4" />
+          {(() => {
+            const query = globalSearchQuery ? globalSearchQuery.trim().toLowerCase() : '';
+            const filteredAssessments = assessments.filter(asm => {
+              const matchesRound = !globalRoundFilter || globalRoundFilter === 'ALL' || asm.roundType === globalRoundFilter;
+              const matchesSearch = !query ||
+                (asm.jobTitle && asm.jobTitle.toLowerCase().includes(query)) ||
+                (asm.jobId && asm.jobId.toLowerCase().includes(query)) ||
+                (asm.jobDescription && asm.jobDescription.toLowerCase().includes(query));
+              return matchesRound && matchesSearch;
+            });
+
+            if (assessmentsLoading && assessments.length === 0) {
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="Loading assessments">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="bg-card rounded-2xl border border-border/70 p-5 shadow-[var(--shadow-card)] animate-pulse">
+                      <div className="h-4 w-2/3 rounded bg-muted" />
+                      <div className="h-3 w-1/3 rounded bg-muted mt-2" />
+                      <div className="flex gap-2 mt-4">
+                        <div className="h-5 w-16 rounded bg-muted" />
+                        <div className="h-5 w-20 rounded bg-muted" />
+                      </div>
+                      <div className="h-9 rounded bg-muted mt-4" />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : assessmentsError && assessments.length === 0 ? (
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-8 text-center space-y-3">
-              <p className="text-sm font-semibold text-foreground">Couldn&apos;t load assessments.</p>
-              <p className="text-xs text-muted-foreground">Your data is safe on the server — this is a connection problem.</p>
-              <button
-                onClick={onRefreshAssessments}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Retry
-              </button>
-            </div>
-          ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {assessments.map((asm) => {
+              );
+            }
+
+            if (assessmentsError && assessments.length === 0) {
+              return (
+                <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-8 text-center space-y-3">
+                  <p className="text-sm font-semibold text-foreground">Couldn&apos;t load assessments.</p>
+                  <p className="text-xs text-muted-foreground">Your data is safe on the server — this is a connection problem.</p>
+                  <button
+                    onClick={onRefreshAssessments}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Retry
+                  </button>
+                </div>
+              );
+            }
+
+            if (filteredAssessments.length === 0) {
+              return (
+                <div className="rounded-2xl border border-border/70 bg-card p-12 text-center space-y-2">
+                  <p className="text-sm font-semibold text-foreground">
+                    {query || (globalRoundFilter && globalRoundFilter !== 'ALL')
+                      ? 'No assessment profiles match your filter criteria.'
+                      : 'No assessment profiles yet.'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {query
+                      ? `No profiles match "${globalSearchQuery}". Try a different keyword or reset filters.`
+                      : 'Click "+ New Assessment" above — it saves to the server and appears on every device.'}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredAssessments.map((asm) => {
               const assessmentCandidates = candidates.filter(c => c.assessmentId === asm.id);
               const activeCandCount = assessmentCandidates.filter(c => c.status === 'ACTIVE').length;
               return (
@@ -2107,17 +2147,11 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     </button>
                   </div>
                 </div>
-              );
-            })}
-
-            {assessments.length === 0 && (
-              <div className="col-span-full py-20 text-center space-y-2">
-                <p className="text-sm font-semibold text-foreground">No assessment profiles yet.</p>
-                <p className="text-xs text-gray-400">Click &quot;+ New Assessment&quot; above — it saves to the server and appears on every device.</p>
-              </div>
-            )}
-          </div>
-          )}
+                );
+              })}
+            </div>
+          );
+        })()}
         </div>
       )}
 

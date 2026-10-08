@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Brain, MessageSquare, Activity, Award, Mic, Copy, Video } from 'lucide-react';
 import { normalizeReport, generateInsights, getGrade, relevancyColor } from '../../utils/normalizeReport';
@@ -14,7 +14,6 @@ import QuestionList from './QuestionList';
 import VideoReview from './VideoReview';
 import InsightPanels from './InsightPanels';
 import EmptyReportState from './EmptyReportState';
-import ReportPrintView from './print/ReportPrintView';
 
 export default function ReportView({ data, roundType }: { data: unknown; roundType?: string }) {
   const normalized = useMemo(() => normalizeReport(data), [data]);
@@ -28,7 +27,6 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
   const [activeTab, setActiveTab] = useState('Overview');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [exporting, setExporting] = useState(false);
-  const printRef = useRef<HTMLDivElement | null>(null);
 
   if (!report) return null;
   const { overall, questions, violations, isEmpty } = report;
@@ -37,7 +35,9 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
   const handleExport = async () => {
     setExporting(true);
     try {
-      await exportReportToPdf(printRef, `interview-report-${report.meta.roundType}.pdf`);
+      const fileName = `interview-report-${report.meta.roundType || 'candidate'}-${report.meta.candidateId || 'summary'}.pdf`;
+      await exportReportToPdf(report, insights, fileName);
+      toast.success('Interview report PDF downloaded successfully!');
     } catch (err: any) {
       toast.error(`PDF export failed: ${err?.message || 'could not render report'}`);
     } finally {
@@ -328,13 +328,6 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
             {activeTab === 'AI Summary' && <InsightPanels insights={insights} />}
           </>
         )}
-      </div>
-
-      {/* Off-screen (but rendered) print view used only for PDF generation */}
-      <div style={{ position: 'fixed', left: 0, top: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
-        <div ref={printRef}>
-          <ReportPrintView report={report} insights={insights} />
-        </div>
       </div>
     </div>
   );

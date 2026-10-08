@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 
 interface MailTemplatesProps {
   templates: MailTemplate[];
+  searchQuery?: string;
   onSaveTemplate: (template: MailTemplate) => void;
   onDeleteTemplate: (id: string) => void;
 }
@@ -22,7 +23,12 @@ const TYPE_META: Record<string, { label: string; tone: 'info' | 'warning' | 'suc
   CUSTOM: { label: 'Custom', tone: 'success', icon: '✏️' },
 };
 
-export default function MailTemplates({ templates, onSaveTemplate, onDeleteTemplate }: MailTemplatesProps) {
+export default function MailTemplates({ templates, searchQuery = '', onSaveTemplate, onDeleteTemplate }: MailTemplatesProps) {
+  const filteredTemplates = templates.filter(tpl => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return tpl.name.toLowerCase().includes(q) || tpl.subject.toLowerCase().includes(q) || tpl.body.toLowerCase().includes(q);
+  });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templates[0]?.id || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -121,40 +127,47 @@ export default function MailTemplates({ templates, onSaveTemplate, onDeleteTempl
         <div className="lg:col-span-1 space-y-2.5">
           <span className="eyebrow block">Available Templates</span>
           <div className="space-y-2" role="listbox" aria-label="Templates">
-            {templates.map((tpl) => {
-              const isSelected = tpl.id === selectedTemplateId;
-              const meta = TYPE_META[tpl.type] || TYPE_META.CUSTOM;
-              return (
-                <button
-                  key={tpl.id}
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => { setSelectedTemplateId(tpl.id); setIsEditing(false); setIsCreating(false); setConfirmingDelete(false); }}
-                  className={cn(
-                    'w-full text-left p-4 rounded-2xl border transition-all duration-200 flex items-start gap-3 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/40',
-                    isSelected
-                      ? 'bg-primary-soft border-primary shadow-[var(--shadow-card)] -translate-y-0.5'
-                      : 'bg-card border-border/70 shadow-[var(--shadow-card)] hover:-translate-y-0.5 hover:border-primary/40'
-                  )}
-                >
-                  <div className={cn(
-                    'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-sm border',
-                    isSelected ? 'bg-gradient-primary text-primary-foreground border-transparent' : 'bg-accent/10 text-accent border-accent/15'
-                  )}>
-                    {isSelected ? <Mail className="w-4 h-4" /> : <span>{meta.icon}</span>}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm truncate text-foreground">
-                      {tpl.name}
+            {filteredTemplates.length === 0 ? (
+              <div className="rounded-xl border border-border/70 bg-card p-6 text-center space-y-1">
+                <p className="text-xs font-semibold text-foreground">No templates found</p>
+                <p className="text-[11px] text-muted-foreground">No templates match "{searchQuery}".</p>
+              </div>
+            ) : (
+              filteredTemplates.map((tpl) => {
+                const isSelected = tpl.id === selectedTemplateId;
+                const meta = TYPE_META[tpl.type] || TYPE_META.CUSTOM;
+                return (
+                  <button
+                    key={tpl.id}
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => { setSelectedTemplateId(tpl.id); setIsEditing(false); setIsCreating(false); setConfirmingDelete(false); }}
+                    className={cn(
+                      'w-full text-left p-4 rounded-2xl border transition-all duration-200 flex items-start gap-3 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/40',
+                      isSelected
+                        ? 'bg-primary-soft border-primary shadow-[var(--shadow-card)] -translate-y-0.5'
+                        : 'bg-card border-border/70 shadow-[var(--shadow-card)] hover:-translate-y-0.5 hover:border-primary/40'
+                    )}
+                  >
+                    <div className={cn(
+                      'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-sm border',
+                      isSelected ? 'bg-gradient-primary text-primary-foreground border-transparent' : 'bg-accent/10 text-accent border-accent/15'
+                    )}>
+                      {isSelected ? <Mail className="w-4 h-4" /> : <span>{meta.icon}</span>}
                     </div>
-                    <div className="mt-1.5">
-                      <Pill tone={meta.tone}><span className="uppercase tracking-wide text-[10px]">{meta.label}</span></Pill>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm truncate text-foreground">
+                        {tpl.name}
+                      </div>
+                      <div className="mt-1.5">
+                        <Pill tone={meta.tone}><span className="uppercase tracking-wide text-[10px]">{meta.label}</span></Pill>
+                      </div>
                     </div>
-                  </div>
-                  {isSelected && <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0 animate-pulse" />}
-                </button>
-              );
-            })}
+                    {isSelected && <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0 animate-pulse" />}
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
 

@@ -64,24 +64,28 @@ export default function Dashboard({
     return matchesRound && matchesStatus && matchesSearch;
   });
 
-  // Compute metrics
-  const activeAssessments = assessments.filter(a => a.isActive);
-  const activeCandidates = candidates.filter(c => c.status === 'ACTIVE');
-  const totalInvitesSent = candidates.filter(c => c.link !== null).length;
-  const reportsGenerated = candidates.filter(c => c.reportStatus === 'GENERATED').length;
-  const reportsGenerating = candidates.filter(c => c.reportStatus === 'GENERATING').length;
+  const isFiltered = Boolean(searchQuery?.trim()) || filterRound !== 'ALL' || filterStatus !== 'ALL';
+  const displayAssessments = isFiltered ? filteredAssessments : assessments;
+  const displayCandidates = isFiltered ? filteredCandidates : candidates;
 
-  const technicalCount = assessments.filter(a => a.roundType === 'TECHNICAL').length;
-  const basicCount = assessments.filter(a => a.roundType === 'BASIC').length;
-  const hrCount = assessments.filter(a => a.roundType === 'HR').length;
-  const totalProfiles = assessments.length || 1;
+  // Compute metrics
+  const activeAssessments = displayAssessments.filter(a => a.isActive);
+  const activeCandidates = displayCandidates.filter(c => c.status === 'ACTIVE');
+  const totalInvitesSent = displayCandidates.filter(c => c.link !== null).length;
+  const reportsGenerated = displayCandidates.filter(c => c.reportStatus === 'GENERATED').length;
+  const reportsGenerating = displayCandidates.filter(c => c.reportStatus === 'GENERATING').length;
+
+  const technicalCount = displayAssessments.filter(a => a.roundType === 'TECHNICAL').length;
+  const basicCount = displayAssessments.filter(a => a.roundType === 'BASIC').length;
+  const hrCount = displayAssessments.filter(a => a.roundType === 'HR').length;
+  const totalProfiles = displayAssessments.length || 1;
 
   const techPct = Math.round((technicalCount / totalProfiles) * 100);
   const basicPct = Math.round((basicCount / totalProfiles) * 100);
   const hrPct = Math.round((hrCount / totalProfiles) * 100);
 
   // Recent assessment records
-  const recentAssessments = [...assessments]
+  const recentAssessments = [...displayAssessments]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 4);
 
@@ -102,16 +106,16 @@ export default function Dashboard({
       {/* ── KPI strip: 1 / 2 / 4 ─────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Stat
-          label="Total assessments"
-          value={assessments.length}
+          label={isFiltered ? "Filtered assessments" : "Total assessments"}
+          value={displayAssessments.length}
           unit="profiles"
           pill={<Pill tone="success">{activeAssessments.length} Active</Pill>}
           footer="Accepting submissions"
           action={<ViewMoreButton onClick={() => onNavigate('assessments')}>View profiles</ViewMoreButton>}
         />
         <Stat
-          label="Candidate pipeline"
-          value={candidates.length}
+          label={isFiltered ? "Filtered candidates" : "Candidate pipeline"}
+          value={displayCandidates.length}
           unit="candidates"
           pill={<Pill tone="success">{activeCandidates.length} Active</Pill>}
           footer={`${totalInvitesSent} invite links generated`}

@@ -676,7 +676,19 @@ export default function CandidateManagement({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredCandidates.map((c, idx) => {
+              {filteredCandidates.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <p className="font-semibold text-foreground text-sm">No candidates found.</p>
+                    <p className="text-xs mt-1">
+                      {searchQuery
+                        ? `No candidate matches "${searchQuery}". Try a different search term or reset search.`
+                        : 'No candidates match the selected filters.'}
+                    </p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredCandidates.map((c, idx) => {
                 const assessment = assessments.find(a => a.id === c.assessmentId);
                 const isLast = idx >= Math.max(0, filteredCandidates.length - 2);
                 return (
@@ -789,15 +801,9 @@ export default function CandidateManagement({
                     </TableCell>
                   </TableRow>
                 );
-              })}
-              {filteredCandidates.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8}>
-                    <EmptyNote>No candidate records match the active filter criteria.</EmptyNote>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
+              })
+            )}
+          </TableBody>
           </Table>
         </div>
         <div className="p-3 bg-muted/40 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">

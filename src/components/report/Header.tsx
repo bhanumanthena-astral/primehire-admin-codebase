@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Calendar, Share2, Download, Loader2 } from 'lucide-react';
+import { Calendar, Download, Loader2 } from 'lucide-react';
 import { initialsFromId, shortId, formatDate, getGrade } from '../../utils/normalizeReport';
 import type { NormalizedReport, Insights } from '../../utils/normalizeReport';
 
@@ -61,16 +61,13 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            <Share2 size={16} /> Share
-          </button>
           <button
             onClick={onExport}
             disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-60 cursor-pointer transition shadow-sm"
           >
             {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            {exporting ? 'Generating…' : 'Download PDF'}
+            {exporting ? 'Generating PDF…' : 'Download PDF'}
           </button>
         </div>
       </div>
