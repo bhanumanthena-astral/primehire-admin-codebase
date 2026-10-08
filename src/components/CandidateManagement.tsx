@@ -292,6 +292,17 @@ export default function CandidateManagement({
     setPickerL4(null);
   };
 
+  // Cap for manual status sync (spinner never rotates longer than this).
+  const SYNC_STATUS_TIMEOUT_MS = 4000;
+  const SYNC_TIMED_OUT = 'sync-timed-out';
+  const withSyncTimeout = <T,>(p: Promise<T>): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(SYNC_TIMED_OUT)), SYNC_STATUS_TIMEOUT_MS);
+      }),
+    ]);
+
   // Auto re-sync candidates stuck in GENERATING (Analyzing) so the list
   // does not stay stale until a manual click. Silent, throttled, stops
   // when no GENERATING rows remain.
@@ -305,7 +316,7 @@ export default function CandidateManagement({
       if (pending.length === 0) return;
       for (const c of pending.slice(0, 3)) {
         try {
-          const updated = await mockGetInterviewStatus(c.id as any, candidates);
+          const updated = await withSyncTimeout(mockGetInterviewStatus(c.id as any, candidates));
           onSetCandidates(updated);
         } catch { /* keep Analyzing state; manual sync still available */ }
       }
@@ -314,21 +325,30 @@ export default function CandidateManagement({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates.some(c => c.reportStatus === 'GENERATING')]);
 
+  // Manual status sync never spins longer than SYNC_STATUS_TIMEOUT_MS:
+  // the status lookup + server save involve up to 3 sequential network hops
+  // with no fetch timeout, so a slow provider kept the button rotating.
   const handleCheckStatus = async (candId: string) => {
     setSyncingId(candId);
     try {
-      const updated = await mockGetInterviewStatus(candId as any, candidates);
+      const updated = await withSyncTimeout(mockGetInterviewStatus(candId as any, candidates));
       onSetCandidates(updated);
       const target = updated.find(c => c.id === candId);
-      if (target && (await syncCandidateToServer(target)) === 'failed') {
+      if (target && (await withSyncTimeout(syncCandidateToServer(target))) === 'failed') {
         toast.warning('Status synced from PrimeHire, but saving it to the server failed.');
-      } else if (target?.submittedDate) {
+      } else if (target?.submittedDate && target?.reportStatus === 'GENERATED') {
         toast.success(`Synced! Assessment completed: ${target.submittedDate}`);
+      } else if (target?.submittedDate) {
+        toast.info('Interview submitted — report is still generating. Try again shortly.');
       } else {
-        toast.info('Interview not completed yet.');
+        toast.info('Report not generated yet — interview not completed.');
       }
     } catch (err: any) {
-      toast.error('Failed to sync status: ' + err.message);
+      if (err?.message === SYNC_TIMED_OUT) {
+        toast.warning('Sync stopped after 4s — provider is slow. Report not generated yet.');
+      } else {
+        toast.error('Failed to sync status: ' + err.message);
+      }
     } finally {
       setSyncingId(null);
     }

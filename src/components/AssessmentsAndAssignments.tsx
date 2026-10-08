@@ -43,6 +43,13 @@ import {
   parseServerDate,
   formatToDatetimeLocal,
 } from '../utils/dates';
+import {
+  parseCsvScheduleCell,
+  utcIsoToIstParts,
+  istDateTimeToUtc,
+  formatUtcAsIst,
+} from '../utils/istSchedule';
+import { ScheduleDateTimeField, SchedulePairFields, SchedulePair } from './BulkScheduleControls';
 import { 
   ChevronRight, 
   Plus, 
@@ -64,6 +71,7 @@ import {
   ChevronDown, 
   ChevronUp, 
   Upload, 
+  Download,
   Sparkles, 
   Edit,
   Trash,
@@ -376,14 +384,19 @@ export default function AssessmentsAndAssignments({
   const [validationErrors, setValidationErrors] = useState<{ row: number; col: string; type: 'red' | 'yellow'; message: string }[]>([]);
   const [importSearch, setImportSearch] = useState('');
 
-  // Manual Candidate Form fields
+  // Manual Candidate Form fields (IST pickers; schedule optional)
   const [manualName, setManualName] = useState('');
   const [manualEmail, setManualEmail] = useState('');
   const [manualPhone, setManualPhone] = useState('');
-  const [manualStartTime, setManualStartTime] = useState('');
-  const [manualEndTime, setManualEndTime] = useState('');
-  const [timeConsent, setTimeConsent] = useState(false);
+  const [manualStartDate, setManualStartDate] = useState('');
+  const [manualStartTime12, setManualStartTime12] = useState('');
+  const [manualEndDate, setManualEndDate] = useState('');
+  const [manualEndTime12, setManualEndTime12] = useState('');
 
+  // Row schedule shape: IST picker values (DD/MM/YYYY + hh:mm AM/PM).
+  // startUtc/endUtc hold the canonical instant derived from the pickers
+  // (or from a legacy CSV value); rawStart/rawEnd preserve an invalid CSV
+  // value for correction instead of silently discarding it.
   // Dynamic validator that evaluates candidate records in real time
   const runValidation = (rows: any[]) => {
     const errors: { row: number; col: string; type: 'red' | 'yellow'; message: string }[] = [];
@@ -391,7 +404,7 @@ export default function AssessmentsAndAssignments({
 
     rows.forEach((row, index) => {
       const rowNum = index + 1;
-      const { name, email, phone, startTime, endTime } = row;
+      const { name, email, phone } = row;
 
       // 1. Name is mandatory. Allows standard chars and dot "."
       if (!name || name.trim() === '') {
@@ -442,48 +455,90 @@ export default function AssessmentsAndAssignments({
         }
       }
 
-      // 4. Start & End times validation (optional format check if present)
-      let isStartValid = false;
-      let isEndValid = false;
+      // 4. IST schedule validation — scheduling is optional; when partially
+      // filled it must be completed, and a complete window must be ordered.
+      const startDate = (row.startDate || '').trim();
+      const startTime = (row.startTime || '').trim();
+      const endDate = (row.endDate || '').trim();
+      const endTime = (row.endTime || '').trim();
+      const rawStart = (row.rawStart || '').trim();
+      const rawEnd = (row.rawEnd || '').trim();
 
-      const ISO_8601_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
-      if (startTime && startTime.trim() !== '') {
-        const s = startTime.trim();
-        const d = Date.parse(s);
-        if (isNaN(d) || !ISO_8601_RE.test(s)) {
-          errors.push({ row: rowNum, col: 'Start Time', type: 'red', message: 'Start Time must be ISO 8601 (e.g. 2026-07-05T09:00:00Z).' });
-        } else {
-          isStartValid = true;
+      if (rawStart) {
+        errors.push({ row: rowNum, col: 'Start Date', type: 'red', message: `Invalid Start value "${rawStart}". Pick a date/time in IST or clear it.` });
+      }
+      if (rawEnd) {
+        errors.push({ row: rowNum, col: 'End Date', type: 'red', message: `Invalid End value "${rawEnd}". Pick a date/time in IST or clear it.` });
+      }
+
+      const startPartial = Boolean(startDate || startTime);
+      const endPartial = Boolean(endDate || endTime);
+      if (startPartial && !(startDate && startTime)) {
+        errors.push({ row: rowNum, col: 'Start Time', type: 'red', message: 'Please select both Start Date and Start Time.' });
+      }
+      if (endPartial && !(endDate && endTime)) {
+        errors.push({ row: rowNum, col: 'End Time', type: 'red', message: 'Please select both End Date and End Time.' });
+      }
+      // One-sided window: start without end (or vice versa) is incomplete.
+      if ((startDate && startTime) !== (endDate && endTime) && (startPartial || endPartial)) {
+        if (startDate && startTime && !endPartial) {
+          errors.push({ row: rowNum, col: 'End Time', type: 'red', message: 'End Date & Time is missing. Select it or clear the Start window.' });
+        } else if (endDate && endTime && !startPartial) {
+          errors.push({ row: rowNum, col: 'Start Time', type: 'red', message: 'Start Date & Time is missing. Select it or clear the End window.' });
         }
       }
 
-      if (endTime && endTime.trim() !== '') {
-        const s = endTime.trim();
-        const d = Date.parse(s);
-        if (isNaN(d) || !ISO_8601_RE.test(s)) {
-          errors.push({ row: rowNum, col: 'End Time', type: 'red', message: 'End Time must be ISO 8601 (e.g. 2026-07-05T12:00:00Z).' });
-        } else {
-          isEndValid = true;
+      let startUtc: string | null = null;
+      let endUtc: string | null = null;
+      if (startDate && startTime && !rawStart) {
+        startUtc = istDateTimeToUtc(startDate, startTime);
+        if (!startUtc) {
+          errors.push({ row: rowNum, col: 'Start Time', type: 'red', message: 'Invalid Start Date/Time. Use the calendar and time picker (IST).' });
+        }
+      }
+      if (endDate && endTime && !rawEnd) {
+        endUtc = istDateTimeToUtc(endDate, endTime);
+        if (!endUtc) {
+          errors.push({ row: rowNum, col: 'End Time', type: 'red', message: 'Invalid End Date/Time. Use the calendar and time picker (IST).' });
         }
       }
 
-      if (isStartValid && isEndValid) {
-        if (new Date(endTime).getTime() <= new Date(startTime).getTime()) {
-          errors.push({ row: rowNum, col: 'Times', type: 'red', message: 'End Time must be after Start Time.' });
+      if (startUtc && endUtc) {
+        if (new Date(endUtc).getTime() <= new Date(startUtc).getTime()) {
+          errors.push({ row: rowNum, col: 'Times', type: 'red', message: 'End Date & Time must be later than Start Date & Time.' });
         }
         // QA #12: PrimeHire rejects windows that already started ("interview
         // time has been passed"). Warn here (yellow, non-blocking for record
         // keeping); the Generate-link action blocks with an error instead.
         const now = Date.now();
-        if (new Date(startTime).getTime() < now - SCHEDULE_GRACE_MS) {
+        if (new Date(startUtc).getTime() < now - SCHEDULE_GRACE_MS) {
           errors.push({ row: rowNum, col: 'Start Time', type: 'yellow', message: 'Start Time is in the past — PrimeHire will reject link generation. Pick a future window.' });
-        } else if (new Date(endTime).getTime() <= now) {
+        } else if (new Date(endUtc).getTime() <= now) {
           errors.push({ row: rowNum, col: 'End Time', type: 'yellow', message: 'End Time already passed — PrimeHire will reject link generation. Pick a future window.' });
         }
       }
     });
 
     return errors;
+  };
+
+  /** Canonical UTC instants for one preview row (IST pickers -> UTC once). */
+  const rowScheduleToUtc = (row: any): { startUtc: string; endUtc: string } => {
+    // Untouched legacy values already carry their canonical instant.
+    const fromRow = (v: string) => (v && Date.parse(v) && !isNaN(Date.parse(v)) ? new Date(v).toISOString() : '');
+    let startUtc = '';
+    let endUtc = '';
+    if (row.startDate && row.startTime) {
+      startUtc = istDateTimeToUtc(row.startDate, row.startTime) || '';
+    } else if (row.startUtc) {
+      startUtc = fromRow(row.startUtc);
+    }
+    if (row.endDate && row.endTime) {
+      endUtc = istDateTimeToUtc(row.endDate, row.endTime) || '';
+    } else if (row.endUtc) {
+      endUtc = fromRow(row.endUtc);
+    }
+    return { startUtc, endUtc };
   };
 
   // Run dynamic validation instantly when parsedRows array changes
@@ -1635,17 +1690,54 @@ export default function AssessmentsAndAssignments({
   // =========================================================================
   // HANDLERS FOR CANDIDATE UPLOAD MODULE (CSV PARSER)
   // =========================================================================
-  const triggerSampleTemplateCSV = () => {
-    const csvContent = `Name,Email,Phone,Start Time,End Time
-Isaac Newton,newton@cambridge.edu,+44-1234-5678,2026-07-05T09:00:00Z,2026-07-05T12:00:00Z
-Marie Curie,curie@sorbonne.fr,,2026-07-06T10:00:00Z,2026-07-06T13:00:00Z
-Albert Einstein,einstein@ias.edu,+1-555-1915,2026-07-07T14:00:00Z,2026-07-07T17:00:00Z
-Galileo Galilei,galileo@pisa.it,invalid_phone,2026-07-08T09:00:00Z,2026-07-08T08:00:00Z
-Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:00:00Z
-,missing.name@test.com,,2026-07-10T11:00:00Z,2026-07-10T13:00:00Z`;
-    
-    setUploadedFileName('sample_candidates.csv');
-    parseCSVContent(csvContent);
+  // Preview upload state: parsing/submission progress, row selection for
+  // bulk scheduling, and duplicate-submission protection.
+  const [isParsingCsv, setIsParsingCsv] = useState(false);
+  const [isConfirmingImport, setIsConfirmingImport] = useState(false);
+  const [confirmNonce, setConfirmNonce] = useState<string | null>(null);
+  const [selectedPreviewIds, setSelectedPreviewIds] = useState<string[]>([]);
+  const [bulkScheduleOpen, setBulkScheduleOpen] = useState(false);
+  const [bulkSchedule, setBulkSchedule] = useState<SchedulePair>({ startDate: '', startTime: '', endDate: '', endTime: '' });
+
+  // Downloadable Excel/Sheets-compatible CSV template: basic candidate
+  // details only (Name,Email,Phone). Interview scheduling happens inside
+  // the app after upload. Legacy files with scheduling columns still parse.
+  const handleDownloadCsvTemplate = () => {
+    const csv = [
+      'Name,Email,Phone',
+      'Aarav Sharma,aarav@example.com,9876543210',
+      'Diya Patel,diya@example.com,9876543211',
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'primehire_candidate_upload_template.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success('CSV template downloaded — add candidate details, upload it, then schedule in IST here.');
+  };
+
+  // Appends a blank editable row to the review list so a candidate can be
+  // added inline. Schedule stays empty — no arbitrary dates are assigned.
+  const handleAddBlankCandidateRow = () => {
+    setParsedRows(prev => [...prev, {
+      rowId: 'manual-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
+      name: '',
+      email: '',
+      phone: '',
+      startDate: '',
+      startTime: '',
+      endDate: '',
+      endTime: '',
+      startUtc: '',
+      endUtc: '',
+      rawStart: '',
+      rawEnd: '',
+    }]);
+    toast.info('Blank candidate row added — fill Name and Email, then schedule in IST.');
   };
 
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1666,68 +1758,235 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
     reader.readAsText(file);
   };
 
+  // RFC-4180-ish single-line split: handles quoted cells ("a,b") and
+  // escaped quotes (""), so displayed CSV data never breaks parsing.
+  const splitCsvLine = (line: string): string[] => {
+    const out: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === ',' && !inQuotes) {
+        out.push(cur.trim());
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur.trim());
+    return out.map(c => c.replace(/^"|"$/g, ''));
+  };
+
+  // New template: Name,Email,Phone. Legacy scheduling columns are still
+  // accepted (Start Time/End Time incl. "Start Date/Time" aliases). Legacy
+  // values (Indian `DD/MM/YYYY hh:mm AM/PM` = IST, ISO `...Z` = UTC instant)
+  // are normalized to UTC once and prefilled into the IST pickers.
   const parseCSVContent = (text: string) => {
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length <= 1) {
-      toast.error('Uploaded CSV is empty or only contains headers.');
-      return;
-    }
+    setIsParsingCsv(true);
+    try {
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length <= 1) {
+        toast.error('Uploaded CSV is empty or only contains headers.');
+        return;
+      }
 
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    
-    // Expected headers check
-    const expected = ['name', 'email', 'phone', 'start time', 'end time'];
-    const headersMatch = expected.every(exp => headers.includes(exp));
-
-    if (!headersMatch) {
-      toast.error('CSV headers mismatch. Required: Name, Email, Phone, Start Time, End Time');
-      return;
-    }
-
-    const colIndex = {
-      name: headers.indexOf('name'),
-      email: headers.indexOf('email'),
-      phone: headers.indexOf('phone'),
-      start: headers.indexOf('start time'),
-      end: headers.indexOf('end time')
-    };
-
-    const parsedData: any[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      // Split by commas, handling basic text splitting
-      const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-
-      const name = cols[colIndex.name] || '';
-      const email = cols[colIndex.email] || '';
-      const phone = cols[colIndex.phone] || '';
-      const start = cols[colIndex.start] || '';
-      const end = cols[colIndex.end] || '';
-
-      const rowObj = {
-        rowId: 'row-' + i,
-        name,
-        email,
-        phone,
-        startTime: start,
-        endTime: end
+      const headers = splitCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+      const findCol = (...aliases: string[]) => {
+        for (const a of aliases) {
+          const i = headers.indexOf(a);
+          if (i !== -1) return i;
+        }
+        return -1;
+      };
+      const colIndex = {
+        name: findCol('name', 'candidate name', 'full name'),
+        email: findCol('email', 'email address', 'e-mail'),
+        phone: findCol('phone', 'phone number', 'mobile'),
+        start: findCol('start time', 'starttime', 'start_time', 'start date/time', 'start datetime', 'start date time', 'start date', 'interview start'),
+        end: findCol('end time', 'endtime', 'end_time', 'end date/time', 'end datetime', 'end date time', 'end date', 'interview end'),
       };
 
-      parsedData.push(rowObj);
-    }
+      if (colIndex.name === -1 || colIndex.email === -1) {
+        toast.error('CSV headers mismatch. Required: Name, Email (Phone optional). Scheduling is picked in the app.');
+        return;
+      }
 
-    setParsedRows(parsedData);
-    toast.success(`Successfully read ${parsedData.length} records. Please review validations.`);
+      const parsedData: any[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = splitCsvLine(lines[i]);
+        const cell = (idx: number) => (idx === -1 ? '' : (cols[idx] || '').trim());
+
+        const name = cell(colIndex.name);
+        const email = cell(colIndex.email);
+        const phone = cell(colIndex.phone);
+        const rawStartCell = cell(colIndex.start);
+        const rawEndCell = cell(colIndex.end);
+
+        // Schedule parsing: empty -> blank pickers (never auto-assigned).
+        // Valid legacy values -> UTC once -> IST picker parts. Invalid ->
+        // preserved raw for correction + row-level error (never discarded).
+        let startDate = '', startTime = '', startUtc = '', rawStart = '';
+        let endDate = '', endTime = '', endUtc = '', rawEnd = '';
+        if (rawStartCell) {
+          const parsed = parseCsvScheduleCell(rawStartCell);
+          if (parsed.ok) {
+            startUtc = parsed.utcIso;
+            const parts = utcIsoToIstParts(parsed.utcIso);
+            if (parts) {
+              startDate = parts.date;
+              startTime = parts.time;
+            } else {
+              rawStart = rawStartCell;
+            }
+          } else {
+            rawStart = rawStartCell;
+          }
+        }
+        if (rawEndCell) {
+          const parsed = parseCsvScheduleCell(rawEndCell);
+          if (parsed.ok) {
+            endUtc = parsed.utcIso;
+            const parts = utcIsoToIstParts(parsed.utcIso);
+            if (parts) {
+              endDate = parts.date;
+              endTime = parts.time;
+            } else {
+              rawEnd = rawEndCell;
+            }
+          } else {
+            rawEnd = rawEndCell;
+          }
+        }
+
+        parsedData.push({
+          rowId: `row-${Date.now()}-${i}`,
+          name,
+          email,
+          phone,
+          startDate,
+          startTime,
+          endDate,
+          endTime,
+          startUtc,
+          endUtc,
+          rawStart,
+          rawEnd,
+        });
+      }
+
+      setParsedRows(parsedData);
+      setSelectedPreviewIds([]);
+      const withSchedule = parsedData.filter(r => r.startDate && r.endDate).length;
+      toast.success(
+        `Successfully read ${parsedData.length} records. Review candidate details and schedule interview times (IST) before confirming.` +
+        (withSchedule > 0 ? ` ${withSchedule} row(s) prefilled from the file.` : ''),
+      );
+    } finally {
+      setIsParsingCsv(false);
+    }
   };
 
   const handleUpdateImportRow = (rowId: string, field: string, value: string) => {
-    setParsedRows(prev => prev.map(r => r.rowId === rowId ? { ...r, [field]: value } : r));
-    // Trigger re-validation simple mock
-    toast.info('Recalculating inline edit validation checks...');
+    setParsedRows(prev => prev.map(r => {
+      if (r.rowId !== rowId) return r;
+      const next = { ...r, [field]: value };
+      // Editing a picker clears the preserved-invalid marker for that side;
+      // the new picker value becomes the source of truth.
+      if (field === 'startDate' || field === 'startTime') next.rawStart = '';
+      if (field === 'endDate' || field === 'endTime') next.rawEnd = '';
+      // Clearing pickers clears the derived instant; recompute happens at confirm.
+      if ((field === 'startDate' || field === 'startTime') && !(next.startDate && next.startTime)) next.startUtc = '';
+      if ((field === 'endDate' || field === 'endTime') && !(next.endDate && next.endTime)) next.endUtc = '';
+      return next;
+    }));
+  };
+
+  // Atomic start/end datetime edit (single datetime-local control emits both
+  // the DD/MM/YYYY date and hh:mm AM/PM time parts at once).
+  const handleUpdateImportRowSchedule = (rowId: string, side: 'start' | 'end', date: string, time: string) => {
+    setParsedRows(prev => prev.map(r => {
+      if (r.rowId !== rowId) return r;
+      if (side === 'start') {
+        const next = { ...r, startDate: date, startTime: time, rawStart: '' };
+        next.startUtc = date && time ? (istDateTimeToUtc(date, time) || '') : '';
+        return next;
+      }
+      const next = { ...r, endDate: date, endTime: time, rawEnd: '' };
+      next.endUtc = date && time ? (istDateTimeToUtc(date, time) || '') : '';
+      return next;
+    }));
+  };
+
+  const handleClearRawSchedule = (rowId: string, side: 'start' | 'end') => {
+    setParsedRows(prev => prev.map(r => {
+      if (r.rowId !== rowId) return r;
+      if (side === 'start') return { ...r, rawStart: '', startDate: '', startTime: '', startUtc: '' };
+      return { ...r, rawEnd: '', endDate: '', endTime: '', endUtc: '' };
+    }));
+  };
+
+  // Apply one IST window to selected preview rows. Rows that already have an
+  // individual schedule are left untouched unless the operator confirms.
+  const handleApplyBulkSchedule = () => {
+    if (selectedPreviewIds.length === 0) {
+      toast.error('Select at least one candidate row first.');
+      return;
+    }
+    if (!(bulkSchedule.startDate && bulkSchedule.startTime && bulkSchedule.endDate && bulkSchedule.endTime)) {
+      toast.error('Pick Start Date/Time and End Date/Time first.');
+      return;
+    }
+    const startUtc = istDateTimeToUtc(bulkSchedule.startDate, bulkSchedule.startTime);
+    const endUtc = istDateTimeToUtc(bulkSchedule.endDate, bulkSchedule.endTime);
+    if (!startUtc || !endUtc) {
+      toast.error('Invalid bulk schedule. Use the calendar and time picker (IST).');
+      return;
+    }
+    if (new Date(endUtc).getTime() <= new Date(startUtc).getTime()) {
+      toast.error('Bulk End Date & Time must be later than Start Date & Time.');
+      return;
+    }
+    const alreadySet = parsedRows.filter(
+      r => selectedPreviewIds.includes(r.rowId) && ((r.startDate && r.startTime) || (r.endDate && r.endTime)),
+    );
+    const apply = () => {
+      setParsedRows(prev => prev.map(r => {
+        if (!selectedPreviewIds.includes(r.rowId)) return r;
+        return {
+          ...r,
+          startDate: bulkSchedule.startDate,
+          startTime: bulkSchedule.startTime,
+          endDate: bulkSchedule.endDate,
+          endTime: bulkSchedule.endTime,
+          startUtc: '',
+          endUtc: '',
+          rawStart: '',
+          rawEnd: '',
+        };
+      }));
+      setBulkScheduleOpen(false);
+      toast.success(`Applied IST schedule to ${selectedPreviewIds.length} candidate(s). Individual edits still allowed.`);
+    };
+    if (alreadySet.length > 0) {
+      const ok = window.confirm(
+        `${alreadySet.length} selected row(s) already have an individual schedule. Overwrite them with the bulk window?\n\nOK = overwrite • Cancel = keep individual schedules`,
+      );
+      if (!ok) return;
+    }
+    apply();
   };
 
   const handleRemoveImportRow = (rowId: string) => {
     setParsedRows(prev => prev.filter(r => r.rowId !== rowId));
+    setSelectedPreviewIds(prev => prev.filter(id => id !== rowId));
   };
 
   const handleConfirmCandidateImport = async () => {
@@ -1735,6 +1994,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
       toast.error('No candidate data rows found.');
       return;
     }
+    if (isConfirmingImport) return; // duplicate-submission guard
 
     // Block if there are red validations
     const hasRedErrors = validationErrors.some(e => e.type === 'red');
@@ -1743,30 +2003,19 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
       return;
     }
 
+    setConfirmNonce(`import-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    setIsConfirmingImport(true);
     try {
+      // IST -> UTC exactly once per completed window; empty stays empty
+      // (backend contract: startTime/endTime optional, default "").
       const formatted = parsedRows.map(r => {
-        let start = r.startTime ? r.startTime.trim() : '';
-        let end = r.endTime ? r.endTime.trim() : '';
-
-        // If empty, assign standard default dates:
-        if (!start) {
-          start = new Date().toISOString();
-        } else {
-          start = new Date(start).toISOString();
-        }
-
-        if (!end) {
-          end = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-        } else {
-          end = new Date(end).toISOString();
-        }
-
+        const { startUtc, endUtc } = rowScheduleToUtc(r);
         return {
-          name: r.name,
-          email: r.email,
-          phone: r.phone,
-          startTime: start,
-          endTime: end
+          name: (r.name || '').trim(),
+          email: (r.email || '').trim(),
+          phone: (r.phone || '').trim(),
+          startTime: startUtc,
+          endTime: endUtc,
         };
       });
 
@@ -1791,21 +2040,26 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
         setParsedRows([]);
         setValidationErrors([]);
         setUploadedFileName('');
+        setSelectedPreviewIds([]);
         setCurrentView('DETAIL');
       } else if (items.length > 0) {
         const failedIdx = new Set(errors.map(e => e.index));
         const failedMsgs = errors.slice(0, 3).map(e => `row ${e.index + 1} [${e.code}]: ${e.message}`).join('; ');
         toast.warning(`Saved ${items.length} to server, ${errors.length} failed (${failedMsgs}). Failed rows kept in review.`);
         // Keep only failed rows in the review list for correction.
+        // Saved rows are removed so a retry can never recreate them.
         setParsedRows(prev => prev.filter((_, i) => failedIdx.has(i)));
         setValidationErrors([]);
         setUploadedFileName('');
+        setSelectedPreviewIds([]);
       } else {
         const failedMsgs = errors.slice(0, 3).map(e => `row ${e.index + 1} [${e.code}]: ${e.message}`).join('; ');
         toast.error(`Save failed — nothing was stored (${failedMsgs}). Review list kept.`);
       }
     } catch (err: any) {
       toast.error('Save failed: ' + (err?.message || err) + ' — nothing was stored. Review list kept.');
+    } finally {
+      setIsConfirmingImport(false);
     }
   };
 
@@ -1849,23 +2103,32 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
       }
     }
 
-    // Checking if times are empty
-    const isStartEmpty = !manualStartTime.trim();
-    const isEndEmpty = !manualEndTime.trim();
-    if ((isStartEmpty || isEndEmpty) && !timeConsent) {
-      toast.error('Start Time or End Time is empty. Please check the consent box below to proceed with default scheduling.');
+    // IST schedule is optional; when partially filled it must be completed.
+    const mStartPartial = Boolean(manualStartDate || manualStartTime12);
+    const mEndPartial = Boolean(manualEndDate || manualEndTime12);
+    if (mStartPartial && !(manualStartDate && manualStartTime12)) {
+      toast.error('Please select both Start Date and Start Time (IST), or leave both empty.');
       return;
     }
-
-    // Determine default start and end times if empty
-    let finalStart = manualStartTime.trim();
-    let finalEnd = manualEndTime.trim();
-
-    if (!finalStart) {
-      finalStart = new Date().toISOString().substring(0, 16); // Local format or ISO
+    if (mEndPartial && !(manualEndDate && manualEndTime12)) {
+      toast.error('Please select both End Date and End Time (IST), or leave both empty.');
+      return;
     }
-    if (!finalEnd) {
-      finalEnd = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().substring(0, 16);
+    if (mStartPartial !== mEndPartial) {
+      toast.error('Schedule is incomplete: select both Start and End windows (IST), or leave both empty.');
+      return;
+    }
+    if (mStartPartial) {
+      const sUtc = istDateTimeToUtc(manualStartDate, manualStartTime12);
+      const eUtc = istDateTimeToUtc(manualEndDate, manualEndTime12);
+      if (!sUtc || !eUtc) {
+        toast.error('Invalid schedule. Use the calendar and time picker (IST).');
+        return;
+      }
+      if (new Date(eUtc).getTime() <= new Date(sUtc).getTime()) {
+        toast.error('End Date & Time must be later than Start Date & Time.');
+        return;
+      }
     }
 
     const newRowObj = {
@@ -1873,8 +2136,14 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
       name: manualName.trim(),
       email: manualEmail.trim(),
       phone: manualPhone.trim() ? manualPhone.trim() : '',
-      startTime: finalStart,
-      endTime: finalEnd
+      startDate: manualStartDate,
+      startTime: manualStartTime12,
+      endDate: manualEndDate,
+      endTime: manualEndTime12,
+      startUtc: '',
+      endUtc: '',
+      rawStart: '',
+      rawEnd: '',
     };
 
     setParsedRows(prev => [...prev, ...[newRowObj]]);
@@ -1884,9 +2153,10 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
     setManualName('');
     setManualEmail('');
     setManualPhone('');
-    setManualStartTime('');
-    setManualEndTime('');
-    setTimeConsent(false);
+    setManualStartDate('');
+    setManualStartTime12('');
+    setManualEndDate('');
+    setManualEndTime12('');
   };
 
   return (
@@ -3817,57 +4087,24 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
-                        Start Time (Optional)
-                      </label>
-                      <Input
-                        type="datetime-local"
-                        value={manualStartTime}
-                        onChange={(e) => setManualStartTime(e.target.value)}
-                        className="text-xs h-8.5 font-mono bg-muted/40/20"
-                      />
+                  <div className="rounded-lg border border-sky-200/60 bg-sky-50/40 p-2.5 space-y-2.5">
+                    <p className="text-[10px] font-bold text-sky-800 uppercase tracking-wider">
+                      Interview Window (Optional, IST)
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <ScheduleDateTimeField label="Start" date={manualStartDate} time={manualStartTime12} onChange={(d, t) => { setManualStartDate(d); setManualStartTime12(t); }} />
+                      <ScheduleDateTimeField label="End" date={manualEndDate} time={manualEndTime12} onChange={(d, t) => { setManualEndDate(d); setManualEndTime12(t); }} />
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
-                        End Time (Optional)
-                      </label>
-                      <Input
-                        type="datetime-local"
-                        value={manualEndTime}
-                        onChange={(e) => setManualEndTime(e.target.value)}
-                        className="text-xs h-8.5 font-mono bg-muted/40/20"
-                      />
-                    </div>
+                    <p className="text-[10px] text-sky-700 leading-normal">
+                      Leave empty to add without a schedule, or pick both dates and times in IST.
+                    </p>
                   </div>
-
-                  {/* Warning and consent check for empty Start/End times */}
-                  {(!manualStartTime.trim() || !manualEndTime.trim()) && (
-                    <div className="p-2.5 bg-amber-50/50 border border-amber-100 rounded-lg space-y-1.5">
-                      <p className="text-[10px] text-amber-700 font-semibold leading-normal">
-                        ⚠️ Start Time and End Time are empty. They will default to <strong>current time</strong> and <strong>3 days from now</strong> respectively.
-                      </p>
-                      <label className="flex items-start gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={timeConsent}
-                          onChange={(e) => setTimeConsent(e.target.checked)}
-                          className="mt-0.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                        />
-                        <span className="text-[10px] text-amber-600 font-bold select-none">
-                          I consent to proceed with empty times.
-                        </span>
-                      </label>
-                    </div>
-                  )}
                 </div>
 
                 <button
                   type="submit"
-                  disabled={(!manualStartTime.trim() || !manualEndTime.trim()) && !timeConsent}
-                  title={(!manualStartTime.trim() || !manualEndTime.trim()) && !timeConsent ? 'Tick the consent box to enable when Start/End time is empty' : 'Add student to list'}
-                  className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-lg transition shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
+                  title="Add student to list"
+                  className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-lg transition shadow-xs cursor-pointer"
                 >
                   <UserPlus className="w-3.5 h-3.5" /> Add Student to List
                 </button>
@@ -3876,6 +4113,25 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
               {/* Bulk upload option */}
               <div className="border-t border-slate-100 my-4 pt-4">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-2">Or Bulk Upload Candidate List</span>
+              </div>
+
+              {/* Downloadable template — basic candidate details only */}
+              <div className="bg-card border border-border/70 rounded-xl p-4 flex items-center gap-3 shadow-xs">
+                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-full shrink-0">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-foreground">Need the upload format?</p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed mt-0.5">
+                    Columns: Name, Email, Phone. Schedule interviews in IST after upload. Older files with dates still work.
+                  </p>
+                </div>
+                <button
+                  onClick={handleDownloadCsvTemplate}
+                  className="shrink-0 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-2 rounded-lg transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" /> CSV Template
+                </button>
               </div>
 
               <div
@@ -3903,7 +4159,12 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 </div>
                 <span className="text-xs font-semibold text-foreground">Drag and drop candidate list here</span>
                 <span className="text-[10px] text-muted-foreground mt-1 block">Supports .csv file types (10MB max)</span>
-                <span className="text-[10px] text-muted-foreground mt-1 block font-mono">Columns: Name, Email, Phone, Start Time, End Time — dates must be ISO 8601 (e.g. 2026-07-05T09:00:00Z)</span>
+                <span className="text-[10px] text-muted-foreground mt-1 block">Columns: Name, Email, Phone — schedule interviews in IST after upload</span>
+                {isParsingCsv && (
+                  <span className="text-[11px] font-bold text-blue-700 mt-2 inline-flex items-center gap-1.5" role="status">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Parsing CSV…
+                  </span>
+                )}
                 
                 <div className="mt-4">
                   <label className="bg-muted hover:bg-muted text-foreground text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer">
@@ -3918,21 +4179,6 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                 </div>
               </div>
 
-              {/* Sample loader card */}
-              <div className="bg-gradient-to-br from-indigo-50/30 to-blue-50/30 p-5 rounded-xl border border-indigo-100/40 space-y-3">
-                <span className="text-xs font-bold text-indigo-700 flex items-center gap-1">
-                  <Sparkles className="w-4 h-4 animate-pulse" /> Sandbox Template Generator
-                </span>
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Generate mock rows (including red-blocking and yellow-warning scenarios) to test validation features:
-                </p>
-                <button
-                  onClick={triggerSampleTemplateCSV}
-                  className="w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold py-2 rounded-lg transition"
-                >
-                  Load Sample Candidate CSV
-                </button>
-              </div>
             </div>
 
             {/* Right side parsing preview */}
@@ -3978,104 +4224,312 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     </div>
                   </div>
 
-                  {/* Editable grid Table before confirmation */}
-                  <div className="bg-card border border-border/70 rounded-xl overflow-hidden shadow-xs">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/40/50">
-                          <TableHead className="font-semibold text-foreground">Name</TableHead>
-                          <TableHead className="font-semibold text-foreground">Email</TableHead>
-                          <TableHead className="font-semibold text-foreground">Phone</TableHead>
-                          <TableHead className="font-semibold text-foreground">Start Time</TableHead>
-                          <TableHead className="font-semibold text-foreground">End Time</TableHead>
-                          <TableHead className="w-[50px] text-right"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {parsedRows.map((row) => (
-                          <TableRow key={row.rowId}>
-                            <TableCell>
-                              <Input
-                                value={row.name}
-                                onChange={(e) => handleUpdateImportRow(row.rowId, 'name', e.target.value)}
-                                className="text-xs h-8 bg-muted/40/30 font-semibold"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                value={row.email}
-                                onChange={(e) => handleUpdateImportRow(row.rowId, 'email', e.target.value)}
-                                className="text-xs h-8 bg-muted/40/30"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                value={row.phone}
-                                onChange={(e) => handleUpdateImportRow(row.rowId, 'phone', e.target.value)}
-                                className="text-xs h-8 bg-muted/40/30"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                value={row.startTime}
-                                onChange={(e) => handleUpdateImportRow(row.rowId, 'startTime', e.target.value)}
-                                className="text-xs h-8 bg-muted/40/30 font-mono"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                value={row.endTime}
-                                onChange={(e) => handleUpdateImportRow(row.rowId, 'endTime', e.target.value)}
-                                className="text-xs h-8 bg-muted/40/30 font-mono"
-                              />
-                            </TableCell>
-                            <TableCell className="text-right">
+                  {/* Review header */}
+                  <div className="rounded-xl border border-sky-200/70 bg-sky-50/50 px-4 py-3 flex items-start gap-2.5">
+                    <Info className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-sky-900 font-medium leading-relaxed">
+                      Review candidate details and schedule interview times before confirming.
+                      All times are <strong>Indian Standard Time (IST)</strong> — they are converted to UTC automatically on save.
+                    </p>
+                  </div>
+
+                  {/* Bulk scheduling bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/70 bg-card px-4 py-2.5">
+                    <div className="text-xs text-muted-foreground font-medium">
+                      {selectedPreviewIds.length > 0 ? (
+                        <span><strong className="text-foreground">{selectedPreviewIds.length}</strong> of {parsedRows.length} selected</span>
+                      ) : (
+                        <span>Tick rows to apply one IST schedule to several candidates.</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedPreviewIds.length > 0 && (
+                        <button
+                          onClick={() => setSelectedPreviewIds([])}
+                          className="text-[11px] font-bold text-muted-foreground hover:text-foreground px-2 py-1 cursor-pointer"
+                        >
+                          Clear selection
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (selectedPreviewIds.length === 0) {
+                            toast.error('Select at least one candidate row first.');
+                            return;
+                          }
+                          setBulkSchedule({ startDate: '', startTime: '', endDate: '', endTime: '' });
+                          setBulkScheduleOpen(true);
+                        }}
+                        disabled={selectedPreviewIds.length === 0}
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold border transition ${
+                          selectedPreviewIds.length > 0
+                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent cursor-pointer'
+                            : 'bg-muted text-muted-foreground border-border/70 cursor-not-allowed opacity-50'
+                        }`}
+                        title="Apply one IST schedule to all selected rows"
+                      >
+                        <Calendar className="w-3.5 h-3.5" /> Apply Schedule to Selected
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Editable candidate preview cards (cards — never clipped like table popups) */}
+                  <div className="space-y-3">
+                    {parsedRows.map((row, rowIdx) => {
+                      const rowNum = rowIdx + 1;
+                      const rowErrs = validationErrors.filter(e => e.row === rowNum);
+                      const redErrs = rowErrs.filter(e => e.type === 'red');
+                      const yellowErrs = rowErrs.filter(e => e.type === 'yellow');
+                      const checked = selectedPreviewIds.includes(row.rowId);
+                      const sched = rowScheduleToUtc(row);
+                      const schedLabel = sched.startUtc && sched.endUtc
+                        ? `${formatUtcAsIst(sched.startUtc)}  →  ${formatUtcAsIst(sched.endUtc)}`
+                        : null;
+                      const startInvalid = rowErrs.some(e => e.col === 'Start Date' || e.col === 'Start Time');
+                      const endInvalid = rowErrs.some(e => e.col === 'End Date' || e.col === 'End Time' || e.col === 'Times');
+                      return (
+                        <div
+                          key={row.rowId}
+                          className={`rounded-xl border bg-card p-4 space-y-3 shadow-xs ${
+                            redErrs.length > 0 ? 'border-destructive/60' : 'border-border/70'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select candidate row ${rowNum}`}
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedPreviewIds(prev => [...prev, row.rowId]);
+                                else setSelectedPreviewIds(prev => prev.filter(id => id !== row.rowId));
+                              }}
+                              className="mt-1 rounded border-border text-foreground focus:ring-slate-900 cursor-pointer"
+                            />
+                            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Candidate Name *</label>
+                                <Input
+                                  value={row.name}
+                                  onChange={(e) => handleUpdateImportRow(row.rowId, 'name', e.target.value)}
+                                  className="text-xs h-8 bg-muted/40/30 font-semibold"
+                                  placeholder="Aarav Sharma"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Email *</label>
+                                <Input
+                                  value={row.email}
+                                  onChange={(e) => handleUpdateImportRow(row.rowId, 'email', e.target.value)}
+                                  className="text-xs h-8 bg-muted/40/30"
+                                  placeholder="aarav@example.com"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Phone</label>
+                                <Input
+                                  value={row.phone}
+                                  onChange={(e) => handleUpdateImportRow(row.rowId, 'phone', e.target.value)}
+                                  className="text-xs h-8 bg-muted/40/30"
+                                  placeholder="9876543210"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                              {redErrs.length > 0 ? (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Needs attention</span>
+                              ) : schedLabel ? (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Scheduled (IST)</span>
+                              ) : yellowErrs.length > 0 ? (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Check warnings</span>
+                              ) : (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">No schedule</span>
+                              )}
                               <button
                                 onClick={() => handleRemoveImportRow(row.rowId)}
-                                className="p-1 hover:text-destructive rounded"
+                                className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-destructive transition cursor-pointer"
+                                title="Remove this candidate row"
+                                aria-label={`Remove candidate row ${rowNum}`}
                               >
                                 <Trash className="w-3.5 h-3.5" />
                               </button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                            </div>
+                          </div>
+
+                          {/* Invalid legacy values preserved for correction */}
+                          {(row.rawStart || row.rawEnd) && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-2.5 space-y-1.5">
+                              <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Values from file need correction</p>
+                              {row.rawStart && (
+                                <div className="flex items-center gap-2 text-[11px]">
+                                  <span className="text-muted-foreground font-semibold">Start:</span>
+                                  <code className="font-mono bg-card border border-border/70 rounded px-1.5 py-0.5">{row.rawStart}</code>
+                                  <button onClick={() => handleClearRawSchedule(row.rowId, 'start')} className="text-[10px] font-bold text-red-600 hover:underline cursor-pointer">Clear & re-pick</button>
+                                </div>
+                              )}
+                              {row.rawEnd && (
+                                <div className="flex items-center gap-2 text-[11px]">
+                                  <span className="text-muted-foreground font-semibold">End:</span>
+                                  <code className="font-mono bg-card border border-border/70 rounded px-1.5 py-0.5">{row.rawEnd}</code>
+                                  <button onClick={() => handleClearRawSchedule(row.rowId, 'end')} className="text-[10px] font-bold text-red-600 hover:underline cursor-pointer">Clear & re-pick</button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* IST schedule pickers (single datetime control per side) */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 rounded-lg border border-border/60 bg-muted/40/30 p-3">
+                            <ScheduleDateTimeField label="Start" date={row.startDate || ''} time={row.startTime || ''} onChange={(d, t) => handleUpdateImportRowSchedule(row.rowId, 'start', d, t)} invalid={startInvalid} />
+                            <ScheduleDateTimeField label="End" date={row.endDate || ''} time={row.endTime || ''} onChange={(d, t) => handleUpdateImportRowSchedule(row.rowId, 'end', d, t)} invalid={endInvalid} />
+                          </div>
+                          {schedLabel && (
+                            <p className="text-[11px] font-mono text-sky-800 bg-sky-50/60 border border-sky-100 rounded-lg px-2.5 py-1.5">
+                              {schedLabel}
+                            </p>
+                          )}
+
+                          {/* Row-level validation */}
+                          {rowErrs.length > 0 && (
+                            <div className="space-y-1" role="alert">
+                              {rowErrs.map((err, i) => (
+                                <div key={i} className="flex gap-2 text-[11px] items-start">
+                                  <span className={`px-1.5 py-0.5 rounded-sm font-bold text-[9px] ${err.type === 'red' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    {err.type.toUpperCase()}
+                                  </span>
+                                  <span className="text-muted-foreground font-semibold">Row {err.row}:</span>
+                                  <span className="text-muted-foreground">{err.message} ({err.col})</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Select-all helper */}
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-medium">
+                    <button
+                      onClick={() => {
+                        if (selectedPreviewIds.length === parsedRows.length) setSelectedPreviewIds([]);
+                        else setSelectedPreviewIds(parsedRows.map(r => r.rowId));
+                      }}
+                      className="font-bold text-indigo-700 hover:underline cursor-pointer"
+                    >
+                      {selectedPreviewIds.length === parsedRows.length && parsedRows.length > 0 ? 'Deselect all' : 'Select all'}
+                    </button>
+                    <span>• schedules stay individually editable after bulk apply</span>
                   </div>
 
                   {/* Submission and Confirmation actions */}
-                  <div className="flex justify-end gap-3.5">
+                  <div className="flex justify-between items-center gap-3.5 flex-wrap">
+                    <button
+                      onClick={handleAddBlankCandidateRow}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 border border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Candidate
+                    </button>
+                    <div className="flex gap-3.5">
                     <button
                       onClick={() => {
                         setParsedRows([]);
                         setValidationErrors([]);
                         setUploadedFileName('');
+                        setSelectedPreviewIds([]);
                       }}
-                      className="px-4 py-2 border border-border/70 hover:bg-muted/40 text-foreground rounded-lg text-xs font-semibold transition"
+                      disabled={isConfirmingImport}
+                      className="px-4 py-2 border border-border/70 hover:bg-muted/40 text-foreground rounded-lg text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                     >
                       Clear Data
                     </button>
                     <button
                       onClick={handleConfirmCandidateImport}
-                      disabled={validationErrors.some(e => e.type === 'red')}
-                      className={`px-5 py-2 rounded-lg text-xs font-semibold text-white transition ${
-                        validationErrors.some(e => e.type === 'red')
+                      disabled={validationErrors.some(e => e.type === 'red') || isConfirmingImport}
+                      className={`px-5 py-2 rounded-lg text-xs font-semibold text-white transition inline-flex items-center gap-2 ${
+                        validationErrors.some(e => e.type === 'red') || isConfirmingImport
                           ? 'bg-slate-300 cursor-not-allowed'
                           : 'bg-blue-600 hover:bg-blue-700 shadow-xs cursor-pointer'
                       }`}
                     >
-                      Confirm and Load Candidates
+                      {isConfirmingImport && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      {isConfirmingImport ? 'Saving to MongoDB…' : 'Confirm and Load Candidates'}
                     </button>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="bg-card border border-border/70 p-20 rounded-xl text-center text-muted-foreground">
-                  Please upload a candidate .csv or load the sandbox template on the left to begin candidate validation checks.
+                <div className="bg-card border border-border/70 p-12 rounded-xl text-center space-y-4">
+                  <div className="mx-auto w-11 h-11 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">No candidates in the review list yet</p>
+                    <p className="text-xs text-muted-foreground">
+                      Upload a candidate .csv — or add one right here.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-2.5 flex-wrap">
+                    <button
+                      onClick={handleAddBlankCandidateRow}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Candidate
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
+      )}
+    {/* =========================================================================
+        BULK APPLY SCHEDULE MODAL (IST)
+        ========================================================================= */}
+      {bulkScheduleOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40"
+            onClick={() => setBulkScheduleOpen(false)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-card rounded-xl border border-border/70 shadow-xl w-full max-w-md p-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-indigo-600" /> Apply Schedule to Selected
+                </h3>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  One IST window for <strong className="text-foreground">{selectedPreviewIds.length} selected candidate(s)</strong>.
+                  Rows with individual schedules are overwritten only after confirmation, and stay editable afterwards.
+                </p>
+              </div>
+              <SchedulePairFields value={bulkSchedule} onChange={setBulkSchedule} />
+              {bulkSchedule.startDate && bulkSchedule.startTime && bulkSchedule.endDate && bulkSchedule.endTime && (() => {
+                const s = istDateTimeToUtc(bulkSchedule.startDate, bulkSchedule.startTime);
+                const e = istDateTimeToUtc(bulkSchedule.endDate, bulkSchedule.endTime);
+                if (!s || !e) return null;
+                return (
+                  <p className="text-[11px] font-mono text-sky-800 bg-sky-50/60 border border-sky-100 rounded-lg px-2.5 py-1.5">
+                    {formatUtcAsIst(s)} → {formatUtcAsIst(e)}
+                  </p>
+                );
+              })()}
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button
+                  onClick={() => setBulkScheduleOpen(false)}
+                  className="flex-1 py-2 bg-card border border-border/70 hover:bg-muted/40 text-foreground rounded-md text-xs font-semibold text-center transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleApplyBulkSchedule}
+                  disabled={!(bulkSchedule.startDate && bulkSchedule.startTime && bulkSchedule.endDate && bulkSchedule.endTime)}
+                  className="flex-1 py-2 rounded-md text-xs font-semibold text-center text-white transition bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Apply to {selectedPreviewIds.length} row(s)
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     {/* =========================================================================
         RESCHEDULE INTERVIEW MODAL
