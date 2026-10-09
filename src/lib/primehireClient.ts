@@ -1,7 +1,7 @@
 import { AssessmentProfile, Candidate, Question } from '../types';
 import { toPrimehireTimestamp } from '../utils/dates';
 import { requireMinimumInterviewWindow } from '../utils/interviewSchedulePolicy';
-import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, ResponseId, PASSWORD_RESET_ENABLED, generate32BitId } from './primehireIds';
+import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, PASSWORD_RESET_ENABLED, generate32BitId } from './primehireIds';
 
 /**
  * PrimeHire v1 API Client Module
@@ -334,14 +334,6 @@ export const primehireClient = {
    */
   async getInterviewReport(interviewId: InterviewId): Promise<any> {
     return apiRequest('GET', `/interview/${interviewId}/report`);
-  },
-
-  /**
-   * 10. Regenerate Evaluation Report
-   * POST /response/{response_id}/generate-report
-   */
-  async generateReport(responseId: ResponseId): Promise<any> {
-    return apiRequest('POST', `/response/${responseId}/generate-report`);
   },
 
   /**

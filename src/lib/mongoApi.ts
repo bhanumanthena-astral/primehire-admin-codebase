@@ -41,8 +41,8 @@ export function isApiConfigured(): boolean {
   return API_BASE.length > 0;
 }
 
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { signal });
+async function getJson<T>(path: string, signal?: AbortSignal, cache?: RequestCache): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { signal, cache });
   if (!res.ok) {
     throw await toApiError(res, `GET ${path}`);
   }
@@ -326,7 +326,7 @@ export function mapMongoTemplate(doc: any): MailTemplate {
 }
 
 export async function fetchTemplates(): Promise<MailTemplate[]> {
-  const body = await getJson<{ items: any[] }>('/api/templates');
+  const body = await getJson<{ items: any[] }>('/api/templates', undefined, 'no-store');
   return (body.items ?? []).map(mapMongoTemplate);
 }
 

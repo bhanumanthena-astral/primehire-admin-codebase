@@ -1,6 +1,6 @@
 """Single-report backfill: PrimeHire GET -> validate -> normalize -> upsert.
 
-Read-only toward PrimeHire (never generate-report, never mutate).
+Read-only toward PrimeHire (never mutate upstream reports).
 Fetch is injectable for tests; production path uses httpx.
 """
 

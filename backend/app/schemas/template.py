@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class TemplateIn(BaseModel):
@@ -13,6 +13,14 @@ class TemplateIn(BaseModel):
     type: Literal["STANDARD_INVITATION", "REMINDER", "CUSTOM"] = "CUSTOM"
     subject: str = ""
     body: str = ""
+
+    @field_validator("id")
+    @classmethod
+    def valid_id(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Template id must not be empty.")
+        return value
 
     def to_doc(self) -> dict[str, Any]:
         return self.model_dump()

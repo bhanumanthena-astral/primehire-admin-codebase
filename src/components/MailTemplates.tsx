@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MailTemplate } from '../types';
 import { Mail, Plus, Edit2, Save, Eye, Sparkles, CheckCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils';
 interface MailTemplatesProps {
   templates: MailTemplate[];
   searchQuery?: string;
-  onSaveTemplate: (template: MailTemplate) => void;
-  onDeleteTemplate: (id: string) => void;
+  onSaveTemplate: (template: MailTemplate, isNew: boolean) => Promise<void>;
+  onDeleteTemplate: (id: string) => Promise<void>;
 }
 
 const TYPE_META: Record<string, { label: string; tone: 'info' | 'warning' | 'success'; icon: string }> = {
@@ -33,6 +33,9 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [draftId, setDraftId] = useState('');
   const [copiedVar, setCopiedVar] = useState<string | null>(null);
 
   const [editSubject, setEditSubject] = useState('');
@@ -53,6 +56,14 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
   const variables = Object.keys(sampleData);
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
 
+  useEffect(() => {
+    if (!isCreating && !templates.some(t => t.id === selectedTemplateId)) {
+      setSelectedTemplateId(templates[0]?.id || '');
+      setIsEditing(false);
+      setConfirmingDelete(false);
+    }
+  }, [templates, selectedTemplateId, isCreating]);
+
   const startEdit = () => {
     if (!selectedTemplate) return;
     setEditName(selectedTemplate.name);
@@ -63,6 +74,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
   };
 
   const startCreate = () => {
+    setDraftId('tpl-custom-' + crypto.randomUUID());
     setEditName('New Custom Template');
     setEditSubject('Subject: Assessment Invitation');
     setEditBody(`Hi {{candidate_name}},\n\nWrite your custom message here.\n\nAccess parameters:\nLink: {{link}}\nPassword: {{password}}`);
@@ -77,23 +89,27 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
     toast.info(`Inserted: ${v}`);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return;
     if (!editName.trim() || !editSubject.trim() || !editBody.trim()) {
       toast.error('All fields (Name, Subject, Body) are mandatory.');
       return;
     }
     const updated: MailTemplate = {
-      id: isCreating ? 'tpl-custom-' + Math.random().toString(36).substring(2, 7) : selectedTemplateId,
+      id: isCreating ? draftId : selectedTemplateId,
       name: editName,
       type: isCreating ? 'CUSTOM' : (selectedTemplate?.type || 'CUSTOM'),
       subject: editSubject,
       body: editBody,
     };
-    onSaveTemplate(updated);
-    setIsEditing(false);
-    setIsCreating(false);
-    setSelectedTemplateId(updated.id);
-    toast.success('Template saved successfully!');
+    setIsSaving(true);
+    try {
+      await onSaveTemplate(updated, isCreating);
+      setSelectedTemplateId(updated.id);
+      setIsEditing(false);
+      setIsCreating(false);
+    } catch { /* The parent displays the server error; keep the draft open. */ }
+    finally { setIsSaving(false); }
   };
 
   const getPreview = (subj: string, bdy: string) => {
@@ -102,9 +118,9 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
     return { subject: s, body: b };
   };
 
-  const preview = selectedTemplate
-    ? getPreview(isEditing ? editSubject : selectedTemplate.subject, isEditing ? editBody : selectedTemplate.body)
-    : { subject: '', body: '' };
+  const preview = isEditing
+    ? getPreview(editSubject, editBody)
+    : selectedTemplate ? getPreview(selectedTemplate.subject, selectedTemplate.body) : { subject: '', body: '' };
 
   return (
     <div className="space-y-6 text-foreground font-sans">
@@ -115,7 +131,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
         icon={<Mail className="w-5 h-5" />}
         action={
           !isEditing ? (
-            <PAButton onClick={startCreate} className="shrink-0">
+            <PAButton onClick={startCreate} disabled={isDeleting} className="shrink-0">
               <Plus className="w-4 h-4" /> Custom Template
             </PAButton>
           ) : undefined
@@ -130,7 +146,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
             {filteredTemplates.length === 0 ? (
               <div className="rounded-xl border border-border/70 bg-card p-6 text-center space-y-1">
                 <p className="text-xs font-semibold text-foreground">No templates found</p>
-                <p className="text-[11px] text-muted-foreground">No templates match "{searchQuery}".</p>
+                <p className="text-[11px] text-muted-foreground">{searchQuery ? `No templates match "${searchQuery}".` : 'Create a custom template to get started.'}</p>
               </div>
             ) : (
               filteredTemplates.map((tpl) => {
@@ -139,6 +155,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
                 return (
                   <button
                     key={tpl.id}
+                    disabled={isSaving || isDeleting}
                     role="option"
                     aria-selected={isSelected}
                     onClick={() => { setSelectedTemplateId(tpl.id); setIsEditing(false); setIsCreating(false); setConfirmingDelete(false); }}
@@ -173,7 +190,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
 
         {/* Editor + Preview */}
         <div className="lg:col-span-2">
-          {selectedTemplate ? (
+          {selectedTemplate || isCreating ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Editor */}
               <Panel className="space-y-4">
@@ -185,34 +202,39 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
                     <div className="flex items-center gap-3">
                       <button
                         onClick={startEdit}
+                        disabled={isDeleting}
                         className="text-xs font-semibold inline-flex items-center gap-1 text-accent hover:opacity-80 cursor-pointer transition"
                       >
                         <Edit2 className="w-3.5 h-3.5" /> Edit
                       </button>
                       <button
-                        onClick={() => {
-                          if (!selectedTemplate) return;
+                        onClick={async () => {
+                          if (!selectedTemplate || isDeleting) return;
                           if (!confirmingDelete) {
                             setConfirmingDelete(true);
                             return;
                           }
                           setConfirmingDelete(false);
-                          onDeleteTemplate(selectedTemplate.id);
+                          setIsDeleting(true);
+                          try { await onDeleteTemplate(selectedTemplate.id); }
+                          catch { /* The parent displays the server error. */ }
+                          finally { setIsDeleting(false); }
                         }}
+                        disabled={isDeleting}
                         onBlur={() => setConfirmingDelete(false)}
                         className="text-xs font-semibold inline-flex items-center gap-1 text-destructive hover:opacity-80 cursor-pointer transition"
                         title={confirmingDelete ? 'Click again to confirm deletion' : 'Delete this template'}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        {confirmingDelete ? 'Confirm delete?' : 'Delete'}
+                        {isDeleting ? 'Deleting...' : confirmingDelete ? 'Confirm delete?' : 'Delete'}
                       </button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <PAButton onClick={handleSave} className="!px-3 !py-1.5">
-                        <Save className="w-3.5 h-3.5" /> Save
+                      <PAButton onClick={handleSave} disabled={isSaving} className="!px-3 !py-1.5">
+                        <Save className="w-3.5 h-3.5" /> {isSaving ? 'Saving...' : 'Save'}
                       </PAButton>
-                      <PAButton variant="secondary" onClick={() => { setIsEditing(false); setIsCreating(false); }} className="!px-3 !py-1.5">
+                      <PAButton variant="secondary" disabled={isSaving} onClick={() => { setIsEditing(false); setIsCreating(false); }} className="!px-3 !py-1.5">
                         Cancel
                       </PAButton>
                     </div>
@@ -225,6 +247,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
                       <label className="eyebrow block">Template Name</label>
                       <input
                         value={editName}
+                        disabled={isSaving}
                         onChange={(e) => setEditName(e.target.value)}
                         placeholder="e.g. Follow-up Invitation"
                         className="w-full text-sm font-semibold px-4 py-2 rounded-full border border-border/70 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 shadow-[var(--shadow-card)]"
@@ -234,6 +257,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
                       <label className="eyebrow block">Email Subject</label>
                       <input
                         value={editSubject}
+                        disabled={isSaving}
                         onChange={(e) => setEditSubject(e.target.value)}
                         placeholder="Subject Line"
                         className="w-full text-sm font-semibold px-4 py-2 rounded-full border border-border/70 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 shadow-[var(--shadow-card)]"
@@ -246,6 +270,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
                       </div>
                       <textarea
                         value={editBody}
+                        disabled={isSaving}
                         onChange={(e) => setEditBody(e.target.value)}
                         rows={10}
                         className="w-full text-xs font-mono px-4 py-3 rounded-2xl border border-border/70 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 resize-none leading-relaxed shadow-[var(--shadow-card)]"
@@ -257,7 +282,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
                       </span>
                       <div className="flex flex-wrap gap-1.5">
                         {variables.map((v) => (
-                          <button key={v} onClick={() => insertVariable(v)} className="cursor-pointer transition-opacity hover:opacity-80">
+                          <button key={v} disabled={isSaving} onClick={() => insertVariable(v)} className="cursor-pointer transition-opacity hover:opacity-80">
                             <Pill tone="info"><span className="font-mono text-[10px]">{copiedVar === v ? `✓ ${v}` : v}</span></Pill>
                           </button>
                         ))}
@@ -268,18 +293,18 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
                   <div className="space-y-4">
                     <div className="space-y-1">
                       <span className="eyebrow block">Template Name</span>
-                      <div className="text-sm font-semibold text-foreground">{selectedTemplate.name}</div>
+                      <div className="text-sm font-semibold text-foreground">{selectedTemplate?.name}</div>
                     </div>
                     <div className="space-y-1">
                       <span className="eyebrow block">Email Subject</span>
                       <div className="text-sm font-medium px-4 py-2.5 rounded-2xl bg-muted/40 border border-border/60 text-foreground">
-                        {selectedTemplate.subject}
+                        {selectedTemplate?.subject}
                       </div>
                     </div>
                     <div className="space-y-1">
                       <span className="eyebrow block">Raw Body Structure</span>
                       <pre className="text-xs font-mono px-4 py-3 rounded-2xl bg-muted/40 border border-border/60 text-foreground overflow-auto whitespace-pre-wrap leading-relaxed">
-                        {selectedTemplate.body}
+                        {selectedTemplate?.body}
                       </pre>
                     </div>
                   </div>

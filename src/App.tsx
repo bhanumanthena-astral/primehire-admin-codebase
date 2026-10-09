@@ -31,7 +31,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { fetchAssessments, fetchCandidates, updateCandidate, API_BASE, fetchHealth, fetchTemplates, createTemplate, updateTemplate, deleteTemplate } from './lib/mongoApi';
+import { fetchAssessments, fetchCandidates, updateCandidate, API_BASE, fetchHealth } from './lib/mongoApi';
+import { createMailTemplateStore } from './lib/mailTemplateStore';
 
 const MODULE_TABS = [
   { id: 'dashboard', label: 'Dashboard Overview', short: 'Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
@@ -142,7 +143,8 @@ export default function App() {
   const [templates, setTemplates] = useState<MailTemplate[]>(() => {
     try {
       const stored = localStorage.getItem('primehire_templates');
-      return stored ? JSON.parse(stored) : INITIAL_TEMPLATES;
+      const parsed = stored ? JSON.parse(stored) : INITIAL_TEMPLATES;
+      return Array.isArray(parsed) ? parsed : INITIAL_TEMPLATES;
     } catch { return INITIAL_TEMPLATES; }
   });
 
@@ -169,10 +171,17 @@ export default function App() {
   const handleSetTemplates = (newTemplates: MailTemplate[] | ((prev: MailTemplate[]) => MailTemplate[])) => {
     setTemplates(prev => {
       const next = typeof newTemplates === 'function' ? newTemplates(prev) : newTemplates;
-      localStorage.setItem('primehire_templates', JSON.stringify(next));
+      try {
+        localStorage.setItem('primehire_templates', JSON.stringify(next));
+      } catch { /* A cache failure must not turn a successful server write into an error. */ }
       return next;
     });
   };
+
+  const templateStoreRef = useRef<ReturnType<typeof createMailTemplateStore> | null>(null);
+  if (!templateStoreRef.current) {
+    templateStoreRef.current = createMailTemplateStore(templates, handleSetTemplates);
+  }
 
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [reportCandidate, setReportCandidate] = useState<Candidate | null>(null);
@@ -186,8 +195,6 @@ export default function App() {
 
   const candidatesRef = useRef(candidates);
   candidatesRef.current = candidates;
-  const templatesRef = useRef(templates);
-  templatesRef.current = templates;
   const assessmentsRef = useRef(assessments);
   assessmentsRef.current = assessments;
 
@@ -331,12 +338,14 @@ export default function App() {
     const onRefocus = () => {
       if (document.visibilityState !== 'visible') return;
       revalidateAssessments();
+      void loadTemplatesFromServer();
     };
     window.addEventListener('focus', onRefocus);
     document.addEventListener('visibilitychange', onRefocus);
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') {
         revalidateAssessments();
+        void loadTemplatesFromServer();
       }
     }, 30000);
     return () => {
@@ -353,6 +362,9 @@ export default function App() {
   useEffect(() => {
     if (activeTab === 'assessments' || activeTab === 'dashboard') {
       revalidateAssessments({ full: true });
+    }
+    if (activeTab === 'templates') {
+      void loadTemplatesFromServer();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -394,87 +406,36 @@ export default function App() {
     setIsReportOpen(true);
   };
 
-  const handleReportUpdated = (updatedCandidates: Candidate[]) => {
-    setCandidates(updatedCandidates);
-    if (reportCandidate) {
-      const refreshed = updatedCandidates.find(c => c.id === reportCandidate.id);
-      if (refreshed) setReportCandidate(refreshed);
-    }
-  };
-
-  // Shared templates: MongoDB is the source of truth so every user sees
-  // the same list; localStorage stays as an offline cache only.
-  // Templates created while on old code (or offline) exist only locally —
-  // adopt them into the server so they become shared instead of lost.
+  // Server reads never upload cached templates: a missing record may have
+  // been deleted by another browser. Successful empty lists clear the cache too.
   const loadTemplatesFromServer = async () => {
     try {
-      let server = await fetchTemplates();
-      const local = templatesRef.current.length > 0 ? templatesRef.current : INITIAL_TEMPLATES;
-      const serverIds = new Set(server.map(t => t.id));
-      const missing = local.filter(t => t && t.id && !serverIds.has(t.id));
-      for (const t of missing) {
-        // 409 = another profile seeded/adopted it concurrently: keep server's.
-        try { await createTemplate(t); } catch { /* duplicate or validation: skip */ }
-      }
-      if (missing.length > 0) {
-        server = await fetchTemplates();
-      }
-      if (server.length === 0) return; // keep local cache
-      handleSetTemplates(server);
-      console.info(`[DataSource] templates: mongodb (${server.length})`);
+      await templateStoreRef.current!.load();
     } catch {
       console.warn('[DataSource] templates API unreachable — keeping local cache.');
     }
   };
 
-  // Server-confirmed save: create or update in MongoDB, then sync state
-  // (which also refreshes the localStorage cache). Offline saves stay
-  // local-only with a warning that other users cannot see them yet.
-  const handleSaveMailTemplate = async (updated: MailTemplate) => {
-    const mergeSaved = (saved: MailTemplate) => {
-      handleSetTemplates(prev => {
-        const exists = prev.some(t => t.id === saved.id);
-        if (exists) {
-          return prev.map(t => (t.id === saved.id ? saved : t));
-        }
-        return [...prev, saved];
-      });
-    };
+  // Edits must never fall back to creating a missing (possibly deleted) record.
+  const handleSaveMailTemplate = async (updated: MailTemplate, isNew: boolean) => {
     try {
-      let saved: MailTemplate;
-      try {
-        saved = await updateTemplate(updated.id, updated);
-      } catch (err: any) {
-        if (err?.status === 404) {
-          try {
-            saved = await createTemplate(updated);
-          } catch (createErr: any) {
-            if (createErr?.status === 409) {
-              saved = await updateTemplate(updated.id, updated);
-            } else {
-              throw createErr;
-            }
-          }
-        } else {
-          throw err;
-        }
-      }
-      mergeSaved(saved);
-    } catch {
-      mergeSaved(updated);
-      toast.warning('Template saved locally only — server unreachable. Other users cannot see it yet.');
+      await templateStoreRef.current!.save(updated, isNew);
+      toast.success('Template saved to the server.');
+    } catch (err: any) {
+      toast.error(`Template could not be saved (${err?.message || err}). Your edits are still open.`);
+      throw err;
     }
   };
 
-  // Server-first delete: the Mongo record is removed only on server success —
+  // Server-first delete: the template is hidden only on server success —
   // a failed delete keeps the template with an error.
   const handleDeleteMailTemplate = async (id: string) => {
     try {
-      await deleteTemplate(id);
-      handleSetTemplates(prev => prev.filter(t => t.id !== id));
+      await templateStoreRef.current!.remove(id);
       toast.success('Template deleted from the server.');
     } catch (err: any) {
       toast.error(`Delete failed on server (${err?.message || err}) — template kept.`);
+      throw err;
     }
   };
 
@@ -892,7 +853,6 @@ export default function App() {
         assessment={reportAssessment}
         allCandidates={candidates}
         onClose={() => setIsReportOpen(false)}
-        onReportUpdated={handleReportUpdated}
       />
 
       <Toaster position="bottom-right" />

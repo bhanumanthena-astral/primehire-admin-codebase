@@ -4,7 +4,7 @@ import { fetchLiveReport } from './lib/mongoApi';
 import { toast } from 'sonner';
 import { formatUtcAsIst } from './utils/istSchedule';
 import { requireMinimumInterviewWindow } from './utils/interviewSchedulePolicy';
-import { cacheCandidateReport, candidateReportKey, invalidateCandidateReport } from './lib/candidateReportCache';
+import { cacheCandidateReport, candidateReportKey } from './lib/candidateReportCache';
 import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, ResponseId, asJobId, asLocalCandidateId, asInterviewId, asResponseId, toVerifiedCandidateUUID, generate32BitId } from './lib/primehireIds';
 
 // Helper to generate IDs
@@ -511,7 +511,7 @@ export async function mockRegenerateLink(candidateId: LocalCandidateId, storeCan
   // Call the same generate link flow with the rotated ID
   const result = await mockGenerateLink([newId], updatedCandidates, roundType, jobId);
 
-  // Reset submission/report state for the regenerated candidate
+  // Reset submission and report state when issuing fresh interview credentials.
   return result.map(c => {
     if (c.id === newId) {
       return {
@@ -850,7 +850,7 @@ async function fetchCandidateReport(candidateId: LocalCandidateId, storeCandidat
         if (candidate?.simulatedReport) {
           return { candidateId, ...candidate.simulatedReport };
         }
-        throw new Error('The report exists on the backend but cannot be retrieved due to a schema validation issue. Try regenerating the report.');
+        throw new Error('The report exists on the backend but cannot be retrieved due to a schema validation issue. Contact support to resolve the report retrieval error.');
       }
       throw new Error(error.message || 'Failed to retrieve report from PrimeHire API.');
     }
@@ -883,83 +883,6 @@ async function fetchCandidateReport(candidateId: LocalCandidateId, storeCandidat
       }
     ]
   };
-}
-
-/**
- * Manually trigger regeneration of an AI report
- * REAL ENDPOINT: POST /response/{id}/generate-report
- */
-export async function mockRegenerateReport(candidateId: LocalCandidateId, storeCandidates: Candidate[]): Promise<Candidate[]> {
-  const candidate = storeCandidates.find(c => c.id === candidateId);
-  if (!candidate) {
-    throw new Error('Candidate not found.');
-  }
-
-  // Guard: If candidate was completed via simulation (never submitted on real backend),
-  // regenerating on the real API is not possible.
-  if (candidate.simulatedReport && candidate.answers && 
-      Object.values(candidate.answers).some(a => typeof a === 'string' && a.includes('Simulated response'))) {
-    throw new Error('This candidate was completed via simulation. Regeneration requires a real backend interview submission. Please have the candidate take the interview via their PrimeHire link first.');
-  }
-
-  let responseId = candidate.responseId;
-
-  // If the stored responseId looks like a mock/fallback (starts with 'res-'),
-  // try to look up the real response_id from the report-not-generated list
-  if (!responseId || (typeof responseId === 'string' && responseId.startsWith('res-'))) {
-    if (candidate.interviewId) {
-      console.log(`[Regenerate Report] Stored responseId '${responseId}' looks like a mock. Looking up real response_id...`);
-      const realId = await lookupResponseId(candidate.interviewId as string);
-      if (realId) {
-        responseId = realId as any;
-        // Persist the real response_id on the candidate
-        // NOTE: no direct localStorage write — the caller persists the
-        // returned list via onSetCandidates (single cache writer in App).
-        storeCandidates = storeCandidates.map(c => {
-          if (c.id === candidateId) {
-            return { ...c, responseId: asResponseId(realId) };
-          }
-          return c;
-        });
-      }
-    }
-  }
-
-  if (!responseId || (typeof responseId === 'string' && responseId.startsWith('res-'))) {
-    throw new Error('Could not find a valid response ID for this candidate. The report may already be generated, or the candidate has not yet submitted their interview on the real PrimeHire platform.');
-  }
-
-  console.log(`[Regenerate Report] Calling POST /response/${responseId}/generate-report`);
-
-  try {
-    await primehireClient.generateReport(asResponseId(responseId));
-    invalidateCandidateReport(candidate);
-    toast.success('Successfully triggered AI report generation on PrimeHire API!');
-  } catch (error: any) {
-    console.warn('[PrimeHire Client] Generate report failed:', error);
-    const errorMsg = error.message || '';
-    // Handle Pydantic validation error specifically
-    if (errorMsg.includes('PYDANTIC') || errorMsg.includes('pydantic') || errorMsg.includes('JSON Schema format')) {
-      throw new Error('Report generation failed due to a backend schema validation issue. This typically occurs when question IDs contain special characters (hyphens, numbers at start). The assessment may need to be recreated with compatible question IDs.');
-    }
-    toast.error(`API Error: ${errorMsg}`);
-    throw error;
-  }
-
-  const updatedCandidates = storeCandidates.map(c => {
-    if (c.id === candidateId) {
-      return {
-        ...c,
-        reportStatus: 'GENERATING' as const
-      };
-    }
-    return c;
-  });
-
-  // NOTE: no direct localStorage write — the caller persists the returned
-  // list via onSetCandidates (single cache writer in App), and the server
-  // sync happens at the call site. See syncCandidateToServer.
-  return updatedCandidates;
 }
 
 /**

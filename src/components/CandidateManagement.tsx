@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Candidate, AssessmentProfile } from '../types';
 import { checkScoreFilter, getCandidateScore, REPORT_GRADE_OPTIONS } from '../utils/reportScoreFilters';
 import { useCandidateReports } from '../hooks/useCandidateReports';
-import { mockGetInterviewStatus, mockResetCandidatePassword, mockRegenerateReport } from '../mockData';
+import { mockGetInterviewStatus, mockResetCandidatePassword } from '../mockData';
 import { deleteCandidate, syncCandidateToServer } from '../lib/mongoApi';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -306,20 +306,6 @@ export default function CandidateManagement({
       toast.error('Failed to update password: ' + err.message);
     } finally {
       setIsSavingPassword(false);
-    }
-  };
-
-  const handleRegenerateReport = async (candId: string) => {
-    try {
-      const updated = await mockRegenerateReport(candId as any, candidates);
-      onSetCandidates(updated);
-      toast.success('Report regeneration requested successfully!');
-      const regenTarget = updated.find(c => c.id === candId);
-      if (regenTarget && (await syncCandidateToServer(regenTarget)) === 'failed') {
-        toast.warning('Regeneration requested, but server sync failed.');
-      }
-    } catch (err: any) {
-      toast.error('Failed to regenerate report: ' + err.message);
     }
   };
 
@@ -730,15 +716,6 @@ export default function CandidateManagement({
                                   className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer transition"
                                 >
                                   <Lock className="w-3.5 h-3.5 text-muted-foreground" /> Update Password
-                                </button>
-                                <button
-                                  onClick={() => { setOpenMenuCandId(null); handleRegenerateReport(c.id); }}
-                                  disabled={!c.submittedDate}
-                                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground ${
-                                    c.submittedDate ? 'hover:bg-muted cursor-pointer' : 'opacity-40 cursor-not-allowed'
-                                  } transition`}
-                                >
-                                  <RefreshCw className="w-3.5 h-3.5 text-info" /> Regenerate Report
                                 </button>
                                 <div className="my-1 border-t border-border/60" />
                                 <button

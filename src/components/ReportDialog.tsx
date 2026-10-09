@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Candidate, AssessmentProfile } from '../types';
-import { mockGetReport, mockRegenerateReport } from '../mockData';
+import { mockGetReport } from '../mockData';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   X, RefreshCw, AlertCircle, CheckCircle, Award, Star, ThumbsUp, ThumbsDown,
@@ -516,13 +516,11 @@ interface ReportDialogProps {
   assessment: AssessmentProfile | null;
   isOpen: boolean;
   onClose: () => void;
-  onReportUpdated: (updatedCandidates: Candidate[]) => void;
   allCandidates: Candidate[];
 }
 
-export default function ReportDialog({ candidate, assessment, isOpen, onClose, onReportUpdated, allCandidates }: ReportDialogProps) {
+export default function ReportDialog({ candidate, assessment, isOpen, onClose, allCandidates }: ReportDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
   const [report, setReport] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -546,25 +544,6 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
       setError(err.message || 'Failed to load report data');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleRegenerate = async () => {
-    if (!candidate) return;
-    setRegenerating(true);
-    try {
-      const updatedCandidates = await mockRegenerateReport(candidate.id, allCandidates);
-      onReportUpdated(updatedCandidates);
-      toast.success('Evaluation report has been successfully regenerated!');
-      await fetchReport();
-    } catch (err: any) {
-      const msg = String(err?.message || 'regeneration failed');
-      const hint = msg.includes('response ID')
-        ? ' No valid submitted response was found for this candidate — sync interview status first, then retry once the interview is submitted.'
-        : '';
-      toast.error('Failed to regenerate report: ' + msg + hint);
-    } finally {
-      setRegenerating(false);
     }
   };
 
@@ -646,14 +625,6 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
                 >
                   Retry Load
                 </button>
-                <button
-                  onClick={handleRegenerate}
-                  disabled={regenerating}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-foreground border border-border/70 hover:bg-muted rounded-full transition disabled:opacity-50 cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
-                  {regenerating ? 'Regenerating...' : 'Regenerate Report'}
-                </button>
               </div>
             </div>
           ) : report ? (
@@ -661,16 +632,7 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
               <ReportView data={report} roundType={assessment?.roundType} />
 
               {/* ── Modal Footer Bar ── */}
-              <div className="flex justify-between items-center border-t border-border/60 pt-4 mt-8">
-                <button
-                  onClick={handleRegenerate}
-                  disabled={regenerating}
-                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-foreground border border-border/70 hover:bg-muted rounded-full transition disabled:opacity-50 cursor-pointer shadow-[var(--shadow-card)]"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
-                  {regenerating ? 'Regenerating Report...' : 'Regenerate Evaluation'}
-                </button>
-
+              <div className="flex justify-end items-center border-t border-border/60 pt-4 mt-8">
                 <button
                   onClick={onClose}
                   className="px-6 py-2.5 text-xs font-semibold text-primary-foreground rounded-full bg-gradient-primary hover:-translate-y-0.5 hover:shadow-[var(--shadow-glow)] transition-all duration-200 cursor-pointer"

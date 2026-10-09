@@ -31,7 +31,7 @@ class SyncState(BaseModel):
 
 class MigrationMeta(BaseModel):
     """Informational-only import audit trail. NEVER used for PrimeHire calls,
-    report lookup, regeneration, or identity matching."""
+    report lookup or identity matching."""
 
     unresolvedResponseId: str | None = None
     unresolvedCandidateUUID: str | None = None

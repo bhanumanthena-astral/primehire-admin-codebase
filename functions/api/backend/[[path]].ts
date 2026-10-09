@@ -44,7 +44,6 @@ const PROXY_ROUTE_ALLOWLIST: AllowedRoute[] = [
   { method: 'PUT', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/reschedule\/?$/ },
   { method: 'GET', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/status\/?$/ },
   { method: 'GET', pattern: /^\/interview\/[a-zA-Z0-9_\-]+\/report\/?$/ },
-  { method: 'POST', pattern: /^\/response\/[a-zA-Z0-9_\-]+\/generate-report\/?$/ },
   { method: 'GET', pattern: /^\/response\/report-not-generated\/?$/ },
   { method: 'PUT', pattern: /^\/candidate\/[a-zA-Z0-9_\-]+\/password\/?$/ },
 ];

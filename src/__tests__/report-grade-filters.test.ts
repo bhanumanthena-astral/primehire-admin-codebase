@@ -72,7 +72,7 @@ describe('report grade filters', () => {
     for (const invalid of [null, NaN, Infinity, -1, 101]) expect(checkScoreFilter(invalid, 'scale5', 'F')).toBe(false);
   });
 
-  test('filters never use scores from a different round or a regenerating report', () => {
+  test('filters never use scores from a different round or a report that is still processing', () => {
     expect(getCandidateScore(candidate, 'TECHNICAL', 'Overall Result', null, null, 'BASIC', basic)).toBeNull();
     expect(getCandidateScore(candidate, 'BASIC', 'Overall Score', null, null, 'BASIC', technical)).toBeNull();
     expect(getCandidateScore({ ...candidate, reportStatus: 'GENERATING' }, 'BASIC', 'Overall Score', null, null, 'BASIC', basic)).toBeNull();

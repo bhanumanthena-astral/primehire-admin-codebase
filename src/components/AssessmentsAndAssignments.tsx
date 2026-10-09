@@ -11,7 +11,6 @@ import {
   mockRegenerateLink,
   mockRescheduleInterview,
   mockResetCandidatePassword,
-  mockRegenerateReport,
   mockSendInvite,
   mockBulkSendInvite,
   mockGetInterviewStatus,
@@ -1104,19 +1103,6 @@ export default function AssessmentsAndAssignments({
       toast.error('Failed to update password: ' + err.message);
     } finally {
       setIsSavingPassword(false);
-    }
-  };
-
-  const handleRegenerateReport = async (candId: LocalCandidateId) => {
-    try {
-      const updated = await mockRegenerateReport(candId, candidates);
-      onSetCandidates(updated);
-      toast.success('Report regeneration requested successfully! Status is now Analyzing.');
-      if (await pushCandidatesToServer(updated.filter(c => c.id === candId)) > 0) {
-        toast.warning('Regeneration requested, but server sync failed — status may not appear in other browsers.');
-      }
-    } catch (err: any) {
-      toast.error('Failed to regenerate report: ' + err.message);
     }
   };
 
@@ -3944,24 +3930,6 @@ export default function AssessmentsAndAssignments({
                                       Reschedule
                                     </button>
 
-                                    {/* Option: Regenerate Report */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuCandId(null);
-                                        handleRegenerateReport(c.id);
-                                      }}
-                                      disabled={!c.submittedDate}
-                                      title={c.submittedDate ? 'Request report regeneration' : 'Disabled: Candidate must complete the assessment first.'}
-                                      className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
-                                        c.submittedDate
-                                          ? 'text-foreground hover:bg-muted/40 cursor-pointer'
-                                          : 'text-slate-300 bg-muted/40 cursor-not-allowed'
-                                      }`}
-                                    >
-                                      <RefreshCw className={`w-3.5 h-3.5 ${c.submittedDate ? 'text-blue-500' : 'text-slate-300'}`} />
-                                      Regenerate Report
-                                    </button>
                                   </div>
                               )}
                             </div>

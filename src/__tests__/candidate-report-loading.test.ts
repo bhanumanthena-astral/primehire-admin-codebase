@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { Candidate } from '../types';
 import { asInterviewId, asLocalCandidateId } from '../lib/primehireIds';
 import { loadCandidateFilterReport } from '../hooks/useCandidateReports';
-import { candidateReportKey, cacheCandidateReport, getCachedCandidateReport, invalidateCandidateReport } from '../lib/candidateReportCache';
+import { candidateReportKey, cacheCandidateReport, getCachedCandidateReport } from '../lib/candidateReportCache';
 import { mockGetReport } from '../mockData';
 import { checkScoreFilter, getCandidateScore } from '../utils/reportScoreFilters';
 
@@ -55,12 +55,12 @@ describe('candidate filters load actual reports', () => {
     expect(getCachedCandidateReport(c)).toBeDefined();
   });
 
-  test('invalidation discards old grades and ignores late responses from before regeneration', () => {
-    const c = candidate('invalidate');
+  test('changing the interview discards old grades and ignores late responses for the previous interview', () => {
+    const c = candidate('changed-interview');
     const oldKey = candidateReportKey(c);
     cacheCandidateReport(c, report, oldKey);
     expect(getCachedCandidateReport(c)).toBe(report);
-    invalidateCandidateReport(c);
+    c.interviewId = asInterviewId('interview-replacement');
     expect(getCachedCandidateReport(c)).toBeUndefined();
     cacheCandidateReport(c, report, oldKey);
     expect(getCachedCandidateReport(c)).toBeUndefined();

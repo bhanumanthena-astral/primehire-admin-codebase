@@ -10,8 +10,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import ValidationError
+from pymongo.errors import DuplicateKeyError
 
 from ..auth import require_admin_auth
 from ..config import settings
@@ -31,7 +32,8 @@ def _db() -> Any:
 
 
 @router.get("/templates")
-async def list_templates(db: Any = Depends(_db)) -> dict[str, Any]:
+async def list_templates(response: Response, db: Any = Depends(_db)) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "no-store"
     try:
         items = await TemplateRepository(db).list_all()
     except Exception:  # noqa: BLE001
@@ -64,16 +66,24 @@ async def get_template(template_id: str, db: Any = Depends(_db)) -> dict[str, An
 async def create_template(body: TemplateIn, db: Any = Depends(_db)) -> dict[str, Any]:
     repo = TemplateRepository(db)
     try:
-        existing = await repo.get_by_template_id(body.id.strip())
+        existing = await repo.get_by_template_id(body.id, include_deleted=True)
     except Exception:  # noqa: BLE001
         logger.exception("Template lookup failed for id %s", body.id)
         raise HTTPException(status_code=500, detail="Template lookup failed.") from None
     if existing is not None:
+        if existing.get("deletedAt") is not None:
+            raise HTTPException(status_code=409, detail={
+                "code": "TEMPLATE_DELETED",
+                "message": "This template was deleted. Create a new template with a new id."})
         raise HTTPException(status_code=409, detail={
             "code": "DUPLICATE_KEY",
             "message": "A template with this id already exists."})
     try:
         return await repo.create(body.to_doc())
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail={
+            "code": "DUPLICATE_KEY",
+            "message": "A template with this id already exists or was deleted."}) from None
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except Exception:  # noqa: BLE001

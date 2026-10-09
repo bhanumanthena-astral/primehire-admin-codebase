@@ -307,7 +307,7 @@ async def dry_run(db: Any, payload: dict[str, Any], tester: str | None = None) -
         try:
             data = TemplateIn.model_validate(raw)
             doc = data.to_doc()
-            existing = await tmpl_repo.get_by_template_id(doc["id"])
+            existing = await tmpl_repo.get_by_template_id(doc["id"], include_deleted=True)
             if not existing:
                 summary["templates"]["valid"] += 1
             elif _classify_against_existing(existing, doc) == "EXISTING_IDENTICAL":
@@ -452,7 +452,7 @@ async def run_import(db: Any, payload: dict[str, Any], tester: str | None = None
         try:
             data = TemplateIn.model_validate(raw)
             doc = data.to_doc()
-            existing = await tmpl_repo.get_by_template_id(doc["id"])
+            existing = await tmpl_repo.get_by_template_id(doc["id"], include_deleted=True)
             if not existing:
                 await tmpl_repo.create(_stamp(doc))
                 section["inserted"] += 1
