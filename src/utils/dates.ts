@@ -37,6 +37,22 @@ export function parseServerDate(v: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+/** PrimeHire's documented wire format: millisecond precision and explicit UTC offset. */
+export function toPrimehireTimestamp(value: string): string {
+  const instant = parseServerDate(value);
+  if (!instant) throw new Error('Invalid interview timestamp. Select a valid date and time.');
+  return instant.toISOString().replace(/Z$/, '+00:00');
+}
+
+/** Existing interviews remain open until their end, including at the start instant. */
+export function interviewWindowState(startTime: string, endTime: string, nowMs = Date.now()): 'invalid' | 'scheduled' | 'open' | 'expired' {
+  const start = parseServerDate(startTime);
+  const end = parseServerDate(endTime);
+  if (!start || !end || end.getTime() <= start.getTime()) return 'invalid';
+  if (nowMs >= end.getTime()) return 'expired';
+  return nowMs >= start.getTime() ? 'open' : 'scheduled';
+}
+
 /**
  * Minimum buffer required between now and startTime when generating a link.
  * PrimeHire rejects windows that have already started. A 1-minute buffer

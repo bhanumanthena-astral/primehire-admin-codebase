@@ -93,13 +93,14 @@ export interface NormalizedReport {
   isHR: boolean;
 }
 
-export function normalizeReport(raw: any): NormalizedReport | null {
+export function normalizeReport(raw: any, fallbackRoundType?: string): NormalizedReport | null {
   if (!raw) return null;
+  raw = raw.data ?? raw;
 
   // Accept both snake_case (raw backend JSON) and camelCase (app API proxy).
   const details = raw?.interview_details || raw?.interviewDetails || {};
   const roundType: string =
-    details?.round_type || details?.roundType || raw?.round_type || raw?.roundType || 'UNKNOWN';
+    details?.round_type || details?.roundType || raw?.round_type || raw?.roundType || fallbackRoundType || 'UNKNOWN';
   const jobId = details?.job_id || details?.jobId || raw?.job_id || raw?.jobId || null;
   const candidateId =
     details?.candidate_id || details?.candidateId || raw?.candidate_id || raw?.candidateId || null;

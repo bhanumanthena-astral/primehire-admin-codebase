@@ -5,6 +5,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Candidate, AssessmentProfile } from '../types';
+import { checkScoreFilter, getCandidateScore, REPORT_GRADE_OPTIONS } from '../utils/reportScoreFilters';
+import { useCandidateReports } from '../hooks/useCandidateReports';
 import { mockGetInterviewStatus, mockResetCandidatePassword, mockRegenerateReport } from '../mockData';
 import { deleteCandidate, syncCandidateToServer } from '../lib/mongoApi';
 import { toast } from 'sonner';
@@ -104,62 +106,6 @@ function getScoreScale(round: string, layer2: string | null, layer3: string | nu
   return null;
 }
 
-function checkScoreFilter(score: number, scale: 'scale5' | 'scale3', filterValue: string): boolean {
-  if (score < 0) return false;
-
-  if (scale === 'scale5') {
-    // Authoritative bands mirror getGrade() in normalizeReport.ts:
-    // A+ >=90, A >=80, B+ >=70, B >=60, C+ >=50, C >=40, D >=30, E >=20, F <20.
-    // Single-letter filters are inclusive (C includes C+, B includes B+, A includes A+).
-    if (filterValue === 'A+') return score >= 90;
-    if (filterValue === 'A') return score >= 80;
-    if (filterValue === 'B+') return score >= 70 && score < 90;
-    if (filterValue === 'B') return score >= 60 && score < 80;
-    if (filterValue === 'C+') return score >= 50 && score < 60;
-    if (filterValue === 'C') return score >= 40 && score < 60;
-    if (filterValue === 'D') return score >= 30 && score < 40;
-    if (filterValue === 'E') return score >= 20 && score < 30;
-    if (filterValue === 'F') return score < 20;
-  }
-  
-  if (scale === 'scale3') {
-    if (filterValue === '0 - 30') return score <= 30;
-    if (filterValue === '30 - 60') return score > 30 && score <= 60;
-    if (filterValue === '60 - 100') return score > 60 && score <= 100;
-  }
-  
-  return false;
-}
-
-function getCandidateScore(
-  c: Candidate,
-  round: string,
-  layer2: string | null,
-  layer3: string | null,
-  layer4: string | null
-): number {
-  if (c.reportStatus !== 'GENERATED') return -1;
-
-  const metricName = layer4 || layer3 || layer2 || round;
-  
-  if (
-    (round === 'BASIC' && layer2 === 'Overall Score') ||
-    (round === 'TECHNICAL' && (layer2 === 'Overall Result' || layer2 === 'Technical Analysis (Overall Score)'))
-  ) {
-    if (c.simulatedReport?.overallScore !== undefined) {
-      return c.simulatedReport.overallScore;
-    }
-  }
-
-  const str = c.id + '-' + metricName;
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const score = 15 + Math.abs(hash % 85); 
-  return score;
-}
-
 interface ActiveFilterBadge {
   id: string;
   round: string;
@@ -184,19 +130,7 @@ function buildBadgeId(round: string, l2: string | null, l3: string | null, l4: s
 }
 
 function getRangeLabel(scale: 'scale5' | 'scale3', value: string): string {
-  if (scale === 'scale5') {
-    switch (value) {
-      case 'A+': return 'Grade A+ (90–100)';
-      case 'A': return 'Grade A (80–100)';
-      case 'B+': return 'Grade B+ (70–89)';
-      case 'B': return 'Grade B (60–79)';
-      case 'C+': return 'Grade C+ (50–59)';
-      case 'C': return 'Grade C (40–59, incl. C+)';
-      case 'D': return 'Grade D (30–39)';
-      case 'E': return 'Grade E (20–29)';
-      case 'F': return 'Grade F (0–19)';
-    }
-  }
+  if (scale === 'scale5') return REPORT_GRADE_OPTIONS.find(option => option.value === value)?.label ?? value;
   if (scale === 'scale3') {
     switch (value) {
       case '60 - 100': return '61–100';
@@ -278,6 +212,7 @@ export default function CandidateManagement({
 
   // Multi-Select Badge Filter State
   const [activeFilters, setActiveFilters] = useState<ActiveFilterBadge[]>([]);
+  const reportScores = useCandidateReports(candidates.filter(c => activeFilters.some(filter => assessments.find(a => a.id === c.assessmentId)?.roundType === filter.round)), activeFilters.length > 0);
 
   // Cascading picker transient state
   const [pickerRound, setPickerRound] = useState<'ALL' | 'BASIC' | 'TECHNICAL' | 'HR'>('ALL');
@@ -492,8 +427,8 @@ export default function CandidateManagement({
     if (activeFilters.length === 0) return true;
 
     return activeFilters.every(badge => {
-      const score = getCandidateScore(c, badge.round, badge.layer2, badge.layer3, badge.layer4);
-      if (score === -1) return false;
+      const score = getCandidateScore(c, badge.round, badge.layer2, badge.layer3, badge.layer4, assessment?.roundType, reportScores.getReport(c));
+      if (score === null) return false;
       return checkScoreFilter(score, badge.scale, badge.scoreRange);
     });
   });
@@ -617,17 +552,7 @@ export default function CandidateManagement({
           {pickerIsTerminal && pickerScale && (
             <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border/60">
               <span className="eyebrow mr-1">Select Range Filter:</span>
-              {pickerScale === 'scale5' && ([
-                { value: 'A+', label: 'Grade A+ (90–100)', tone: 'success' as const },
-                { value: 'A', label: 'Grade A (80–100)', tone: 'success' as const },
-                { value: 'B+', label: 'Grade B+ (70–89)', tone: 'info' as const },
-                { value: 'B', label: 'Grade B (60–79)', tone: 'info' as const },
-                { value: 'C+', label: 'Grade C+ (50–59)', tone: 'warning' as const },
-                { value: 'C', label: 'Grade C (40–59)', tone: 'warning' as const },
-                { value: 'D', label: 'Grade D (30–39)', tone: 'warning' as const },
-                { value: 'E', label: 'Grade E (20–29)', tone: 'danger' as const },
-                { value: 'F', label: 'Grade F (0–19)', tone: 'danger' as const },
-              ]).map(opt => (
+              {pickerScale === 'scale5' && REPORT_GRADE_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => handleAddFilter(opt.value)}
@@ -679,6 +604,14 @@ export default function CandidateManagement({
         )}
       </Panel>
 
+      {activeFilters.length > 0 && (
+        <div className="text-xs text-muted-foreground" aria-live="polite">
+          {reportScores.loading && <p>Loading evaluation scores from reports…</p>}
+          {reportScores.failed > 0 && <p>Could not load report scores for {reportScores.failed} candidate(s). <button onClick={reportScores.retry} className="text-primary underline cursor-pointer">Retry</button></p>}
+          <p>Grade filters match the exact grade shown in the report. Candidates without the selected metric do not match.</p>
+        </div>
+      )}
+
       {/* ── Aggregate Candidate Table ─────────────────────────────── */}
       <Panel padded={false} className="overflow-hidden">
         <div className="overflow-auto rounded-lg">
@@ -699,7 +632,7 @@ export default function CandidateManagement({
               {filteredCandidates.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                    <p className="font-semibold text-foreground text-sm">No candidates found.</p>
+                    <p className="font-semibold text-foreground text-sm">{reportScores.loading ? 'Loading matching report scores…' : 'No candidates found.'}</p>
                     <p className="text-xs mt-1">
                       {searchQuery
                         ? `No candidate matches "${searchQuery}". Try a different search term or reset search.`

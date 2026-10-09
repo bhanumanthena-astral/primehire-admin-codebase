@@ -1,4 +1,6 @@
 import { AssessmentProfile, Candidate, Question } from '../types';
+import { toPrimehireTimestamp } from '../utils/dates';
+import { requireMinimumInterviewWindow } from '../utils/interviewSchedulePolicy';
 import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, ResponseId, PASSWORD_RESET_ENABLED, generate32BitId } from './primehireIds';
 
 /**
@@ -292,10 +294,15 @@ export const primehireClient = {
    * POST /interview
    */
   async createInterview(jobId: JobId, roundType: string, candidates: Array<{ candidate_id: LocalCandidateId; start_time: string; end_time: string }>): Promise<any> {
+    candidates.forEach(candidate => requireMinimumInterviewWindow(candidate.start_time, candidate.end_time));
     return apiRequest('POST', '/interview', {
       job_id: jobId,
       round_type: roundType,
-      candidates
+      candidates: candidates.map(candidate => ({
+        ...candidate,
+        start_time: toPrimehireTimestamp(candidate.start_time),
+        end_time: toPrimehireTimestamp(candidate.end_time),
+      }))
     });
   },
 
@@ -304,9 +311,12 @@ export const primehireClient = {
    * PUT /interview/{interview_id}/reschedule
    */
   async rescheduleInterview(interviewId: InterviewId, startTime: string, endTime: string): Promise<any> {
+    const start = toPrimehireTimestamp(startTime);
+    const end = toPrimehireTimestamp(endTime);
+    requireMinimumInterviewWindow(start, end);
     return apiRequest('PUT', `/interview/${interviewId}/reschedule`, {
-      start_time: startTime,
-      end_time: endTime
+      start_time: start,
+      end_time: end
     });
   },
 

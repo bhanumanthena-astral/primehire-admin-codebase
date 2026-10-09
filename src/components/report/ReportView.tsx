@@ -16,13 +16,7 @@ import InsightPanels from './InsightPanels';
 import EmptyReportState from './EmptyReportState';
 
 export default function ReportView({ data, roundType }: { data: unknown; roundType?: string }) {
-  const normalized = useMemo(() => normalizeReport(data), [data]);
-  // Mock/simulated candidates carry no round_type — fall back to the
-  // assessment's round type so the header badge stays accurate.
-  const report =
-    normalized && roundType && normalized.meta.roundType === 'UNKNOWN'
-      ? { ...normalized, meta: { ...normalized.meta, roundType } }
-      : normalized;
+  const report = useMemo(() => normalizeReport(data, roundType), [data, roundType]);
   const insights = useMemo(() => generateInsights(report), [report]);
   const [activeTab, setActiveTab] = useState('Overview');
   const [selectedIndex, setSelectedIndex] = useState(0);

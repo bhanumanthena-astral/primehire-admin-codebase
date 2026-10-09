@@ -41,15 +41,20 @@ import {
   formatLocalInstant,
   formatInterviewWindow,
   parseServerDate,
-  formatToDatetimeLocal,
+  interviewWindowState,
 } from '../utils/dates';
 import {
   parseCsvScheduleCell,
   utcIsoToIstParts,
   istDateTimeToUtc,
   formatUtcAsIst,
+  istDatetimeLocalToUtc,
+  utcToIstDatetimeLocal,
 } from '../utils/istSchedule';
 import { ScheduleDateTimeField, SchedulePairFields, SchedulePair } from './BulkScheduleControls';
+import { checkScoreFilter, getCandidateScore, REPORT_GRADE_OPTIONS } from '../utils/reportScoreFilters';
+import { useCandidateReports } from '../hooks/useCandidateReports';
+import { hasMinimumInterviewWindow, MIN_INTERVIEW_WINDOW_MESSAGE, INTERVIEW_WINDOW_NOTICE } from '../utils/interviewSchedulePolicy';
 import { 
   ChevronRight, 
   Plus, 
@@ -161,68 +166,6 @@ function getScoreScale(round: string, layer2: string | null, layer3: string | nu
   }
   
   return null;
-}
-
-function checkScoreFilter(score: number, scale: 'scale5' | 'scale3', filterValue: string): boolean {
-  if (score < 0) return false;
-
-  if (scale === 'scale5') {
-    // Mirrors getGrade() in normalizeReport.ts. Single letters are inclusive.
-    if (filterValue === 'A+') return score >= 90;
-    if (filterValue === 'A') return score >= 80;
-    if (filterValue === 'B+') return score >= 70 && score < 90;
-    if (filterValue === 'B') return score >= 60 && score < 80;
-    if (filterValue === 'C+') return score >= 50 && score < 60;
-    if (filterValue === 'C') return score >= 40 && score < 60;
-    if (filterValue === 'D') return score >= 30 && score < 40;
-    if (filterValue === 'E') return score >= 20 && score < 30;
-    if (filterValue === 'F') return score < 20;
-  }
-  
-  if (scale === 'scale3') {
-    if (filterValue === '0 - 30') return score <= 30;
-    if (filterValue === '30 - 60') return score > 30 && score <= 60;
-    if (filterValue === '60 - 100') return score > 60 && score <= 100;
-  }
-  
-  return false;
-}
-
-function getCandidateScore(
-  c: Candidate,
-  round: string,
-  layer2: string | null,
-  layer3: string | null,
-  layer4: string | null
-): number {
-  if (c.reportStatus !== 'GENERATED') return -1;
-
-  // If no specific sub-metric (layer3) or trait (layer4) is selected,
-  // we evaluate the overall score directly, as these represent overall evaluation metrics.
-  if (!layer3 && !layer4) {
-    if (c.simulatedReport?.overallScore !== undefined) {
-      return c.simulatedReport.overallScore;
-    }
-  }
-
-  const metricName = layer4 || layer3 || layer2 || round;
-  
-  if (
-    (round === 'BASIC' && layer2 === 'Overall Score') ||
-    (round === 'TECHNICAL' && (layer2 === 'Overall Result' || layer2 === 'Technical Analysis (Overall Score)'))
-  ) {
-    if (c.simulatedReport?.overallScore !== undefined) {
-      return c.simulatedReport.overallScore;
-    }
-  }
-
-  const str = c.id + '-' + metricName;
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const score = 15 + Math.abs(hash % 85); 
-  return score;
 }
 
 interface AssessmentsAndAssignmentsProps {
@@ -506,6 +449,8 @@ export default function AssessmentsAndAssignments({
       if (startUtc && endUtc) {
         if (new Date(endUtc).getTime() <= new Date(startUtc).getTime()) {
           errors.push({ row: rowNum, col: 'Times', type: 'red', message: 'End Date & Time must be later than Start Date & Time.' });
+        } else if (!hasMinimumInterviewWindow(startUtc, endUtc)) {
+          errors.push({ row: rowNum, col: 'Times', type: 'red', message: MIN_INTERVIEW_WINDOW_MESSAGE });
         }
         // QA #12: PrimeHire rejects windows that already started ("interview
         // time has been passed"). Warn here (yellow, non-blocking for record
@@ -550,6 +495,7 @@ export default function AssessmentsAndAssignments({
   // Find active selected assessment
   const activeAssessment = assessments.find(a => a.id === selectedAssessmentId);
   const activeAssessmentCandidates = candidates.filter(c => c.assessmentId === selectedAssessmentId);
+  const reportScores = useCandidateReports(activeAssessmentCandidates, !!filterScoreValue && filterRound !== 'ALL');
 
   // Cascading pipeline filter helpers
   const shouldShowLayer3 = (() => {
@@ -602,10 +548,10 @@ export default function AssessmentsAndAssignments({
     if (!filterScoreValue) return true;
 
     // Evaluate score & scale
-    const score = getCandidateScore(c, filterRound, filterLayer2, filterLayer3, filterLayer4);
+    const score = getCandidateScore(c, filterRound, filterLayer2, filterLayer3, filterLayer4, activeAssessment?.roundType, reportScores.getReport(c));
     const scale = getScoreScale(filterRound, filterLayer2, filterLayer3, filterLayer4);
 
-    if (score === -1 || !scale) {
+    if (score === null || !scale) {
       return false; // No report generated yet or invalid cascade path
     }
 
@@ -1016,6 +962,12 @@ export default function AssessmentsAndAssignments({
     }
 
     // Set rowLoading to true for this specific candidate to disable the button and show a spinner
+    if (cand && !hasMinimumInterviewWindow(cand.startTime, cand.endTime)) {
+      toast.error(MIN_INTERVIEW_WINDOW_MESSAGE, {
+        action: { label: 'Reschedule', onClick: () => handleOpenRescheduleModal(candId) },
+      });
+      return;
+    }
     onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: true } : c));
 
     try {
@@ -1043,8 +995,8 @@ export default function AssessmentsAndAssignments({
     // Allow reschedule even without interviewId — the operator may need to
     // fix a stale start time before the first link is generated.
     // Pre-fill with current schedule or empty
-    setRescheduleStartTime(formatToDatetimeLocal(cand?.startTime));
-    setRescheduleEndTime(formatToDatetimeLocal(cand?.endTime));
+    setRescheduleStartTime(utcToIstDatetimeLocal(cand?.startTime));
+    setRescheduleEndTime(utcToIstDatetimeLocal(cand?.endTime));
     setRescheduleCandId(candId);
   };
 
@@ -1059,8 +1011,18 @@ export default function AssessmentsAndAssignments({
       toast.error('New End Time is required.');
       return;
     }
-    if (new Date(rescheduleEndTime) <= new Date(rescheduleStartTime)) {
+    const startIso = istDatetimeLocalToUtc(rescheduleStartTime);
+    const endIso = istDatetimeLocalToUtc(rescheduleEndTime);
+    if (!startIso || !endIso) {
+      toast.error('Invalid interview date or time. Select a valid IST window.');
+      return;
+    }
+    if (Date.parse(endIso) <= Date.parse(startIso)) {
       toast.error('End Time must be after Start Time.');
+      return;
+    }
+    if (!hasMinimumInterviewWindow(startIso, endIso)) {
+      toast.error(MIN_INTERVIEW_WINDOW_MESSAGE);
       return;
     }
     // Strict future-start validation: PrimeHire rejects windows that have
@@ -1068,8 +1030,8 @@ export default function AssessmentsAndAssignments({
     // margin, giving the operator time to generate the link.
     {
       const nowMs = Date.now();
-      const startMs = new Date(rescheduleStartTime).getTime();
-      const endMs = new Date(rescheduleEndTime).getTime();
+      const startMs = Date.parse(startIso);
+      const endMs = Date.parse(endIso);
       if (endMs <= nowMs) {
         toast.error('Cannot reschedule: End Time has already passed. Pick a future window.');
         return;
@@ -1085,9 +1047,6 @@ export default function AssessmentsAndAssignments({
 
     setIsRescheduling(true);
     try {
-      const startIso = new Date(rescheduleStartTime).toISOString();
-      const endIso = new Date(rescheduleEndTime).toISOString();
-
       const cand = candidates.find(c => c.id === rescheduleCandId);
 
       if (cand?.interviewId) {
@@ -1167,6 +1126,12 @@ export default function AssessmentsAndAssignments({
     const cand = candidates.find(c => c.id === candId);
     if (cand && cand.status !== 'ACTIVE') {
       toast.error('Cannot regenerate link for an Inactive candidate.');
+      return;
+    }
+    if (cand && !hasMinimumInterviewWindow(cand.startTime, cand.endTime)) {
+      toast.error(MIN_INTERVIEW_WINDOW_MESSAGE, {
+        action: { label: 'Reschedule', onClick: () => handleOpenRescheduleModal(candId) },
+      });
       return;
     }
     try {
@@ -1451,13 +1416,13 @@ export default function AssessmentsAndAssignments({
         !!start && !!end &&
         end.getTime() > nowMs &&
         start.getTime() >= nowMs + MIN_GENERATE_BUFFER_MS &&
-        end.getTime() > start.getTime()
+        hasMinimumInterviewWindow(cand.startTime, cand.endTime)
       );
     });
     const skipped = activeSelectedIds.filter(id => !sendableIds.includes(id));
     if (skipped.length > 0) {
       toast.error(
-        `${skipped.length} candidate(s) skipped: interview window already started or ended. Reschedule them to a future window first.`,
+        `${skipped.length} candidate(s) skipped: select a valid future interview window of at least 24 hours.`,
       );
       if (sendableIds.length === 0) return;
     }
@@ -1469,7 +1434,7 @@ export default function AssessmentsAndAssignments({
       const updated = await mockGenerateLink(sendableIds, candidates, activeAssessment.roundType, activeAssessment.jobId);
       onSetCandidates(updated);
       if (sendableIds.length < selectedCandidateIds.length) {
-        toast.success(`Generated links for ${sendableIds.length} candidate(s). Others were skipped (inactive or past window).`);
+        toast.success(`Generated links for ${sendableIds.length} candidate(s). Others were skipped (inactive or invalid window).`);
       } else {
         toast.success('All of the links generated.');
       }
@@ -1954,6 +1919,10 @@ export default function AssessmentsAndAssignments({
       toast.error('Bulk End Date & Time must be later than Start Date & Time.');
       return;
     }
+    if (!hasMinimumInterviewWindow(startUtc, endUtc)) {
+      toast.error(MIN_INTERVIEW_WINDOW_MESSAGE);
+      return;
+    }
     const alreadySet = parsedRows.filter(
       r => selectedPreviewIds.includes(r.rowId) && ((r.startDate && r.startTime) || (r.endDate && r.endTime)),
     );
@@ -1997,7 +1966,7 @@ export default function AssessmentsAndAssignments({
     if (isConfirmingImport) return; // duplicate-submission guard
 
     // Block if there are red validations
-    const hasRedErrors = validationErrors.some(e => e.type === 'red');
+    const hasRedErrors = runValidation(parsedRows).some(e => e.type === 'red');
     if (hasRedErrors) {
       toast.error('Import Blocked: Resolve all red/blocking errors before submitting.');
       return;
@@ -2127,6 +2096,10 @@ export default function AssessmentsAndAssignments({
       }
       if (new Date(eUtc).getTime() <= new Date(sUtc).getTime()) {
         toast.error('End Date & Time must be later than Start Date & Time.');
+        return;
+      }
+      if (!hasMinimumInterviewWindow(sUtc, eUtc)) {
+        toast.error(MIN_INTERVIEW_WINDOW_MESSAGE);
         return;
       }
     }
@@ -3183,19 +3156,9 @@ export default function AssessmentsAndAssignments({
                     className="w-full text-xs rounded-lg border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden focus:ring-1 focus:ring-ring font-medium"
                   >
                     <option value="">-- All Scores (No Filter) --</option>
-                    {activeScale === 'scale5' && (
-                      <>
-                        <option value="A+">Grade A+: Outstanding (90 - 100)</option>
-                        <option value="A">Grade A: Elite Performance (80 - 100)</option>
-                        <option value="B+">Grade B+: Strong (70 - 89)</option>
-                        <option value="B">Grade B: Accomplished (60 - 79)</option>
-                        <option value="C+">Grade C+: Above Average (50 - 59)</option>
-                        <option value="C">Grade C: Competent (40 - 59, incl. C+)</option>
-                        <option value="D">Grade D: Emerging (30 - 39)</option>
-                        <option value="E">Grade E: Developing (20 - 29)</option>
-                        <option value="F">Grade F: Fail (0 - 19)</option>
-                      </>
-                    )}
+                    {activeScale === 'scale5' && REPORT_GRADE_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
                     {activeScale === 'scale3' && (
                       <>
                         <option value="60 - 100">Strong / Low Risk (61 - 100)</option>
@@ -3207,6 +3170,13 @@ export default function AssessmentsAndAssignments({
                 </div>
               </div>
  
+              {filterScoreValue && (
+                <div className="text-xs text-muted-foreground" aria-live="polite">
+                  {reportScores.loading && <p>Loading evaluation scores from reports…</p>}
+                  {reportScores.failed > 0 && <p>Could not load report scores for {reportScores.failed} candidate(s). <button onClick={reportScores.retry} className="text-primary underline cursor-pointer">Retry</button></p>}
+                  <p>Grade filters match the exact grade shown in the report.</p>
+                </div>
+              )}
               {/* Informational Guidance bar */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pt-1.5 border-t border-border/70/60 text-[11px] text-muted-foreground font-medium">
                 <div className="flex items-center gap-1.5">
@@ -3518,12 +3488,12 @@ export default function AssessmentsAndAssignments({
                             const s = parseServerDate(c.startTime);
                             const e = parseServerDate(c.endTime);
                             if (!s || !e) return null;
-                            const nowMs = Date.now();
-                            const startPast = s.getTime() < nowMs;
-                            const endPast = e.getTime() < nowMs;
+                            const windowState = interviewWindowState(c.startTime, c.endTime);
+                            const endPast = windowState === 'expired';
+                            const needsReschedule = windowState === 'open' && !c.interviewId;
                             return (
                               <div className={`mt-1.5 text-[10px] font-semibold flex items-start gap-1 rounded px-1.5 py-1 border ${
-                                startPast
+                                endPast || needsReschedule
                                   ? 'bg-amber-50 border-amber-200 text-amber-700'
                                   : 'bg-sky-50 border-sky-200 text-sky-700'
                               }`}>
@@ -3533,10 +3503,16 @@ export default function AssessmentsAndAssignments({
                                   <div className="font-mono text-[10px]">
                                     {formatInterviewWindow(s, e)}
                                   </div>
-                                  {startPast && !endPast && (
+                                  {!hasMinimumInterviewWindow(c.startTime, c.endTime) && (
+                                    <div className="text-[9px] text-amber-700 font-bold mt-0.5">24-hour window required before generating or regenerating a link</div>
+                                  )}
+                                  {needsReschedule && (
                                     <div className="text-[9px] text-amber-600 font-bold mt-0.5 flex items-center gap-0.5">
-                                      <AlertTriangle className="w-2.5 h-2.5" /> Start time has passed — reschedule required
+                                      <AlertTriangle className="w-2.5 h-2.5" /> Start time has passed — reschedule before generating a link
                                     </div>
+                                  )}
+                                  {windowState === 'open' && c.interviewId && (
+                                    <div className="text-[9px] text-sky-600 font-bold mt-0.5">Interview window is open</div>
                                   )}
                                   {endPast && (
                                     <div className="text-[9px] text-red-600 font-bold mt-0.5 flex items-center gap-0.5">
@@ -4098,6 +4074,7 @@ export default function AssessmentsAndAssignments({
                     <p className="text-[10px] text-sky-700 leading-normal">
                       Leave empty to add without a schedule, or pick both dates and times in IST.
                     </p>
+                    <p className="text-[10px] font-semibold text-amber-700">{INTERVIEW_WINDOW_NOTICE}</p>
                   </div>
                 </div>
 
@@ -4230,6 +4207,7 @@ export default function AssessmentsAndAssignments({
                     <p className="text-xs text-sky-900 font-medium leading-relaxed">
                       Review candidate details and schedule interview times before confirming.
                       All times are <strong>Indian Standard Time (IST)</strong> — they are converted to UTC automatically on save.
+                      <span className="block mt-1 font-semibold text-amber-700">{INTERVIEW_WINDOW_NOTICE}</span>
                     </p>
                   </div>
 
@@ -4381,6 +4359,7 @@ export default function AssessmentsAndAssignments({
                             <ScheduleDateTimeField label="Start" date={row.startDate || ''} time={row.startTime || ''} onChange={(d, t) => handleUpdateImportRowSchedule(row.rowId, 'start', d, t)} invalid={startInvalid} />
                             <ScheduleDateTimeField label="End" date={row.endDate || ''} time={row.endTime || ''} onChange={(d, t) => handleUpdateImportRowSchedule(row.rowId, 'end', d, t)} invalid={endInvalid} />
                           </div>
+                          <p className="text-[10px] text-amber-700 font-semibold">{INTERVIEW_WINDOW_NOTICE}</p>
                           {schedLabel && (
                             <p className="text-[11px] font-mono text-sky-800 bg-sky-50/60 border border-sky-100 rounded-lg px-2.5 py-1.5">
                               {schedLabel}
@@ -4616,9 +4595,10 @@ export default function AssessmentsAndAssignments({
 
               {/* Time Inputs */}
               <div className="space-y-3">
+                <p className="text-xs font-semibold text-amber-700">{INTERVIEW_WINDOW_NOTICE}</p>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground">
-                    New Start Time <span className="text-destructive">*</span>
+                    New Start Time (IST) <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="datetime-local"
@@ -4630,7 +4610,7 @@ export default function AssessmentsAndAssignments({
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground">
-                    New End Time <span className="text-destructive">*</span>
+                    New End Time (IST) <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="datetime-local"
@@ -4641,12 +4621,15 @@ export default function AssessmentsAndAssignments({
                 </div>
 
                 {/* Validation hints */}
-                {rescheduleStartTime && rescheduleEndTime && new Date(rescheduleEndTime) <= new Date(rescheduleStartTime) && (
+                {istDatetimeLocalToUtc(rescheduleStartTime) && istDatetimeLocalToUtc(rescheduleEndTime) && !hasMinimumInterviewWindow(istDatetimeLocalToUtc(rescheduleStartTime)!, istDatetimeLocalToUtc(rescheduleEndTime)!) && (
+                  <p role="alert" className="text-[10px] text-destructive font-semibold">{MIN_INTERVIEW_WINDOW_MESSAGE}</p>
+                )}
+                {rescheduleStartTime && rescheduleEndTime && Date.parse(istDatetimeLocalToUtc(rescheduleEndTime) || '') <= Date.parse(istDatetimeLocalToUtc(rescheduleStartTime) || '') && (
                   <div className="text-[10px] text-destructive font-semibold flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" /> End Time must be after Start Time.
                   </div>
                 )}
-                {rescheduleStartTime && new Date(rescheduleStartTime).getTime() < Date.now() + MIN_RESCHEDULE_BUFFER_MS && (
+                {rescheduleStartTime && Date.parse(istDatetimeLocalToUtc(rescheduleStartTime) || '') < Date.now() + MIN_RESCHEDULE_BUFFER_MS && (
                   <div className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" /> Start Time must be at least {Math.ceil(MIN_RESCHEDULE_BUFFER_MS / 60_000)} minutes in the future.
                   </div>

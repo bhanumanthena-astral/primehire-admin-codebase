@@ -2,6 +2,9 @@ import { AssessmentProfile, Candidate, MailTemplate, Question } from './types';
 import { primehireClient } from './lib/primehireClient';
 import { fetchLiveReport } from './lib/mongoApi';
 import { toast } from 'sonner';
+import { formatUtcAsIst } from './utils/istSchedule';
+import { requireMinimumInterviewWindow } from './utils/interviewSchedulePolicy';
+import { cacheCandidateReport, candidateReportKey, invalidateCandidateReport } from './lib/candidateReportCache';
 import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, ResponseId, asJobId, asLocalCandidateId, asInterviewId, asResponseId, toVerifiedCandidateUUID, generate32BitId } from './lib/primehireIds';
 
 // Helper to generate IDs
@@ -55,8 +58,8 @@ export function renderTemplate(template: MailTemplate, candidate: Candidate, ass
     '{{candidate_name}}': candidate.name,
     '{{link}}': candidate.link || 'NO_LINK_GENERATED',
     '{{password}}': candidate.password || 'NO_PASSWORD',
-    '{{start_time}}': candidate.startTime ? new Date(candidate.startTime).toLocaleString() : 'N/A',
-    '{{end_time}}': candidate.endTime ? new Date(candidate.endTime).toLocaleString() : 'N/A',
+    '{{start_time}}': candidate.startTime ? formatUtcAsIst(candidate.startTime) || 'N/A' : 'N/A',
+    '{{end_time}}': candidate.endTime ? formatUtcAsIst(candidate.endTime) || 'N/A' : 'N/A',
     '{{round_type}}': assessment.roundType,
     '{{job_title}}': assessment.jobTitle,
     '{{company}}': company,
@@ -355,6 +358,9 @@ export async function mockGenerateLink(
       start_time: c.startTime,
       end_time: c.endTime
     }));
+
+  // Block before API retries/fallbacks so the temporary policy cannot produce a simulated link.
+  candsPayload.forEach(c => requireMinimumInterviewWindow(c.start_time, c.end_time));
 
   try {
     const interviewResponse = await primehireClient.createInterview(resolvedJobId, roundType, candsPayload);
@@ -779,6 +785,16 @@ export async function mockGetInterviewStatus(candidateId: LocalCandidateId, stor
  */
 export async function mockGetReport(candidateId: LocalCandidateId, storeCandidates?: Candidate[]) {
   const candidate = storeCandidates?.find(c => c.id === candidateId);
+  const key = candidate ? candidateReportKey(candidate) : undefined;
+  const report = await fetchCandidateReport(candidateId, storeCandidates);
+  if (candidate && (candidate.simulatedReport || (candidate.interviewId && !candidate.interviewId.startsWith('int-')))) {
+    cacheCandidateReport(candidate, report, key);
+  }
+  return report;
+}
+
+async function fetchCandidateReport(candidateId: LocalCandidateId, storeCandidates?: Candidate[]) {
+  const candidate = storeCandidates?.find(c => c.id === candidateId);
   
   if (candidate?.simulatedReport) {
     return {
@@ -917,6 +933,7 @@ export async function mockRegenerateReport(candidateId: LocalCandidateId, storeC
 
   try {
     await primehireClient.generateReport(asResponseId(responseId));
+    invalidateCandidateReport(candidate);
     toast.success('Successfully triggered AI report generation on PrimeHire API!');
   } catch (error: any) {
     console.warn('[PrimeHire Client] Generate report failed:', error);

@@ -147,6 +147,19 @@ export function datetimeLocalToIstParts(local: string): { date: string; time: st
   return { date: `${m[3]}/${m[2]}/${m[1]}`, time: `${pad2(h12)}:${m[5]} ${ampm}` };
 }
 
+/** Reschedule inputs are IST wall time, independent of the browser timezone. */
+export function istDatetimeLocalToUtc(local: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(local)) return null;
+  const parts = datetimeLocalToIstParts(local);
+  return parts ? istDateTimeToUtc(parts.date, parts.time) : null;
+}
+
+export function utcToIstDatetimeLocal(iso?: string | null): string {
+  if (!iso) return '';
+  const parts = utcIsoToIstParts(iso);
+  return parts ? istPartsToDatetimeLocal(parts.date, parts.time) : '';
+}
+
 /** Native date-input value (YYYY-MM-DD) -> DD/MM/YYYY. */
 export function isoDateInputToDisplay(isoDate: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());

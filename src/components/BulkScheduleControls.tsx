@@ -7,7 +7,8 @@
  */
 import React from 'react';
 import { Calendar } from 'lucide-react';
-import { istPartsToDatetimeLocal, datetimeLocalToIstParts } from '../utils/istSchedule';
+import { istPartsToDatetimeLocal, datetimeLocalToIstParts, istDateTimeToUtc } from '../utils/istSchedule';
+import { hasMinimumInterviewWindow, INTERVIEW_WINDOW_NOTICE, MIN_INTERVIEW_WINDOW_MESSAGE } from '../utils/interviewSchedulePolicy';
 
 interface DateTimeFieldProps {
   label: string;
@@ -75,8 +76,11 @@ export function SchedulePairFields({
   invalidEnd?: boolean;
   compact?: boolean;
 }) {
+  const startUtc = istDateTimeToUtc(value.startDate, value.startTime);
+  const endUtc = istDateTimeToUtc(value.endDate, value.endTime);
   return (
     <div className="space-y-2">
+      <p className="text-[10px] font-semibold text-amber-700">{INTERVIEW_WINDOW_NOTICE}</p>
       <div className="rounded-lg border border-border/60 bg-muted/40/40 p-2 space-y-2">
         <div className="text-[9px] font-bold uppercase tracking-wider text-sky-700">Start (IST)</div>
         <ScheduleDateTimeField label="Start" date={value.startDate} time={value.startTime} onChange={(d, t) => onChange({ ...value, startDate: d, startTime: t })} invalid={invalidStart} />
@@ -85,6 +89,9 @@ export function SchedulePairFields({
         <div className="text-[9px] font-bold uppercase tracking-wider text-sky-700">End (IST)</div>
         <ScheduleDateTimeField label="End" date={value.endDate} time={value.endTime} onChange={(d, t) => onChange({ ...value, endDate: d, endTime: t })} invalid={invalidEnd} />
       </div>
+      {startUtc && endUtc && !hasMinimumInterviewWindow(startUtc, endUtc) && (
+        <p role="alert" className="text-[10px] font-semibold text-destructive">{MIN_INTERVIEW_WINDOW_MESSAGE}</p>
+      )}
     </div>
   );
 }
