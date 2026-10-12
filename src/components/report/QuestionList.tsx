@@ -43,6 +43,7 @@ export default function QuestionList({
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-400 mb-0.5">Q{q.index}</p>
                   <p className="text-sm text-slate-700 line-clamp-2">{q.question}</p>
+                  {q.mcq && <p className="mt-1 text-xs text-slate-500">MCQ · {q.mcq.outcome === 'correct' ? 'Correct' : q.mcq.outcome === 'incorrect' ? 'Incorrect' : q.mcq.outcome === 'unanswered' ? 'Not answered' : q.mcq.outcome === 'pending' ? 'Awaiting evaluation' : 'Answer review'}</p>}
                   {rel && (
                     <span
                       className="inline-block mt-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full"

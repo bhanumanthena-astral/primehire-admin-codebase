@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import type { RefObject } from 'react';
 import type { NormalizedReport, Insights } from './normalizeReport';
 import { getGrade, formatDate, shortId } from './normalizeReport';
+import { mcqSummary } from './mcqReport';
 
 /**
  * Robust, client-side PDF export for candidate evaluation reports.
@@ -332,6 +333,40 @@ export async function exportReportToPdf(
 
     report.questions.forEach((q, qIndex) => {
       const qGrade = getGrade(q.percentage);
+      if (q.mcq) {
+        // MCQ content flows line by line so long options can continue onto a
+        // new page without clipping or pushing the remaining answers off-page.
+        const writeLines = (text: string, color: [number, number, number], bold = false) => {
+          pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+          pdf.setFontSize(8.5);
+          const lines: string[] = pdf.splitTextToSize(text, contentWidth - 8);
+          for (const line of lines) {
+            checkPageBreak(5);
+            pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+            pdf.setFontSize(8.5);
+            pdf.setTextColor(...color);
+            pdf.text(line, marginX + 4, y);
+            y += 4.5;
+          }
+          y += 2;
+        };
+        checkPageBreak(30);
+        writeLines(`Q${q.index || qIndex + 1} (MCQ): ${q.question}`, [15, 23, 42], true);
+        writeLines(q.isGenerated ? `Score: ${q.obtainedScore ?? 0} / ${q.maxScore} (${qGrade.letter})` : 'Awaiting evaluation', [100, 116, 139]);
+        for (const option of q.mcq.options) {
+          const selected = option.id === q.mcq.selectedOptionId;
+          const correct = option.id === q.mcq.correctOptionId;
+          const wrong = selected && q.mcq.outcome === 'incorrect';
+          const label = selected && correct ? ' [Selected; Correct answer]' : correct ? ' [Correct answer]' : selected ? ' [Candidate selection]' : '';
+          writeLines(`${option.id}. ${option.text || '(text unavailable)'}${label}`,
+            correct ? [21, 128, 61] : wrong ? [185, 28, 28] : [51, 65, 85], selected || correct);
+        }
+        writeLines(mcqSummary(q.mcq), [51, 65, 85], true);
+        if (q.mcq.hasMissingOptionText) writeLines('Some original option text is unavailable; report answer IDs are shown.', [100, 116, 139]);
+        if (q.feedback) writeLines(`Evaluation: ${q.feedback}`, [51, 65, 85]);
+        y += 4;
+        return;
+      }
       const questionLines = pdf.splitTextToSize(`Q${q.index || qIndex + 1}: ${q.question || 'Interview Question'}`, contentWidth - 45);
       const transcriptLines = q.transcript ? pdf.splitTextToSize(`Transcript: "${q.transcript}"`, contentWidth - 12) : [];
       const feedbackLines = q.feedback ? pdf.splitTextToSize(`Evaluation: ${q.feedback}`, contentWidth - 12) : [];

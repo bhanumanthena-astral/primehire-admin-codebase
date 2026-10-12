@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react';
 import { getGrade, relevancyColor } from '../../utils/normalizeReport';
 import type { NormalizedQuestion } from '../../utils/normalizeReport';
+import McqAnswerReview from './McqAnswerReview';
 
 const SUB_TABS = ['Transcript', 'AI Analysis', 'Feedback'];
 
@@ -62,6 +63,12 @@ export default function VideoReview({
         </div>
       </div>
 
+      {q.mcq ? (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-800 font-semibold leading-relaxed">{q.question}</p>
+          <McqAnswerReview result={q.mcq} />
+        </div>
+      ) : <>
       {/* REAL VIDEO PLAYER — uses the actual video_url from the JSON */}
       {q.videoUrl ? (
         <video
@@ -156,6 +163,7 @@ export default function VideoReview({
           </div>
         )}
       </div>
+      </>}
     </motion.div>
   );
 }

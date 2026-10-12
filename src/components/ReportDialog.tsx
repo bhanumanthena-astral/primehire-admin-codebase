@@ -629,7 +629,7 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, a
             </div>
           ) : report ? (
             <>
-              <ReportView data={report} roundType={assessment?.roundType} />
+              <ReportView data={report} roundType={assessment?.roundType} assessmentQuestions={assessment?.questions} />
 
               {/* ── Modal Footer Bar ── */}
               <div className="flex justify-end items-center border-t border-border/60 pt-4 mt-8">

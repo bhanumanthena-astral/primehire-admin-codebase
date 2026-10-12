@@ -1,0 +1,714 @@
+
+> react-example@0.0.0 dev
+> tsx server.ts
+
+◇ injected env (2) from .env // tip: ⌘ enable debugging { debug: true }
+[Config] PrimeHire credentials: configured via backend/.env (held server-side only, never logged).
+Server running on http://localhost:3000
+
+======================================================================
+[Proxy] GET /api/backend/interview/17566c01ed642d9e25c33c782534eb003d44f88d/status -> https://api.placement.vils.ai/primehire/api/v1/interview/17566c01ed642d9e25c33c782534eb003d44f88d/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (512ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Candidate did not start the interview yet",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-FAED45C6",
+      "job_id": "JOB-E8847EBD",
+      "round_type": "BASIC",
+      "is_interview_started": false,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": null,
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/17566e78f11b4aca65bc5d06f9e1b0b2b0b4d811/status -> https://api.placement.vils.ai/primehire/api/v1/interview/17566e78f11b4aca65bc5d06f9e1b0b2b0b4d811/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (429ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate started interview at timestamp 2026-10-09 15:36:35.710569 but not submitted (may be exited without submission or still taking interview)",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-755ACC68",
+      "job_id": "JOB-7A2DEFDD",
+      "round_type": "TECHNICAL",
+      "is_interview_started": true,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": "2026-10-09 15:36:35.710569",
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m4:38:05 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m4:38:05 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m4:52:29 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\SkillRadar.tsx, /src/index.css[22m
+[2m4:52:29 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ScoreDistribution.tsx, /src/index.css[22m
+[2m4:52:29 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ReportView.tsx, /src/index.css[22m
+[2m4:53:13 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m4:53:13 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m4:53:55 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mchart-review.html[22m
+[2m4:54:24 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m4:57:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\SkillRadar.tsx, /src/index.css[22m
+[2m4:57:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ScoreDistribution.tsx, /src/index.css[22m
+[2m4:57:54 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m4:57:55 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:01:24 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ScoreDistribution.tsx, /src/index.css[22m
+[2m5:01:24 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\SkillRadar.tsx, /src/index.css[22m
+[2m5:01:43 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:03:35 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ScoreDistribution.tsx, /src/index.css[22m
+[2m5:03:52 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:04:56 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mchart-review.html[22m
+[2m8:37:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:37:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/1754e041bb4653420c9fb177cb8a6ed1a2d24248/report -> https://api.placement.vils.ai/primehire/api/v1/interview/1754e041bb4653420c9fb177cb8a6ed1a2d24248/report
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (514ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Report fetched successfully",
+  "data": {
+    "interview_details": {
+      "job_id": "JOB-FF3748B2",
+      "round_type": "BASIC",
+      "candidate_id": "CAND-7236B88A",
+      "submitted_at": "2026-10-08 11:18:04.964510"
+    },
+    "faceapi_violations": {
+      "ideal_environment": 0,
+      "multiple_faces_detected": 0,
+      "tab_switching": 0
+    },
+    "report": {
+      "overall_score": 0,
+      "communication_analysis": {
+        "overall_score": 0,
+        "fluency": 0,
+        "grammar": 0,
+        "pronunciation": 0,
+        "vocabulary": 0
+      },
+      "question_wise_result": []
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m8:46:07 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:09 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/17564e4ab372bf9a6ca77887b7e1ebd1c750a0d8/report -> https://api.placement.vils.ai/primehire/api/v1/interview/17564e4ab372bf9a6ca77887b7e1ebd1c750a0d8/report
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (374ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Report fetched successfully",
+  "data": {
+    "interview_details": {
+      "job_id": "JOB-E8847EBD",
+      "round_type": "BASIC",
+      "candidate_id": "CAND-A83239D6",
+      "submitted_at": "2026-10-09 15:46:00.311688"
+    },
+    "faceapi_violations": {
+      "ideal_environment": 4,
+      "multiple_faces_detected": 0,
+      "tab_switching": 0
+    },
+    "report": {
+      "overall_score": 2,
+      "communication_analysis": {
+        "overall_score": 37,
+        "fluency": 57,
+        "grammar": 26,
+        "pronunciation": 37,
+        "vocabulary": 27
+      },
+      "question_wise_result": [
+        {
+          "id": "17564a9e66a90bf6d10465cb875f81da87cb79ae",
+          "question": "How do you handle a situation where a critical deployment is scheduled for today, but QA identifies high-priority bugs during final retesting?",
+          "type": "SPEAK_TO_ANSWER",
+          "max_score": 25,
+          "weightage": 25,
+          "video_url": "https://prod-websocket-video-files.objectstore.e2enetworks.net/50604057-a50a-4072-8e2a-6e863354675c.webm",
+          "is_result_generated": true,
+          "result": {
+            "transcript": "Starting the other Ventna. How do you handle where the critical development is scheduled today, but QA finds high priority bugs during final tree testing. First, the things.",
+            "relevancy": "Low"
+          },
+          "message": null,
+          "obtained_score": 2
+        },
+        {
+          "id": "17564a9e1c1232780fe145b6a9c7b0804fc378a4",
+          "question": "As a Project Lead, how do you keep your technical team motivated when working under high-pressure deadlines or tight recovery schedules?",
+          "type": "SPEAK_TO_ANSWER",
+          "max_score": 25,
+          "weightage": 25,
+          "video_url": "https://prod-websocket-video-files.objectstore.e2enetworks.net/61b83cf8-7213-4bec-a353-672ca8a0f14a.webm",
+          "is_result_generated": true,
+          "result": {
+            "transcript": "Adjust as a project lead. How do you. We'll file a case on you.",
+            "relevancy": "Low"
+          },
+          "message": null,
+          "obtained_score": 0
+        },
+        {
+          "id": "17564a9e9b08013af938c3b98e407ca8d4b42b1e",
+          "question": "During a sprint execution, a developer estimates that a task will take 3 days, but a high-priority bug fix is assigned to them mid-sprint. As a Project Lead, what is the most appropriate immediate action?",
+          "type": "MCQ",
+          "option_id": "C",
+          "correct_option_id": "B",
+          "max_score": 25,
+          "weightage": 25,
+          "obtained_score": 0,
+          "is_result_generated": true
+        }
+      ]
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m8:46:54 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:54 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:54 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:54 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:55 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:55 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:46:55 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/17564e92667873838311b442ef6f8fab97ab8b2b/report -> https://api.placement.vils.ai/primehire/api/v1/interview/17564e92667873838311b442ef6f8fab97ab8b2b/report
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (376ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Report fetched successfully",
+  "data": {
+    "interview_details": {
+      "job_id": "JOB-E8847EBD",
+      "round_type": "BASIC",
+      "candidate_id": "CAND-04081593",
+      "submitted_at": "2026-10-09 13:26:51.573108"
+    },
+    "faceapi_violations": {
+      "ideal_environment": 17,
+      "multiple_faces_detected": 0,
+      "tab_switching": 0
+    },
+    "report": {
+      "overall_score": 40,
+      "communication_analysis": {
+        "overall_score": 54,
+        "fluency": 72,
+        "grammar": 33,
+        "pronunciation": 62,
+        "vocabulary": 50
+      },
+      "question_wise_result": [
+        {
+          "id": "17564a9e66a90bf6d10465cb875f81da87cb79ae",
+          "question": "How do you handle a situation where a critical deployment is scheduled for today, but QA identifies high-priority bugs during final retesting?",
+          "type": "SPEAK_TO_ANSWER",
+          "max_score": 25,
+          "weightage": 25,
+          "video_url": "https://prod-websocket-video-files.objectstore.e2enetworks.net/6aab9efe-d53e-4b8a-85a1-4f225e3389d4.webm",
+          "is_result_generated": true,
+          "result": {
+            "transcript": "Testing requires. So we have to duplicate the part. This is the impact and also define the scope, figure out or what is is it happening across all platforms. It's related to specific operating system, browser or user any tire and we need to mobilize it over a file like we have to discuss along with other terms dependent like Q18 and then based on it. Then we have to stop the deployment because deployment pipeline immediately to prevent the bug from accident and slipping into production.",
+            "relevancy": "Medium"
+          },
+          "message": null,
+          "obtained_score": 10
+        },
+        {
+          "id": "17564a9e1c1232780fe145b6a9c7b0804fc378a4",
+          "question": "As a Project Lead, how do you keep your technical team motivated when working under high-pressure deadlines or tight recovery schedules?",
+          "type": "SPEAK_TO_ANSWER",
+          "max_score": 25,
+          "weightage": 25,
+          "video_url": "https://prod-websocket-video-files.objectstore.e2enetworks.net/1683ece2-f6a1-48b5-9add-83cf1c54f059.webm",
+          "is_result_generated": true,
+          "result": {
+            "transcript": "Keeping a tech team requires a makes a clear direction, autonomy and genuine growth opportunities. Like we're supposed to grant a new and micromanagement. I mean we are supposed to reduce micromanagement. So we need to trust our own team and to design their own designs, decisions and task ordering rather than hovering over table updates. So we have to provide clear version and command of SAINT University skill development.",
+            "relevancy": "Low"
+          },
+          "message": null,
+          "obtained_score": 5
+        },
+        {
+          "id": "17564a9e9b08013af938c3b98e407ca8d4b42b1e",
+          "question": "During a sprint execution, a developer estimates that a task will take 3 days, but a high-priority bug fix is assigned to them mid-sprint. As a Project Lead, what is the most appropriate immediate action?",
+          "type": "MCQ",
+          "option_id": "B",
+          "correct_option_id": "B",
+          "max_score": 25,
+          "weightage": 25,
+          "obtained_score": 25,
+          "is_result_generated": true
+        }
+      ]
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m8:48:20 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:48:21 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:48:21 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m8:48:21 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:30:21 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/CandidateManagement.tsx, /src/components/AssessmentsAndAssignments.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ReportView.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\Header.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ScoreDistribution.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\GaugeCard.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\QuestionList.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\VideoReview.tsx[22m
+[2m5:30:22 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ReportView.tsx, /src/index.css[22m
+[2m5:30:22 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\VideoReview.tsx, /src/index.css[22m
+[2m5:30:22 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\QuestionList.tsx, /src/index.css[22m
+[2m5:30:22 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/ReportDialog.tsx, /src/index.css[22m
+[2m5:30:22 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:30:23 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:30:23 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:30:23 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:30:23 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:30:23 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:31:42 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ReportView.tsx[22m
+[2m5:31:42 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:31:43 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/1757cabf760d6afece026d60913d6efbddc72c2b/status -> https://api.placement.vils.ai/primehire/api/v1/interview/1757cabf760d6afece026d60913d6efbddc72c2b/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (386ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Candidate did not start the interview yet",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-ECB00887",
+      "job_id": "JOB-50599659",
+      "round_type": "TECHNICAL",
+      "is_interview_started": false,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": null,
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m5:32:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:32:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:32:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:32:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:33:25 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/__tests__/mcq-report.test.tsx[22m
+[2m5:33:25 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:33:25 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:33:26 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:35:06 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmcq-review.html[22m
+[2m5:35:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:35:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:37:24 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmcq-review.tsx[22m
+[2m5:37:24 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmcq-render-review.py[22m
+[2m5:37:24 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:37:24 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:37:25 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:37:49 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmcq-render-review.py[22m
+[2m5:37:49 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:37:49 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:37:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:39:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmcq-review.html[22m
+[2m5:39:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmcq-review.tsx[22m
+[2m5:39:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmcq-render-review.py[22m
+[2m5:39:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:39:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/1757cabf760d6afece026d60913d6efbddc72c2b/status -> https://api.placement.vils.ai/primehire/api/v1/interview/1757cabf760d6afece026d60913d6efbddc72c2b/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (409ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Candidate did not start the interview yet",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-ECB00887",
+      "job_id": "JOB-50599659",
+      "round_type": "TECHNICAL",
+      "is_interview_started": false,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": null,
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/1757cabf760d6afece026d60913d6efbddc72c2b/status -> https://api.placement.vils.ai/primehire/api/v1/interview/1757cabf760d6afece026d60913d6efbddc72c2b/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (415ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Candidate did not start the interview yet",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-ECB00887",
+      "job_id": "JOB-50599659",
+      "round_type": "TECHNICAL",
+      "is_interview_started": false,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": null,
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m5:41:51 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:41:51 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:41:52 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m5:41:52 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/1757cabf760d6afece026d60913d6efbddc72c2b/status -> https://api.placement.vils.ai/primehire/api/v1/interview/1757cabf760d6afece026d60913d6efbddc72c2b/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (579ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Candidate did not start the interview yet",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-ECB00887",
+      "job_id": "JOB-50599659",
+      "round_type": "TECHNICAL",
+      "is_interview_started": false,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": null,
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m10:01:01 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m10:01:01 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a1409dced1070fdbb4be36ce6281af94df67d/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a1409dced1070fdbb4be36ce6281af94df67d/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (452ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Report is available",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-236A2522",
+      "job_id": "JOB-E8847EBD",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": true,
+      "started_at": "2026-10-12 10:01:20.279577",
+      "submitted_at": "2026-10-12 10:05:41.068148"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/response/report-not-generated -> https://api.placement.vils.ai/primehire/api/v1/response/report-not-generated
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 201 Created (343ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Fetched responses",
+  "data": {
+    "count": 33,
+    "responses": [
+      {
+        "id": "1715f5eb225a26e1076f7f8fa04f472a6772ca2b",
+        "interview_id": "1713b8344342468130c613ffa1c1ed3920d838b4",
+        "round_type": "BASIC",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-08-21 17:56:19.218050"
+      },
+      {
+        "id": "1715e1a63b28b35243480684aa475415cbf7ba64",
+        "interview_id": "1713b83737618264322e6feb584556f206be92f5",
+        "round_type": "BASIC",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-08-21 16:29:50.580528"
+      },
+      {
+        "id": "1715dc536ec7541c191000c4061baa95982db924",
+        "interview_id": "1713b8425257837f7a570a7d3d9842dd7fee5824",
+        "round_type": "BASIC",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-08-21 16:07:07.467699"
+      },
+      {
+        "id": "1714b6627edde48f03b06fdf9516fa6afd4d12ae",
+        "interview_id": "16d3db78bda3d1c2edf9aa6f166dd8e8e74b01df",
+        "round_type": "BASIC",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-08-20 19:12:58.601667"
+      },
+      {
+        "id": "16de7f681437d3890f2df1d70162fa4f94e464a2",
+        "interview_id": "16d3db63166c337ae90481545a2cf9a92fe398bd",
+        "round_type": "BASIC",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-07-10 16:16:00.475098"
+      },
+      {
+        "id": "16d53ef899660bbb1a4617e193420506384061c2",
+        "interview_id": "16d3db65e814ccb8416d040a02deb64035b8ddb4",
+        "round_type": "BASIC",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-07-03 15:50:40.769816"
+      },
+      {
+        "id": "1684ead6accfb3bc9bfc3b17f38bc91340c15288",
+        "interview_id": "16824eca0374ed2e017fcb371b78533f50fbbcf2",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 17:30:22.216232"
+      },
+      {
+        "id": "1684eaa6a5912cdaec829a305092e8b040cee779",
+        "interview_id": "16824edd95898b033d28e8504db68eb7efe0797b",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 17:29:34.139889"
+      },
+      {
+        "id": "1684e7616d3bd77e97d334ede7a0ab948b766d07",
+        "interview_id": "16824eed8d9bd45eaf910b9c3864262e2b9de2b6",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 17:15:37.225496"
+      },
+      {
+        "id": "1684e7288b11080b2b54f417d2cc7340efc0f443",
+        "interview_id": "16824ee483be9a40ba2b9346723fdcac055b243e",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 17:14:40.427506"
+      },
+      {
+        "id": "1684e7001aa8eae6f9788eb72e1025dc2088bcf1",
+        "interview_id": "16824e76ba080b17ce064e4aadf34e13b0ad804d",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 17:14:00.232976"
+      },
+      {
+        "id": "1684e6c29231ad4f1bf715af9b8c623cfc316503",
+        "interview_id": "16824ea0d7d3b7264440cc07933fde64395a691b",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 17:12:58.221185"
+      },
+      {
+        "id": "1684e6ad2277fa4d06161b61d62e8566e155b6d6",
+        "interview_id": "16824e84afa6c791a479a07872bdd3c10f2b4382",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 17:12:37.284670"
+      },
+      {
+        "id": "1684b7834c5c000ac2fea54d2f4e80e24618d332",
+        "interview_id": "16824ed4d21f4394f3752bdf012a3636e636a7b1",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 13:51:23.477274"
+      },
+      {
+        "id": "1684b77c5870b66ded76094370616fad89cf8ca4",
+        "interview_id": "16824e837ad4f9f978d8169b55cf5007fa571cf3",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 13:51:16.130367"
+      },
+      {
+        "id": "1684b757c0975a95b7ce5cadcb0dd44ad396b956",
+        "interview_id": "16824e7f656c5c0ceec697b76fb1043b212e5ed1",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 13:50:39.227022"
+      },
+      {
+        "id": "1684b74e6e23492df124ec764def0e5b7150c573",
+        "interview_id": "16824ee50be8df22dbb3e9c41a8aa9b2ca8562de",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-03 13:50:30.615258"
+      },
+      {
+        "id": "1683bc939e5acda0a030ba0835cce6fbb5c985fe",
+        "interview_id": "16824e7f23df3307437f19074a4d621ec7c8338b",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 20:00:43.312805"
+      },
+      {
+        "id": "1683bc88d0295b366ec44ad70eac4780d39c57a8",
+        "interview_id": "16824eeb5e7cb70be73bf8445d0ec868412695b1",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 20:00:32.576392"
+      },
+      {
+        "id": "1683bc46ad27a35a98b8d7ae4f11035d6ad0ff4c",
+        "interview_id": "16824eedf880388e9d85d2ee83e8136c8eb73849",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 19:59:26.902160"
+      },
+      {
+        "id": "1683bb3ad87d29ab0445b0773fbd72190a11ab22",
+        "interview_id": "16824ee22fc9858de47f298664fb344f39013987",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 19:54:58.641881"
+      },
+      {
+        "id": "1683752ddb348e951be899e4a0fe95e079194c18",
+        "interview_id": "16824ebe9de1c78b6cf6480b4199b2475aaa8866",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 14:56:05.866593"
+      },
+      {
+        "id": "16837505e7a3e6a741f31b6a2be174bab8c13efb",
+        "interview_id": "16824ec3d36634036b6056ade4590076330501aa",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 14:55:25.782795"
+      },
+      {
+        "id": "16837435a2cbd7f3892a9fd795f5849c5f32b750",
+        "interview_id": "16824eb55391ee8b2e88be4d03b799059ffa87ad",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 14:51:57.916521"
+      },
+      {
+        "id": "1683741ba72993c3d87d05a45df1bc6d73bafd51",
+        "interview_id": "16824eee34f35df5ee5fec59a64029217cbe405a",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 14:51:31.414010"
+      },
+      {
+        "id": "1683739ddceebfe090feddbb1dc23b1da4abd130",
+        "interview_id": "16824e74438d9ad853a348661a1ad136faeb9766",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 14:49:25.600490"
+      },
+      {
+        "id": "16837330629094143c41bffde39c50cdaf03ebef",
+        "interview_id": "16824e9c6df354bbff4ab2bde406d36f36d2ee67",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 14:47:36.021223"
+      },
+      {
+        "id": "16835d56a36114b467eab7c7f8cd464f54fbea53",
+        "interview_id": "16824e898fc60fe1eb3544c1f34650abc6d40e6d",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 13:14:22.539365"
+      },
+      {
+        "id": "16835d241ec41f8fa34afcf3050bd49db3d850c7",
+        "interview_id": "16824e8d2b30b51dfb17733f5350ce86fb35bbd3",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 13:13:32.491832"
+      },
+      {
+        "id": "16835cda7a313081e6b276931a3db1bd9898d079",
+        "interview_id": "16824ea2f8d246b1a6e6f3a6377ebf000493a61c",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 13:12:18.290028"
+      },
+      {
+        "id": "16835b9a5ca5ff7ed6f4f4160ed35a013e32ded8",
+        "interview_id": "16824ec51389bffa5f138416a46c3141288f9318",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 13:06:58.692048"
+      },
+      {
+        "id": "168353aae56cd8997257ed3fb48513f6a621447d",
+        "interview_id": "16824ebf23583561f5d0de558456d10071d27831",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 12:33:06.941674"
+      },
+      {
+        "id": "168353408dceb973b9725fafad81676eb1eb0bcc",
+        "interview_id": "16824e8ad2c460e082756426bf3bc02261d38393",
+        "round_type": "HR",
+        "partner_id": "VILS.AI",
+        "submitted_at": "2026-05-02 12:31:20.683431"
+      }
+    ]
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m10:13:09 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m10:13:09 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m10:13:09 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m10:13:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m10:13:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m10:13:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m

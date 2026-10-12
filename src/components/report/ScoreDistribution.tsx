@@ -17,16 +17,25 @@ export default function ScoreDistribution({ overall, delay = 0 }: { overall: Nor
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
-      className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"
+      className="min-w-0 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"
     >
-      <p className="text-sm font-semibold text-slate-800 mb-3">Score Distribution</p>
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-          <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+      <p className="text-sm font-semibold text-slate-800 mb-1">Score Distribution</p>
+      <p className="text-xs text-slate-500 mb-3">Scores on a 0–100 scale</p>
+      <ResponsiveContainer width="100%" minWidth={0} height={260}>
+        <BarChart data={data} layout="vertical" margin={{ top: 8, right: 32, bottom: 8, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+          <XAxis type="number" domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis type="category" dataKey="name" width={110} interval={0} axisLine={false} tickLine={false} tick={({ x, y, payload }) => {
+            const score = data.find(item => item.name === payload.value)?.value;
+            return (
+              <g transform={`translate(${Number(x) - 10}, ${y})`}>
+                <text className="recharts-cartesian-axis-tick-value" textAnchor="end" y={-4} fill="#475569" fontSize={12} fontWeight={500}>{payload.value}</text>
+                <text className="report-score-label" textAnchor="end" y={13} fill="#64748b" fontSize={11}>{score === undefined ? '' : Math.round(score * 10) / 10}</text>
+              </g>
+            );
+          }} />
           <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }} />
-          <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48}>
+          <Bar name="Score" dataKey="value" radius={[0, 6, 6, 0]} barSize={22} isAnimationActive={false}>
             {data.map((d, i) => (
               <Cell key={i} fill={getGrade(d.value).color} />
             ))}

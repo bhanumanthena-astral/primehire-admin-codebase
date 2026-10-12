@@ -14,9 +14,11 @@ import QuestionList from './QuestionList';
 import VideoReview from './VideoReview';
 import InsightPanels from './InsightPanels';
 import EmptyReportState from './EmptyReportState';
+import McqAnswerReview from './McqAnswerReview';
+import type { Question } from '../../types';
 
-export default function ReportView({ data, roundType }: { data: unknown; roundType?: string }) {
-  const report = useMemo(() => normalizeReport(data, roundType), [data, roundType]);
+export default function ReportView({ data, roundType, assessmentQuestions }: { data: unknown; roundType?: string; assessmentQuestions?: Question[] }) {
+  const report = useMemo(() => normalizeReport(data, roundType, assessmentQuestions), [data, roundType, assessmentQuestions]);
   const insights = useMemo(() => generateInsights(report), [report]);
   const [activeTab, setActiveTab] = useState('Overview');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -90,7 +92,7 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))' }}>
                   <SkillRadar overall={overall} delay={0.15} />
                   {overall.communication && <CommunicationBreakdown communication={overall.communication} delay={0.2} />}
                   <ScoreDistribution overall={overall} delay={0.25} />
@@ -178,6 +180,8 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
                         )}
                       </div>
 
+                      {q.mcq && <McqAnswerReview result={q.mcq} />}
+
                       {/* Question Communication Breakdown if present */}
                       {q.communication && (
                         <div className="bg-slate-50 border border-slate-200/60 p-3.5 rounded-xl space-y-1.5">
@@ -214,7 +218,7 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
                       )}
 
                       {/* Evaluator Feedback & Remarks */}
-                      <div className="space-y-2">
+                      {(!q.mcq || hasRemarks) && <div className="space-y-2">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
                           <Award className="w-3.5 h-3.5 text-indigo-600" /> Detailed Evaluator Remarks
                         </span>
@@ -252,7 +256,7 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
                             No specific evaluator remarks recorded for this question. Overall scores and criteria above reflect candidate performance.
                           </p>
                         )}
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}
@@ -285,7 +289,7 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
                       <p className="text-sm font-semibold text-slate-900">
                         {q.question}
                       </p>
-                      {q.transcript ? (
+                      {q.mcq ? <McqAnswerReview result={q.mcq} /> : q.transcript ? (
                         <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-4 space-y-1.5">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                             <Mic className="w-3.5 h-3.5 text-indigo-500" /> Verbatim Candidate Speech / Response

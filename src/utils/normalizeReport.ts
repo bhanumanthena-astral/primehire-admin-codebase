@@ -1,3 +1,6 @@
+import type { Question } from '../types';
+import { normalizeMcqResult, type McqResult } from './mcqReport';
+
 export interface Grade {
   letter: string;
   color: string;
@@ -68,6 +71,7 @@ export interface NormalizedQuestion {
   feedback: string | null;
   strengths?: string[];
   weaknesses?: string[];
+  mcq?: McqResult | null;
 }
 
 export interface NormalizedOverall {
@@ -93,7 +97,7 @@ export interface NormalizedReport {
   isHR: boolean;
 }
 
-export function normalizeReport(raw: any, fallbackRoundType?: string): NormalizedReport | null {
+export function normalizeReport(raw: any, fallbackRoundType?: string, assessmentQuestions: Question[] = []): NormalizedReport | null {
   if (!raw) return null;
   raw = raw.data ?? raw;
 
@@ -184,6 +188,7 @@ export function normalizeReport(raw: any, fallbackRoundType?: string): Normalize
       feedback: feedback || null,
       strengths: Array.isArray(strengths) ? strengths : [],
       weaknesses: Array.isArray(weaknesses) ? weaknesses : [],
+      mcq: normalizeMcqResult(q, assessmentQuestions),
     };
   });
 
