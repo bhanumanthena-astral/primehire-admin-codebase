@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Candidate, AssessmentProfile } from '../types';
-import { mockGetReport } from '../mockData';
+import { getCandidateReport } from '../lib/interviewOperations';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   X, RefreshCw, AlertCircle, CheckCircle, Award, Star, ThumbsUp, ThumbsDown,
@@ -538,7 +538,7 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, a
     setLoading(true);
     setError(null);
     try {
-      const data = await mockGetReport(candidate.id, allCandidates);
+      const data = await getCandidateReport(candidate.id, allCandidates);
       setReport(data);
     } catch (err: any) {
       setError(err.message || 'Failed to load report data');
@@ -554,47 +554,40 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, a
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent showCloseButton={false} className="max-w-5xl lg:max-w-6xl max-h-[92vh] overflow-y-auto text-foreground bg-card border border-border/60 shadow-2xl p-0 font-sans rounded-2xl">
+        <DialogTitle className="sr-only">Candidate Evaluation Report - {candidate.name}</DialogTitle>
         
         {/* ── Executive Header Banner ── */}
-        <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-md border-b border-border/60 px-6 py-4 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-md border-b border-border/60 px-4 sm:px-6 py-3.5 shadow-2xs">
+          <div className="flex items-center justify-between gap-4">
             
             {/* Candidate Metadata Summary */}
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-xl bg-gradient-primary text-white flex items-center justify-center font-black text-lg shadow-sm shrink-0">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-primary text-white flex items-center justify-center font-black text-base sm:text-lg shadow-sm shrink-0">
                 {candidate.name.charAt(0).toUpperCase()}
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-extrabold text-foreground">{candidate.name}</h2>
-                  <span className="text-[10px] font-mono bg-muted text-muted-foreground px-2 py-0.5 rounded border border-border/60">
-                    {candidate.email}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 break-words">
+                  <h2 className="text-base font-extrabold text-foreground truncate">{candidate.name}</h2>
+                  <span className="text-[10px] font-mono bg-muted text-muted-foreground px-2 py-0.5 rounded border border-border/60 max-w-[200px] sm:max-w-none truncate" title={candidate.email}>
+                    <span className="break-all">{candidate.email}</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                  <span className="font-semibold text-foreground">{assessment.jobTitle}</span>
+                  <span className="font-semibold text-foreground truncate">{assessment.jobTitle}</span>
                   <span>•</span>
-                  <span className="font-mono text-[11px] text-muted-foreground">
+                  <span className="font-mono text-[11px] text-muted-foreground shrink-0">
                     {candidate.submittedDate ? candidate.submittedDate : 'Submitted'}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Status Tags + accessible close (sticky-safe, never clipped) */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={onClose}
-                aria-label="Close report"
-                title="Close report"
-                className="p-1.5 rounded-full border border-border/70 text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-              <span className="text-[10px] font-extrabold tracking-wider px-2.5 py-1 rounded-lg border border-border/60 bg-muted text-foreground uppercase">
+            {/* Header Actions: Status Badges & Close Button */}
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+              <span className="hidden sm:inline-flex text-[10px] font-extrabold tracking-wider px-2.5 py-1 rounded-lg border border-border/60 bg-muted text-foreground uppercase">
                 {assessment.roundType} Round
               </span>
-              <span className={`text-[10px] font-semibold tracking-wider px-2.5 py-1 rounded-full border uppercase inline-flex items-center gap-1 ${
+              <span className={`hidden sm:inline-flex text-[10px] font-semibold tracking-wider px-2.5 py-1 rounded-full border uppercase items-center gap-1 ${
                 candidate.reportStatus === 'GENERATED'
                   ? 'bg-success/10 border-success/20 text-success'
                   : 'bg-warning/15 border-warning/25 text-warning'
@@ -602,7 +595,33 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, a
                 <CheckCircle2 className="w-3 h-3" />
                 {candidate.reportStatus === 'GENERATED' ? 'Evaluated' : candidate.reportStatus || 'Pending'}
               </span>
+
+              <div className="hidden sm:block h-5 w-px bg-border/60 mx-0.5" />
+
+              <button
+                onClick={onClose}
+                aria-label="Close report"
+                title="Close report (Esc)"
+                className="h-9 w-9 rounded-xl border border-border/70 bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-all duration-150 cursor-pointer shadow-2xs hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
+          </div>
+
+          {/* Mobile Status Tags Row */}
+          <div className="flex sm:hidden items-center gap-2 mt-2 pt-2 border-t border-border/40">
+            <span className="text-[10px] font-extrabold tracking-wider px-2 py-0.5 rounded-md border border-border/60 bg-muted text-foreground uppercase">
+              {assessment.roundType} Round
+            </span>
+            <span className={`text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full border uppercase inline-flex items-center gap-1 ${
+              candidate.reportStatus === 'GENERATED'
+                ? 'bg-success/10 border-success/20 text-success'
+                : 'bg-warning/15 border-warning/25 text-warning'
+            }`}>
+              <CheckCircle2 className="w-3 h-3" />
+              {candidate.reportStatus === 'GENERATED' ? 'Evaluated' : candidate.reportStatus || 'Pending'}
+            </span>
           </div>
         </div>
 

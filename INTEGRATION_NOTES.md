@@ -10,13 +10,13 @@ To secure sensitive API credentials (`x-access-key` and `x-secret-key`) and sati
 
 1. **Client-Side Proxy (`src/lib/primehireClient.ts`)**:
    - Provides clean, strongly-typed asynchronous functions for all UI modules.
-   - Forwards request data to the secure server proxy under the `/api/primehire/*` namespace.
+   - Forwards request data to the secure server proxy under the `/api/backend/*` namespace.
    - Automatically handles **camelCase ⇆ snake_case** transformations dynamically.
-   - Incorporates robust offline fallbacks to standard client-side state storage if keys are absent or endpoints fail.
+   - Interview operations use real provider responses. API errors propagate to the UI without fabricated credentials, statuses, or reports.
 
 2. **Express Proxy Server (`server.ts`)**:
    - Integrates with the production Vite runner.
-   - Intercepts requests on the `/api/primehire/*` mountpoint.
+   - Intercepts requests on the `/api/backend/*` mountpoint.
    - Safely injects the credential headers (`x-access-key`, `x-secret-key`) retrieved from server-side environment variables before routing them to `https://api.placement.vils.ai/primehire/api/v1`.
    - Never exposes sensitive keys to browser bundles.
 
@@ -30,8 +30,8 @@ The following known API discrepancies have been handled programmatically:
 - **Issue**: Ambiguity regarding whether endpoints expect `interview_id`, `response_id`, or `candidate_id` when fetching reports or status.
 - **Handling**:
   - The `Candidate` type has been enriched in `src/types.ts` with optional `interviewId` and `responseId` fields.
-  - Upon generating links (`POST /interview`), the client saves both returned IDs.
-  - Subsequent requests for status (`GET /interview/{id}/status`), rescheduling, or reporting fall back defensively on whichever ID is available.
+  - Upon generating links (`POST /interview`), the client saves returned identifiers. Missing response IDs and candidate UUIDs remain unresolved.
+  - Status, rescheduling, and reporting use the genuine interview ID. Password reset requires a verified provider UUID.
 
 ### B. "Generate Link" Behavior
 - **Issue**: No dedicated standalone endpoint exists to generate/distribute invite links directly.
@@ -45,9 +45,11 @@ The following known API discrepancies have been handled programmatically:
 
 ---
 
-## 3. Local Sandbox & Simulation Support
-- **Decoupling**: The **Candidate Workspace Simulator** (`CandidateWorkspaceSimulator.tsx`) remains a robust local tester experience.
-- **Auditing**: It allows recruiters to trial full test experiences using candidate credentials, automatically calculating and compiling mock performance summaries to simulate report compilation.
+## 3. Production Interview Operations
+- The candidate workspace simulator, completion and expiry shortcuts, and forced API failure control have been removed.
+- `src/lib/interviewOperations.ts` handles real scheduling, status, password, and report requests. Failures remain visible and never create local success data.
+- Historical testing fields and fabricated identifiers are discarded when candidates are loaded. Import safeguards still identify old test records and strip their testing payloads.
+- Email templates retain a content preview; previewing does not send mail or change candidate status.
 
 ---
 

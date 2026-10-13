@@ -43,7 +43,7 @@ _UI_ONLY_CANDIDATE_FIELDS = {
     "interviewExpired",  # derivable from endTime
 }
 
-# Mock-only payloads: kept for mock records, stripped from real ones.
+# Retired testing payloads are stripped from every imported record.
 _MOCK_ONLY_FIELDS = {"answers", "simulatedReport"}
 
 _SYNC_KEYS = (
@@ -112,21 +112,26 @@ def map_frontend_candidate(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[st
     raw_uuid = src.get("verifiedCandidateUUID")
 
     # Demo payload present? (rule 3 — explicit simulator data)
-    has_demo_payload = "simulatedReport" in src or (
+    has_simulated_result = "simulatedReport" in src or (
         isinstance(src.get("answers"), dict)
         and any(isinstance(a, str) and "Simulated response" in a for a in src["answers"].values())
-    ) or bool(src.get("isMock", False))
+    )
+    has_demo_payload = has_simulated_result or bool(src.get("isMock", False))
 
     is_mock = looks_mock(interview_id, response_id, raw_uuid, has_demo_payload) or bool(
         src.get("isMock", False)
     )
 
     for key in _MOCK_ONLY_FIELDS:
-        if key in src and not is_mock:
+        if key in src:
             flags["simulatedStripped"] = True
             src.pop(key, None)
 
     sync_state = {k: src.pop(k, None) for k in _SYNC_KEYS}
+    if has_simulated_result:
+        sync_state["submittedDate"] = None
+        sync_state["reportStatus"] = None
+        sync_state["assessmentStatus"] = "NOT_STARTED"
     if sync_state.get("reminderCount") is None:
         sync_state["reminderCount"] = 0
 
@@ -164,10 +169,6 @@ def map_frontend_candidate(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[st
         "origin": "local-import",
         "isMock": is_mock,
     }
-    # Preserve mock-only payloads on mock records (clearly flagged, never reports).
-    for key in _MOCK_ONLY_FIELDS:
-        if key in src:
-            doc[key] = src[key]
     return doc, flags
 
 

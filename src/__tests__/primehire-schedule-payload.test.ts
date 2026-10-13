@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { primehireClient } from '../lib/primehireClient';
 import { asInterviewId, asJobId, asLocalCandidateId } from '../lib/primehireIds';
 import { istDateTimeToUtc, istDatetimeLocalToUtc, utcToIstDatetimeLocal } from '../utils/istSchedule';
-import { renderTemplate, mockGenerateLink } from '../mockData';
+import { generateInterviewLinks } from '../lib/interviewOperations';
+import { renderTemplate } from '../lib/mailTemplates';
 import type { Candidate, AssessmentProfile } from '../types';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -65,7 +66,7 @@ describe('IST schedule through the actual API client', () => {
     const candidate = { id: asLocalCandidateId('CAND-test'), startTime: '2026-10-08T11:35:00Z', endTime: '2026-10-08T14:32:00Z' } as Candidate;
     await expect(primehireClient.createInterview(asJobId('JOB-test'), 'BASIC', [{ candidate_id: candidate.id, start_time: candidate.startTime, end_time: candidate.endTime }])).rejects.toThrow('24-hour');
     await expect(primehireClient.rescheduleInterview(asInterviewId('interview-test'), candidate.startTime, candidate.endTime)).rejects.toThrow('24-hour');
-    await expect(mockGenerateLink([candidate.id], [candidate], 'BASIC', asJobId('JOB-test'))).rejects.toThrow('24-hour');
+    await expect(generateInterviewLinks([candidate.id], [candidate], 'BASIC', asJobId('JOB-test'))).rejects.toThrow('24-hour');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

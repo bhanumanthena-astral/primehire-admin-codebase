@@ -166,6 +166,22 @@ async def test_mock_candidate(db):
     assert stored["isMock"] is True
 
 
+async def test_retired_simulator_payload_is_stripped(db):
+    from app.services import migration_service as ms
+
+    mapped, flags = ms.map_frontend_candidate(
+        dict(MOCK_CAND, simulatedReport={"overallScore": 88}, answers={"q": "Simulated response"},
+             reportStatus="GENERATED", submittedDate="2026-10-21T12:00:00Z", assessmentStatus="COMPLETED")
+    )
+    assert mapped["isMock"] is True
+    assert "simulatedReport" not in mapped
+    assert "answers" not in mapped
+    assert flags["simulatedStripped"] is True
+    assert mapped["syncState"]["reportStatus"] is None
+    assert mapped["syncState"]["submittedDate"] is None
+    assert mapped["syncState"]["assessmentStatus"] == "NOT_STARTED"
+
+
 # 8/9. malformed records collected, valid ones still import
 async def test_malformed_records(db):
     res = await migration_service.run_import(

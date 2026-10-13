@@ -1,5 +1,6 @@
 import { AssessmentProfile, Candidate, MailTemplate } from '../types';
 import { asUtcIso } from '../utils/dates';
+import { sanitizeCandidateData } from './candidateData';
 
 /**
  * FastAPI read client (Phase 3C read cutover).
@@ -168,7 +169,7 @@ export function mapMongoAssessment(doc: any): AssessmentProfile {
 export function mapMongoCandidate(doc: any): Candidate {
   const prime = doc.primehire ?? {};
   const sync = doc.syncState ?? {};
-  return {
+  return sanitizeCandidateData({
     id: doc.candidateKey,
     assessmentId: doc.assessmentId,
     name: doc.name ?? '',
@@ -194,7 +195,9 @@ export function mapMongoCandidate(doc: any): Candidate {
     assessmentStatus: sync.assessmentStatus,
     mailStatus: sync.mailStatus,
     mongoId: doc.id,
-  } as Candidate;
+    // Retired fields are read only to discard historical testing data.
+    simulatedReport: doc.simulatedReport,
+  } as Candidate);
 }
 
 export interface AssessmentListParams {
@@ -307,6 +310,12 @@ export async function fetchCandidates(assessmentId?: string): Promise<Candidate[
   const qs = assessmentId ? `?assessment_id=${encodeURIComponent(assessmentId)}&limit=500` : '?limit=500';
   const body = await getJson<Page<any>>(`/api/candidates${qs}`);
   return (body.items ?? []).map(mapMongoCandidate);
+}
+
+/** Refresh durable linkage before changing an interview in another browser session. */
+export async function fetchCandidate(candidateKey: string): Promise<Candidate> {
+  const doc = await getJson<any>(`/api/candidates/${encodeURIComponent(candidateKey)}`, undefined, 'no-store');
+  return mapMongoCandidate(doc);
 }
 
 /**

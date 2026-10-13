@@ -44,7 +44,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
 
   const sampleData: Record<string, string> = {
     '{{candidate_name}}': 'Leonard Hofstadter',
-    '{{link}}': 'https://primehire-test.com/interview/tech-leonard-9a8b1',
+    '{{link}}': '[Candidate interview link]',
     '{{password}}': 'PRIME-A9F8E7',
     '{{start_time}}': '7/1/2026, 9:00:00 AM',
     '{{end_time}}': '7/1/2026, 12:00:00 PM',
@@ -126,8 +126,8 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
     <div className="space-y-6 text-foreground font-sans">
       <SectionHeader
         eyebrow="Communication templates"
-        title="Mail Templates & Customizer"
-        subtitle="Standardize candidate outreach, construct reminder sequences, and preview live simulations."
+        title="Mail Templates"
+        subtitle="Standardize candidate outreach, construct reminder sequences, and preview your email content."
         icon={<Mail className="w-5 h-5" />}
         action={
           !isEditing ? (
@@ -315,7 +315,7 @@ export default function MailTemplates({ templates, searchQuery = '', onSaveTempl
               <Panel className="flex flex-col gap-4">
                 <div className="flex items-center gap-2 pb-3 border-b border-border/60">
                   <Eye className="w-4 h-4 text-accent" />
-                  <span className="eyebrow">Simulated Mail Client</span>
+                  <span className="eyebrow">Email Preview</span>
                   <span className="ml-auto"><Pill tone="success"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> Live Preview</Pill></span>
                 </div>
                 <div className="flex-1 rounded-2xl border border-border/60 bg-card flex flex-col min-h-[280px] overflow-hidden">

@@ -2,7 +2,8 @@
 
 import pytest
 
-from app.schemas.assessment import AssessmentIn
+from app.schemas.assessment import AssessmentIn, AssessmentPut, AssessmentUpdate
+from pydantic import ValidationError
 from app.schemas.candidate import CandidateIn
 from app.schemas.report import ReportIn
 
@@ -29,6 +30,19 @@ def test_assessment_preserves_lifecycle_fields():
 def test_assessment_rejects_bad_round():
     with pytest.raises(Exception):
         AssessmentIn.model_validate({"jobId": "J", "jobTitle": "T", "roundType": "NOPE"})
+
+
+@pytest.mark.parametrize("schema", [AssessmentIn, AssessmentPut, AssessmentUpdate])
+def test_mcq_option_limit_for_create_and_edit(schema):
+    options = ["A", "B", "C", "D", "E"]
+    base = {"jobId": "J", "jobTitle": "T", "roundType": "BASIC", "version": 1,
+            "questions": [{"text": "Pick one", "type": "MCQ", "options": options, "correctOption": "E"}]}
+    if schema is AssessmentUpdate:
+        base = {"version": 1, "questions": base["questions"]}
+    assert schema.model_validate(base).questions[0].options == options
+    base["questions"][0]["options"] = options + ["F"]
+    with pytest.raises(ValidationError, match="at most 5"):
+        schema.model_validate(base)
 
 
 def test_candidate_rejects_password_and_row_loading():

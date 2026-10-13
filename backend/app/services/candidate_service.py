@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 _MOCK_INTERVIEW_PREFIX = "int-"
 _MOCK_RESPONSE_PREFIX = "res-"
 
-# Synthetic fallback UUID stamp used by the frontend when no genuine PrimeHire
-# UUID exists (mockData.ts). Must never be treated as a genuine identifier.
+# Historical fallback UUID stamp from the retired frontend simulator.
+# Must never be treated as a genuine identifier.
 _SYNTHETIC_UUID_PREFIX = "c3a7db8e-0f2c-473d-82ba-"
 _UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"

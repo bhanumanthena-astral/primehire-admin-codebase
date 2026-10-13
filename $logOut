@@ -712,3 +712,624 @@ Server running on http://localhost:3000
 [2m10:13:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
 [2m10:13:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
 [2m10:13:10 am[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a30e3ba9b1e2fb4c04e2566f3549db05f8c35/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a30e3ba9b1e2fb4c04e2566f3549db05f8c35/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (700ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Candidate did not start the interview yet",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-B796AC2F",
+      "job_id": "JOB-DDAF67C9",
+      "round_type": "BASIC",
+      "is_interview_started": false,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": null,
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m12:17:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/CandidateManagement.tsx, /src/index.css[22m
+[2m12:17:11 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m12:17:11 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/CandidateManagement.tsx, /src/index.css[22m
+[2m12:17:11 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:12 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:13 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:13 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:13 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:36 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32m✨ new dependencies optimized: [33m@base-ui/react/popover[32m[39m
+[2m12:17:36 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32m✨ optimized dependencies changed. reloading[39m
+[2m12:17:37 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:38 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:38 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:38 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:38 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:39 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:17:39 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:21:17 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\BulkScheduleControls.tsx, /src/index.css[22m
+[2m12:21:17 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/ui/primitives.tsx, /src/index.css[22m
+[2m12:21:17 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\components\ui\dialog.tsx, /src/index.css[22m
+[2m12:21:17 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/ReportDialog.tsx, /src/index.css[22m
+[2m12:21:17 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:21:18 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:21:18 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:21:18 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:21:18 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/components/CandidateMobileCards.tsx[22m
+[2m12:23:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:34 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m12:23:34 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/Dashboard.tsx, /src/index.css[22m
+[2m12:23:34 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/CandidateManagement.tsx, /src/index.css[22m
+[2m12:23:34 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m12:23:34 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MailTemplates.tsx, /src/index.css[22m
+[2m12:23:35 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:36 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:37 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:37 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:37 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:38 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:38 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:38 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:23:38 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:24:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m12:24:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\CandidateMobileCards.tsx, /src/index.css[22m
+[2m12:24:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:24:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:24:42 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:27:35 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/ui/ActionMenu.tsx, /src/index.css[22m
+[2m12:27:35 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui-review.html[22m
+[2m12:27:35 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:27:35 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:43:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/ui/ActionMenu.tsx, /src/index.css[22m
+[2m12:43:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\CandidateMobileCards.tsx, /src/index.css[22m
+[2m12:43:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:43:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:43:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m12:51:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui_browser_review.py[22m
+[2m12:51:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:44 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m12:51:44 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:44 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:44 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m12:51:44 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/CandidateManagement.tsx, /src/index.css[22m
+[2m12:51:45 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:46 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:46 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:51:48 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:53:05 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/ui/ActionMenu.tsx, /src/index.css[22m
+[2m12:53:05 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m12:53:05 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m12:53:06 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:53:06 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:53:06 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:53:07 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:53:07 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:53:08 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:56:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m12:56:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui_browser_review.py[22m
+[2m12:56:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:56:47 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:59:49 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui_browser_review.py[22m
+[2m12:59:49 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\BulkScheduleControls.tsx, /src/index.css[22m
+[2m12:59:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:59:52 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m12:59:52 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m1:03:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui_browser_review.py[22m
+[2m1:03:11 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m1:03:11 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m1:03:11 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m1:13:27 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/App.tsx, /src/components/CandidateManagement.tsx, /src/components/Dashboard.tsx[22m
+[2m1:13:27 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m1:13:27 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/Dashboard.tsx, /src/index.css[22m
+[2m1:13:27 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/__tests__/portal-filters.test.ts[22m
+[2m1:13:27 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m1:13:28 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m1:13:28 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m1:13:28 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m1:13:28 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m1:17:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui-review.html[22m
+[2m1:17:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui-review.tsx[22m
+[2m1:17:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui_browser_review.py[22m
+[2m1:17:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui_bug_edits.py[22m
+[2m1:17:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui_layout_edits.py[22m
+[2m1:17:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mui_cleanup_edits.py[22m
+[2m1:17:10 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/utils/popoverPosition.ts[22m
+[2m1:17:36 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a46075374e1da8bacc02a48df805e22039ab8/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a46075374e1da8bacc02a48df805e22039ab8/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (459ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Report is available",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-08D0E98D",
+      "job_id": "JOB-E59787D9",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": true,
+      "started_at": "2026-10-12 13:32:50.508979",
+      "submitted_at": "2026-10-12 13:35:36.214318"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m1:37:24 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:16:33 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/App.tsx, /src/components/CandidateManagement.tsx, /src/components/ReportDialog.tsx, /src/components/AssessmentsAndAssignments.tsx[22m
+[2m3:16:33 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:16:33 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/CandidateManagement.tsx, /src/index.css[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/CandidateManagement.tsx, /src/components/AssessmentsAndAssignments.tsx[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/ReportDialog.tsx, /src/index.css[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/__tests__/candidate-report-loading.test.ts[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/__tests__/primehire-schedule-payload.test.ts[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/types.ts[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/CandidateManagement.tsx, /src/components/AssessmentsAndAssignments.tsx[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/CandidateManagement.tsx, /src/components/AssessmentsAndAssignments.tsx[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MailTemplates.tsx, /src/index.css[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/CandidateManagement.tsx, /src/components/AssessmentsAndAssignments.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ReportView.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\Header.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\ScoreDistribution.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\GaugeCard.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\QuestionList.tsx, /@fs/C:\Users\onlyf\Desktop\Primehire-admin-v1\src\components\report\VideoReview.tsx[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:16:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:16:42 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:16:42 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:16:42 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:16:42 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:19:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/mockData.ts[22m
+[2m3:19:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/components/CandidateWorkspaceSimulator.tsx[22m
+[2m3:19:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:19:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:19:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:19:54 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css, /src/components/CandidateManagement.tsx, /src/components/AssessmentsAndAssignments.tsx, /src/components/ReportDialog.tsx[22m
+[2m3:19:54 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/app/services/migration_service.py[22m
+[2m3:19:54 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/app/services/candidate_service.py[22m
+[2m3:19:54 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mINTEGRATION_NOTES.md[22m
+[2m3:19:54 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:19:55 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:20:15 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/AssessmentsAndAssignments.tsx, /src/components/CandidateManagement.tsx, /src/components/ReportDialog.tsx[22m
+[2m3:20:15 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MailTemplates.tsx, /src/index.css[22m
+[2m3:20:15 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/__tests__/ui-bugs-regression.test.ts[22m
+[2m3:20:16 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:20:16 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:22:40 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/tests/test_migration.py[22m
+[2m3:22:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:22:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:22:41 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/app/services/migration_service.py[22m
+[2m3:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/tests/test_migration.py[22m
+[2m3:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m3:27:51 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a631ce28443f97b1802059bec142e5ac08406/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a631ce28443f97b1802059bec142e5ac08406/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (397ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Report is available",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-44F76032",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": true,
+      "started_at": "2026-10-12 15:38:55.508808",
+      "submitted_at": "2026-10-12 15:42:03.181571"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m3:46:09 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (544ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (416ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (378ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (381ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (448ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a6b886354f9a62aa215ce5add998e10da8674/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a6b886354f9a62aa215ce5add998e10da8674/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (373ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Report is available",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-C67DDB93",
+      "job_id": "JOB-7D5CEB47",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": true,
+      "started_at": "2026-10-12 16:20:30.857553",
+      "submitted_at": "2026-10-12 16:23:17.346232"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (292ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (374ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a6b886354f9a62aa215ce5add998e10da8674/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a6b886354f9a62aa215ce5add998e10da8674/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (280ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "Report is available",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-C67DDB93",
+      "job_id": "JOB-7D5CEB47",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": true,
+      "started_at": "2026-10-12 16:20:30.857553",
+      "submitted_at": "2026-10-12 16:23:17.346232"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a6e3b33f8b21c7212e59be7ab19ba607f66fd/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a6e3b33f8b21c7212e59be7ab19ba607f66fd/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (454ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate started interview at timestamp 2026-10-12 16:24:12.986988 but not submitted (may be exited without submission or still taking interview)",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-F949E5D0",
+      "job_id": "JOB-7D5CEB47",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": "2026-10-12 16:24:12.986988",
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (292ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (370ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a6e3b33f8b21c7212e59be7ab19ba607f66fd/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a6e3b33f8b21c7212e59be7ab19ba607f66fd/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (284ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate started interview at timestamp 2026-10-12 16:24:12.986988 but not submitted (may be exited without submission or still taking interview)",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-F949E5D0",
+      "job_id": "JOB-7D5CEB47",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": false,
+      "is_report_available": false,
+      "started_at": "2026-10-12 16:24:12.986988",
+      "submitted_at": null
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[Response] ✓ 200 OK (438ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m4:26:01 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+
+======================================================================
+[Proxy] GET /api/backend/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status -> https://api.placement.vils.ai/primehire/api/v1/interview/175a677bd4833e88d094bfe2f0dd1dd151d67208/status
+[Auth] Credentials: ✓ PRESENT
+[2m4:26:27 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[Response] ✓ 200 OK (620ms)
+[Response Body] ↓↓↓
+{
+  "status": "SUCCESS",
+  "message": "The candidate submitted interview at timestamp 2026-10-12 15:58:26.760990. Currently, Report is not yet available.",
+  "data": {
+    "interview_status": {
+      "candidate_id": "CAND-13F52EA9",
+      "job_id": "JOB-2F3325DE",
+      "round_type": "BASIC",
+      "is_interview_started": true,
+      "is_interview_submitted": true,
+      "is_report_available": false,
+      "started_at": "2026-10-12 15:55:24.074487",
+      "submitted_at": "2026-10-12 15:58:26.760990"
+    }
+  }
+}
+[Response Body] ↑↑↑
+======================================================================
+
+[2m4:26:28 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m4:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/types.ts[22m
+[2m4:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssessmentsAndAssignments.tsx, /src/index.css[22m
+[2m4:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/app/schemas/assessment.py[22m
+[2m4:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/app/services/primehire_payload.py[22m
+[2m4:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/tests/test_schemas.py[22m
+[2m4:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mbackend/tests/test_assessments_api.py[22m
+[2m4:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m
+[2m4:27:50 pm[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2m$logOut[22m

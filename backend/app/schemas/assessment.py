@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+MAX_MCQ_OPTIONS = 5
+
 
 class QuestionIn(BaseModel):
     id: str = ""
@@ -14,7 +16,7 @@ class QuestionIn(BaseModel):
     maxDuration: int = Field(default=120, ge=1, le=120, alias="max_duration")
     referenceAnswer: str | None = Field(default=None, alias="answer")
     criteria: str | None = None
-    options: list[str] | None = None
+    options: list[str] | None = Field(default=None, max_length=MAX_MCQ_OPTIONS)
     correctOption: str | None = Field(default=None, alias="correct_option")
     maxScore: int | None = Field(default=None, alias="max_score")
     weightage: int | None = None
@@ -54,7 +56,7 @@ class QuestionPatch(BaseModel):
     maxDuration: int = Field(default=120, ge=1, le=120)
     referenceAnswer: str | None = None
     criteria: str | None = None
-    options: list[str] | None = None
+    options: list[str] | None = Field(default=None, max_length=MAX_MCQ_OPTIONS)
     correctOption: str | None = None
     maxScore: int | None = None
     weightage: int | None = None

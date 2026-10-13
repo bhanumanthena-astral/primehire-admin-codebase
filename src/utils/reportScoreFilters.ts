@@ -51,7 +51,7 @@ export function getCandidateScore(
 ): number | null {
   if (candidate.reportStatus === 'GENERATING' || candidate.reportStatus === 'FAILED') return null;
   if (!assessmentRound || round !== assessmentRound) return null;
-  const raw = rawReport ?? candidate.simulatedReport;
+  const raw = rawReport;
   if (!raw) return null;
   const normalized = normalizeReport(raw, assessmentRound);
   if (!normalized || normalized.isEmpty || normalized.meta.roundType !== round) return null;

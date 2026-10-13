@@ -1,3 +1,4 @@
+import { matchesCandidateFilters, matchesAssessmentFilters } from '../utils/portalFilters';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -48,21 +49,9 @@ export default function Dashboard({
   onMonitorProcessing
 }: DashboardProps) {
   // Apply active filter state
-  const filteredAssessments = assessments.filter(a => {
-    const matchesRound = filterRound === 'ALL' || a.roundType === filterRound;
-    const matchesSearch = !searchQuery || a.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) || a.jobId.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesRound && matchesSearch;
-  });
+  const filteredAssessments = assessments.filter(assessment => matchesAssessmentFilters(assessment, filterRound, searchQuery));
 
-  const filteredCandidates = candidates.filter(c => {
-    const matchesRound = filterRound === 'ALL' || assessments.find(a => a.id === c.assessmentId)?.roundType === filterRound;
-    const matchesStatus = filterStatus === 'ALL' ||
-      (filterStatus === 'GENERATED' && c.reportStatus === 'GENERATED') ||
-      (filterStatus === 'GENERATING' && c.reportStatus === 'GENERATING') ||
-      (filterStatus === 'PENDING' && !c.reportStatus);
-    const matchesSearch = !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.email.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesRound && matchesStatus && matchesSearch;
-  });
+  const filteredCandidates = candidates.filter(candidate => matchesCandidateFilters(candidate, assessments, filterRound, filterStatus, searchQuery));
 
   const isFiltered = Boolean(searchQuery?.trim()) || filterRound !== 'ALL' || filterStatus !== 'ALL';
   const displayAssessments = isFiltered ? filteredAssessments : assessments;
@@ -97,7 +86,7 @@ export default function Dashboard({
         subtitle="Are candidate evaluation pipelines operating at scale, and are reports generated on schedule?"
         icon={<BarChart3 className="w-5 h-5" />}
         action={
-          <PAButton onClick={() => onNavigate('assessments')} className="hidden sm:inline-flex">
+          <PAButton onClick={() => onNavigate('assessments')} >
             <Zap className="w-4 h-4" /> New Assessment
           </PAButton>
         }

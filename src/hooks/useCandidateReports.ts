@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Candidate } from '../types';
-import { mockGetReport } from '../mockData';
+import { isRealInterviewId } from '../lib/primehireIds';
+import { getCandidateReport } from '../lib/interviewOperations';
 import { candidateReportKey, getCachedCandidateReport, subscribeCandidateReports, candidateReportsVersion } from '../lib/candidateReportCache';
 
 const pending = new Map<string, Promise<any>>();
@@ -9,12 +10,12 @@ export function loadCandidateFilterReport(candidate: Candidate): Promise<any> {
   const key = candidateReportKey(candidate);
   const cached = getCachedCandidateReport(candidate);
   if (cached) return Promise.resolve(cached);
-  if (!candidate.simulatedReport && (!candidate.interviewId || candidate.interviewId.startsWith('int-'))) {
+  if (!isRealInterviewId(candidate.interviewId)) {
     return Promise.reject(new Error('No evaluation report is available for this candidate.'));
   }
   const existing = pending.get(key);
   if (existing) return existing;
-  const request = mockGetReport(candidate.id, [candidate]);
+  const request = getCandidateReport(candidate.id, [candidate]);
   pending.set(key, request);
   request.then(() => pending.delete(key), () => pending.delete(key));
   return request;
@@ -27,7 +28,7 @@ export function useCandidateReports(candidates: Candidate[], enabled: boolean) {
   const [failed, setFailed] = useState(0);
   const [retry, setRetry] = useState(0);
   const eligible = candidates.filter(c => c.reportStatus !== 'GENERATING' && c.reportStatus !== 'FAILED' &&
-    (c.reportStatus === 'GENERATED' || c.submittedDate || c.simulatedReport));
+    (c.reportStatus === 'GENERATED' || c.submittedDate));
   const requestKey = eligible.map(candidateReportKey).join('|');
 
   useEffect(() => {

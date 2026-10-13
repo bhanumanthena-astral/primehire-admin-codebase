@@ -35,6 +35,11 @@ export function asInterviewId(id: string): InterviewId {
   return id as InterviewId;
 }
 
+export function isRealInterviewId(id: unknown): id is InterviewId {
+  return typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id) &&
+    !/^(int|res|cand|job)-/i.test(id);
+}
+
 export function asResponseId(id: string): ResponseId {
   return id as ResponseId;
 }
@@ -49,7 +54,7 @@ const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}
  * and returns it as a VerifiedCandidateUUID. Throws an error otherwise.
  */
 export function toVerifiedCandidateUUID(id: string): VerifiedCandidateUUID {
-  if (!UUID_REGEX.test(id)) {
+  if (!UUID_REGEX.test(id) || id.startsWith('c3a7db8e-0f2c-473d-82ba-')) {
     throw new Error(`Invalid UUID format for VerifiedCandidateUUID: "${id}"`);
   }
   return id as VerifiedCandidateUUID;

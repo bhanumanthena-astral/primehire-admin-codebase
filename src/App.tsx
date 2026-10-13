@@ -1,10 +1,12 @@
+import { matchesCandidateFilters, matchesAssessmentFilters } from './utils/portalFilters';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { INITIAL_CANDIDATES, INITIAL_TEMPLATES } from './mockData';
+import { INITIAL_TEMPLATES } from './lib/mailTemplates';
+import { sanitizeCandidateData } from './lib/candidateData';
 import { AssessmentProfile, Candidate, MailTemplate } from './types';
 import Dashboard from './components/Dashboard';
 import AssessmentsAndAssignments from './components/AssessmentsAndAssignments';
@@ -35,10 +37,10 @@ import { fetchAssessments, fetchCandidates, updateCandidate, API_BASE, fetchHeal
 import { createMailTemplateStore } from './lib/mailTemplateStore';
 
 const MODULE_TABS = [
-  { id: 'dashboard', label: 'Dashboard Overview', short: 'Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
-  { id: 'candidates', label: 'Candidate Directory', short: 'Candidates', icon: Users, desc: 'Pipeline, reports & credentials' },
-  { id: 'assessments', label: 'Assessments & Profiles', short: 'Assessments', icon: Briefcase, desc: 'Profiles, scheduling & links' },
-  { id: 'templates', label: 'Mail Templates', short: 'Templates', icon: Mail, desc: 'Invites & reminder sequences' },
+  { id: 'dashboard', label: 'Executive Overview', short: 'Executive Overview', icon: LayoutDashboard, desc: 'Throughput & evaluation metrics' },
+  { id: 'candidates', label: 'Candidate Directory', short: 'Candidate Directory', icon: Users, desc: 'Pipeline, reports & credentials' },
+  { id: 'assessments', label: 'Assessments', short: 'Assessments', icon: Briefcase, desc: 'Profiles, scheduling & links' },
+  { id: 'templates', label: 'Mail Templates', short: 'Mail Templates', icon: Mail, desc: 'Invites & reminder sequences' },
 ];
 
 /**
@@ -133,11 +135,11 @@ export default function App() {
       if (stored) {
         let parsed = JSON.parse(stored) as Candidate[];
         if (Array.isArray(parsed)) {
-          return parsed.filter(c => c && c.id && c.assessmentId);
+          return parsed.filter(c => c && c.id && c.assessmentId).map(sanitizeCandidateData);
         }
       }
-      return INITIAL_CANDIDATES;
-    } catch { return INITIAL_CANDIDATES; }
+      return [];
+    } catch { return []; }
   });
 
   const [templates, setTemplates] = useState<MailTemplate[]>(() => {
@@ -444,22 +446,22 @@ export default function App() {
     switch (activeTab) {
       case 'dashboard':
         return {
-          title: 'Executive Portal Dashboard',
+          title: 'Executive Overview',
           subtitle: 'Operational decision-support overview for assessment throughput, candidate evaluations, and performance metrics.',
         };
       case 'candidates':
         return {
-          title: 'Candidate Directory & Pipeline',
+          title: 'Candidate Directory',
           subtitle: 'Centralized directory monitoring candidate evaluation statuses, reports, and credential access.',
         };
       case 'assessments':
         return {
-          title: 'Assessment Profiles & Scheduling',
+          title: 'Assessments',
           subtitle: 'Manage evaluation question sets, configure test bounds, and provision interview access links.',
         };
       case 'templates':
         return {
-          title: 'Email Templates & Communications',
+          title: 'Mail Templates',
           subtitle: 'Configure automated invite and reminder email templates with dynamic merge variables.',
         };
       default:
@@ -472,6 +474,8 @@ export default function App() {
 
   const moduleContext = getModuleContext();
   const hasActiveFilters = filterRound !== 'ALL' || filterStatus !== 'ALL' || searchQuery;
+  const matchingCandidates = candidates.filter(candidate => matchesCandidateFilters(candidate, assessments, filterRound, filterStatus, searchQuery));
+  const matchingProfiles = assessments.filter(profile => matchesAssessmentFilters(profile, filterRound, searchQuery));
 
   return (
     <div className="relative min-h-screen bg-gradient-app text-foreground font-sans antialiased">
@@ -504,10 +508,10 @@ export default function App() {
       </div>
 
       {/* ── Sticky brand bar — FIXED h-16 in every state. Scroll state drives
-          only opacity/transform cues inside it (mini-title fade, logo scale),
+          only the logo scale inside it,
           never height/padding, so sticking it cannot shift page layout. ── */}
       <header className="sticky top-0 z-30 bg-gradient-primary text-primary-foreground shadow-[var(--shadow-glow)]">
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="relative flex items-center justify-between gap-3 h-16">
             <div className="flex items-center gap-3 min-w-0">
               <div
@@ -527,23 +531,10 @@ export default function App() {
                     v1.0
                   </span>
                 </div>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
+                <span className="hidden sm:block text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
                   Placement Analytics · Assignment Portal
                 </span>
               </div>
-            </div>
-
-            {/* Mini module title: absolute + opacity-only, so it reserves no
-                space and fades without touching layout. aria-hidden because
-                the hero below owns the real H1. */}
-            <div
-              aria-hidden="true"
-              className={cn(
-                'pointer-events-none absolute left-1/2 top-1/2 hidden lg:block max-w-md -translate-x-1/2 -translate-y-1/2 truncate text-sm font-semibold tracking-tight text-white transition-opacity duration-300',
-                compact ? 'opacity-100' : 'opacity-0'
-              )}
-            >
-              {moduleContext.title}
             </div>
 
             <div className="flex items-center gap-2.5 shrink-0">
@@ -572,22 +563,22 @@ export default function App() {
           under the opaque sticky bar. It is never collapsed by scroll state,
           so there is exactly one H1 and no ghost heading behind the nav. ── */}
       <div className="bg-gradient-primary text-primary-foreground">
-        <div className="max-w-7xl mx-auto px-6 pb-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-4 sm:px-6 pt-5 pb-6">
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
             PrimeHire Agent Module
           </div>
-          <h1 className="text-[1.875rem] leading-[2.25rem] font-semibold tracking-tight text-white">
+          <h1 className="mt-2 text-[1.875rem] leading-[2.25rem] font-semibold tracking-tight text-white">
             {moduleContext.title}
           </h1>
-          <p className="text-xs sm:text-sm text-primary-foreground/85 max-w-2xl font-medium leading-relaxed">
+          <p className="mt-3 text-xs sm:text-sm text-primary-foreground/85 max-w-2xl font-medium leading-relaxed">
             {moduleContext.subtitle}
           </p>
         </div>
       </div>
 
       {/* ── Sticky module pills — fixed h-12, sticks under the brand bar ── */}
-      <nav aria-label="Modules" className="sticky top-16 z-30 hidden md:block bg-gradient-primary text-primary-foreground">
-        <div className="max-w-7xl mx-auto px-6">
+      <nav aria-label="Modules" role="tablist" className="sticky top-16 z-30 hidden md:block bg-gradient-primary text-primary-foreground">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center gap-2 h-12 overflow-x-auto no-scrollbar">
             {MODULE_TABS.map(({ id, short, icon: Icon }) => {
               const isActive = activeTab === id;
@@ -620,7 +611,7 @@ export default function App() {
           64px brand + 48px pills), directly under the brand bar on mobile
           where pills are hidden. Constant padding; never resized by scroll. */}
       <div className="sticky top-16 md:top-28 z-30 bg-gradient-primary text-primary-foreground shadow-[var(--shadow-glow)]">
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex flex-wrap items-center gap-2 py-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70 mr-1">
               <SlidersHorizontal className="w-3.5 h-3.5" /> Filters
@@ -683,6 +674,16 @@ export default function App() {
             )}
           </div>
 
+          {hasActiveFilters && (
+            <div role="status" aria-live="polite" className="pb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-white">
+              <strong>{matchingCandidates.length} matching candidate{matchingCandidates.length === 1 ? '' : 's'}</strong>
+              <span>{matchingProfiles.length} matching assessment profile{matchingProfiles.length === 1 ? '' : 's'}</span>
+              <span className="text-white/80">{filterRound === 'ALL' ? 'All rounds' : filterRound} · {filterStatus === 'ALL' ? 'All report statuses' : filterStatus === 'GENERATED' ? 'Evaluated reports' : filterStatus === 'GENERATING' ? 'Reports in progress' : 'Pending reports'}</span>
+              {activeTab !== 'candidates' && <button onClick={() => setActiveTab('candidates')} className="font-semibold underline underline-offset-2 cursor-pointer">View matching candidates</button>}
+              {activeTab === 'assessments' && filterStatus !== 'ALL' && <span className="text-white/80">Report status applies to candidates in the directory.</span>}
+            </div>
+          )}
+
           {/* mobile nav */}
           {isMobileNavOpen && (
             <div className="md:hidden pb-3 grid grid-cols-2 gap-2">
@@ -711,10 +712,10 @@ export default function App() {
 
       {/* ── Main: selectable cards + single frosted workspace ── */}
       {(apiDown || apiError) && (
-        <div className="relative z-10 max-w-7xl w-full mx-auto px-6 pt-4" role="alert">
-          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-300 flex items-center justify-between gap-4">
+        <div className="relative z-10 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4" role="alert">
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-800 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="font-bold uppercase tracking-wider text-[10px] bg-rose-500/20 text-rose-200 px-2 py-0.5 rounded">
+              <span className="font-bold uppercase tracking-wider text-[10px] bg-rose-500/20 text-rose-800 px-2 py-0.5 rounded">
                 Data Notice
               </span>
               <span>{apiError || 'Server unreachable — preserving locally cached data.'}</span>
@@ -730,67 +731,7 @@ export default function App() {
           </div>
         </div>
       )}
-      <main className="relative z-10 max-w-7xl w-full mx-auto px-6 py-8 space-y-6">
-        {/* selectable domain cards */}
-        <div role="tablist" aria-label="Placement domains" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {MODULE_TABS.map(({ id, label, desc, icon: Icon }) => {
-            const isActive = activeTab === id;
-            const count = id === 'dashboard'
-              ? `${assessments.length} profiles`
-              : id === 'candidates'
-                ? `${candidates.length} records`
-                : id === 'assessments'
-                  ? `${assessments.length} active`
-                  : `${templates.length} templates`;
-            return (
-              <div key={id} className="relative">
-                <button
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-pressed={isActive}
-                  onClick={() => setActiveTab(id)}
-                  className={cn(
-                    'w-full text-left rounded-2xl border p-5 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer',
-                    isActive
-                      ? 'border-primary bg-card shadow-[var(--shadow-card)] -translate-y-0.5'
-                      : 'border-border/70 bg-card shadow-[var(--shadow-card)] hover:-translate-y-0.5 hover:border-primary/40'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div
-                      className={cn(
-                        'w-10 h-10 rounded-xl flex items-center justify-center border shrink-0',
-                        isActive
-                          ? 'bg-gradient-primary text-primary-foreground border-transparent'
-                          : 'bg-accent/10 text-accent border-accent/15'
-                      )}
-                    >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    {isActive && (
-                      <span className="w-5 h-5 rounded-full bg-gradient-primary text-primary-foreground flex items-center justify-center shrink-0 text-[10px] font-bold">
-                        ✓
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-sm font-semibold text-foreground">{label}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
-                    <div className="mt-2">
-                      <Pill tone={isActive ? 'info' : 'neutral'}>{count}</Pill>
-                    </div>
-                  </div>
-                </button>
-                {isActive && (
-                  <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-primary" aria-hidden>
-                    <div className="w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-primary" />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
+      <main className="relative z-10 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-6">
         {/* single frosted workspace per screen */}
         <FrostedDetailPanel panelKey={activeTab}>
           {activeTab === 'dashboard' && (

@@ -1,12 +1,13 @@
 /**
  * IST date+time pickers for candidate bulk-upload scheduling.
- * Each instant is one native <input type="datetime-local"> (date + time
- * in a single control). Values are stored as IST wall time
+ * Each instant uses a date field and the shared time picker.
+ * Values are stored as IST wall time
  * (DD/MM/YYYY + hh:mm AM/PM parts); conversion to UTC happens once at
  * confirm time.
  */
 import React from 'react';
 import { Calendar } from 'lucide-react';
+import DateTimeInput from './ui/DateTimeInput';
 import { istPartsToDatetimeLocal, datetimeLocalToIstParts, istDateTimeToUtc } from '../utils/istSchedule';
 import { hasMinimumInterviewWindow, INTERVIEW_WINDOW_NOTICE, MIN_INTERVIEW_WINDOW_MESSAGE } from '../utils/interviewSchedulePolicy';
 
@@ -20,8 +21,7 @@ interface DateTimeFieldProps {
 }
 
 /**
- * Single native datetime-local picker (date + time in one control),
- * same component style as assessment creation. Values stay in the
+ * Shared date and time picker, matching assessment creation. Values stay in the
  * row's DD/MM/YYYY + hh:mm AM/PM IST parts; UTC conversion still
  * happens once at confirm time.
  */
@@ -32,19 +32,16 @@ export function ScheduleDateTimeField({ label, date, time, onChange, invalid, te
       <label className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
         <Calendar className="w-3 h-3" aria-hidden /> {label} <span className="text-[8px] font-bold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1">IST</span>
       </label>
-      <input
-        type="datetime-local"
-        aria-label={`${label} (IST)`}
-        data-testid={testId}
+      <DateTimeInput
+        label={label}
+        testId={testId}
         value={value}
-        onChange={(e) => {
-          const parts = datetimeLocalToIstParts(e.target.value);
+        onChange={(next) => {
+          const parts = datetimeLocalToIstParts(next);
           if (parts) onChange(parts.date, parts.time);
           else onChange('', '');
         }}
-        className={`w-full text-xs h-8 rounded-md border bg-card px-2 font-mono focus:outline-hidden focus:ring-1 focus:ring-ring ${
-          invalid ? 'border-destructive' : 'border-border/70'
-        }`}
+        invalid={invalid}
       />
       <div className="text-[10px] font-mono text-muted-foreground" aria-live="polite">
         {date && time ? `${date} — ${time} IST` : '—'}
@@ -61,8 +58,7 @@ export interface SchedulePair {
 }
 
 /**
- * Combined start/end IST pickers used in the bulk modal — each side is a
- * single datetime-local control (same as assessment creation).
+ * Combined start/end IST pickers used in the bulk modal.
  */
 export function SchedulePairFields({
   value,

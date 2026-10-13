@@ -19,7 +19,7 @@ export function SectionHeader({
   className?: string;
 }) {
   return (
-    <div className={cn('flex items-start justify-between gap-4', className)}>
+    <div className={cn('flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:min-h-24', className)}>
       <div className="flex items-start gap-3 min-w-0">
         {icon && <IconSquare>{icon}</IconSquare>}
         <div className="min-w-0">
@@ -32,7 +32,7 @@ export function SectionHeader({
           )}
         </div>
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="shrink-0 sm:pt-1">{action}</div>}
     </div>
   );
 }
@@ -385,7 +385,7 @@ export function FrostedDetailPanel({
     <div
       key={panelKey}
       className={cn(
-        'glass-panel p-5 sm:p-6 animate-in fade-in slide-in-from-top-2 duration-300',
+        'glass-panel min-w-0 p-4 sm:p-6',
         className
       )}
     >

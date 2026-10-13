@@ -1,7 +1,7 @@
 import { AssessmentProfile, Candidate, Question } from '../types';
 import { toPrimehireTimestamp } from '../utils/dates';
 import { requireMinimumInterviewWindow } from '../utils/interviewSchedulePolicy';
-import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, PASSWORD_RESET_ENABLED, generate32BitId } from './primehireIds';
+import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, PASSWORD_RESET_ENABLED, isRealInterviewId } from './primehireIds';
 
 /**
  * PrimeHire v1 API Client Module
@@ -277,19 +277,6 @@ export const primehireClient = {
   },
 
   /**
-   * 5. Add Candidates to Assessment Profile
-   * Candidates are registered locally and synchronized to backend upon link generation (POST /interview).
-   */
-  async addCandidates(assessmentId: string, candidates: Array<{ name: string; email: string; phone?: string; startTime: string; endTime: string }>): Promise<any[]> {
-    console.log(`[PrimeHire Client] Registered ${candidates.length} candidate(s) for assessment ${assessmentId}. Syncing to backend via POST /interview upon scheduling.`);
-    return candidates.map(c => ({
-      id: 'CAND-' + generate32BitId(),
-      assessmentId,
-      ...c
-    }));
-  },
-
-  /**
    * 6. Generate Credentials & Schedule Interview
    * POST /interview
    */
@@ -311,6 +298,9 @@ export const primehireClient = {
    * PUT /interview/{interview_id}/reschedule
    */
   async rescheduleInterview(interviewId: InterviewId, startTime: string, endTime: string): Promise<any> {
+    if (!isRealInterviewId(interviewId)) {
+      throw new Error('A valid provider interview ID is required to reschedule. Generate a real interview link first.');
+    }
     const start = toPrimehireTimestamp(startTime);
     const end = toPrimehireTimestamp(endTime);
     requireMinimumInterviewWindow(start, end);

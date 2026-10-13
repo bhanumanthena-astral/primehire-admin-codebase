@@ -1,0 +1,238 @@
+{
+  "headers": [
+    "ID",
+    "Title",
+    "Original Status",
+    "Developer review",
+    "Comment",
+    "Root cause analysis",
+    "Dev fix"
+  ],
+  "rows": [
+    [
+      39,
+      "Existing assessment profile is incorrectly displayed as “Syncing...”",
+      "Open",
+      "Ready for manual retest",
+      "Existing assessment cards no longer show a persistent Syncing label. Genuine setup failures still show a warning and Retry action.",
+      "A stored setup state was displayed as ongoing progress even when no active request was running.",
+      "Removed the persistent Syncing badge and kept genuine failure warnings with Retry."
+    ],
+    [
+      40,
+      "overlapping of header and second headline",
+      "Re-open",
+      "Ready for manual retest",
+      "Header spacing has been improved and the duplicate compact heading has been removed.",
+      "Repeated headings and tight spacing made the header area look crowded.",
+      "Simplified the header and added clearer spacing while keeping scrolling stable."
+    ],
+    [
+      41,
+      "CTA alignment from module to module is uneven",
+      "Re-open",
+      "Ready for manual retest",
+      "Module headers now share consistent spacing and action-button alignment, with a stacked layout on smaller screens.",
+      "Module headers used different layouts, so action buttons did not align consistently.",
+      "Applied a shared header layout with consistent spacing and a mobile layout."
+    ],
+    [
+      42,
+      "All options in three dot popup are not displayed for assessment profile",
+      "Open",
+      "Ready for manual retest",
+      "Profile and candidate menus are positioned outside scrolling containers so their available options remain visible.",
+      "Menus were inside scrolling tables that could cut off their edges. Extra table padding was used to make room for them.",
+      "Moved menus outside the table containers, added screen-edge positioning, and removed the extra padding."
+    ],
+    [
+      43,
+      "Selected time is not highlighted in blue",
+      "Open",
+      "Ready for manual retest",
+      "Selected hour, minute, and AM or PM values are highlighted in blue in the shared time picker.",
+      "The native time control used browser-dependent selection colors.",
+      "Added a shared time picker with blue selection states for hour, minute, and AM or PM."
+    ],
+    [
+      44,
+      "Module names are not constant across the portal especially in dashboard",
+      "Open",
+      "Ready for manual retest",
+      "Module names are consistent across the portal, with one navigation surface for each screen size.",
+      "The same module navigation appeared in several places and used different names.",
+      "Kept one navigation surface per screen size and made module names consistent."
+    ],
+    [
+      45,
+      "Filters data is not higlighted",
+      "Open",
+      "Ready for manual retest",
+      "Applied filters immediately show matching record counts and provide a direct action to open the filtered candidate directory.",
+      "Filter results were below the visible area, and there was no immediate summary.",
+      "Added visible result counts and a direct action to open matching candidates."
+    ],
+    [
+      46,
+      "Options in the three-dot popup are partially hidden",
+      "Open",
+      "Ready for manual retest",
+      "Candidate action menus fit the available viewport and scroll internally when necessary.",
+      "Menus were inside scrolling tables that could cut off their edges. Extra table padding was used to make room for them.",
+      "Moved menus outside the table containers, added screen-edge positioning, and removed the extra padding."
+    ],
+    [
+      47,
+      "Candidate details in Table columns are not clearly visible on the mobile screen.",
+      "Open",
+      "Ready for manual retest",
+      "Mobile screens display readable candidate cards with full details, schedules, selection, and available actions.",
+      "The wide candidate table was difficult to read on small screens.",
+      "Added mobile candidate cards with wrapping text, full schedule details, selection, and actions."
+    ],
+    [
+      48,
+      "Content is not correct",
+      "Open",
+      "Ready for manual retest",
+      "The confirmation message now says Filter applied.",
+      "The filter confirmation message used the wrong wording.",
+      "Changed the message to Filter applied."
+    ],
+    [
+      51,
+      "Start and End date/time fields are displayed in two sections",
+      "Open",
+      "Ready for manual retest",
+      "Manual registration collects candidate details only. Start and end schedules are entered once in the review list.",
+      "Manual registration and the review list repeated scheduling and candidate entry controls.",
+      "Kept candidate entry in the manual form and scheduling in the review list."
+    ],
+    [
+      52,
+      "Adding Candidates to the list",
+      "Open",
+      "Ready for manual retest",
+      "The duplicate Add Candidate controls below the review list have been removed. Candidate entry remains in the manual registration form.",
+      "Manual registration and the review list repeated scheduling and candidate entry controls.",
+      "Kept candidate entry in the manual form and scheduling in the review list."
+    ],
+    [
+      53,
+      "Assessment time is not mentioned",
+      "Open",
+      "Ready for manual retest",
+      "Assessment profile windows now show both dates and times in IST.",
+      "Profile schedule summaries displayed dates without times.",
+      "Included start and end times with the IST timezone."
+    ],
+    [
+      54,
+      "user end - unnecessary display",
+      "Open",
+      "Ready for manual retest",
+      "The persistent Syncing display has been removed. Genuine setup errors remain visible with a Retry action.",
+      "A stored setup state was displayed as ongoing progress even when no active request was running.",
+      "Removed the persistent Syncing badge and kept genuine failure warnings with Retry."
+    ],
+    [
+      56,
+      "Delete confirmation popup is partially hidden at the bottom of the page",
+      "Open",
+      "Ready for manual retest",
+      "Candidate confirmation dialogs appear within the viewport and scroll internally when needed.",
+      "Dialogs were positioned inside the workspace, which affected their viewport placement.",
+      "Used viewport dialogs with a bounded height and internal scrolling."
+    ],
+    [
+      57,
+      "Blank white area appears at the bottom when clicking the three-dot options",
+      "Open",
+      "Ready for manual retest",
+      "Action menus no longer require extra space below the table, so opening a menu does not create the blank white area.",
+      "Menus were inside scrolling tables that could cut off their edges. Extra table padding was used to make room for them.",
+      "Moved menus outside the table containers, added screen-edge positioning, and removed the extra padding."
+    ],
+    [
+      59,
+      "alignment of mail templates",
+      "Re-open",
+      "Ready for manual retest",
+      "Invitation template names, subjects, and badges wrap within a dialog that fits and scrolls inside the viewport.",
+      "Long template names and badges competed for space inside a fixed dialog.",
+      "Allowed template text and badges to wrap and made the dialog scroll within the viewport."
+    ],
+    [
+      60,
+      "Assessment login displays “Something went wrong” when the invitation is sent immediately after assigning a candidate",
+      "Open",
+      "Needs investigation",
+      "The immediate-login failure is not confirmed fixed. The source sheet assigns this issue to Rahul Palamarthi.",
+      "Login reportedly fails immediately after assessment setup and works after waiting. The provider-side cause has not been confirmed.",
+      "No verified fix is recorded for this issue. Investigate provider setup readiness and capture the failed login response before closing it."
+    ],
+    [
+      61,
+      "Reschedule issue",
+      "Open",
+      "Needs investigation",
+      "The reschedule failure after editing and resending a TECHNICAL assessment is not confirmed fixed.",
+      "The cause is unconfirmed. The supplied report does not include the failing reschedule request or the provider error response.",
+      "No verified fix is recorded for this edit-and-resend flow. Reproduce it with the current interview ID and review the provider reschedule response."
+    ],
+    [
+      62,
+      "Questions and Time arent reflecting after editing the assessment",
+      "Open",
+      "Needs investigation",
+      "Edited questions and timing appear in the portal, but the candidate assessment reportedly retains the initial version. This issue is not confirmed fixed.",
+      "The portal and candidate assessment show different versions after editing. The cause of the provider content mismatch has not been confirmed.",
+      "No verified fix is recorded for updating an existing candidate interview after an assessment edit. Compare saved assessment details and the linked provider interview content."
+    ]
+  ],
+  "original_rows": [
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    52,
+    53,
+    54,
+    55,
+    57,
+    58,
+    60,
+    61,
+    62,
+    63
+  ],
+  "batches": [
+    [
+      "39 to 48 (retest)",
+      "Open and reopened!E2:G11 -> original T40:V49"
+    ],
+    [
+      "51 to 54 (retest)",
+      "Open and reopened!E12:G15 -> original T52:V55"
+    ],
+    [
+      "56 to 57 (retest)",
+      "Open and reopened!E16:G17 -> original T57:V58"
+    ],
+    [
+      "59 (retest)",
+      "Open and reopened!E18:G18 -> original T60:V60"
+    ],
+    [
+      "60 to 62 (investigate)",
+      "Open and reopened!E19:G21 -> original T61:V63"
+    ]
+  ],
+  "source": "C:\\Users\\onlyf\\.codex\\attachments\\e5058b26-6734-4fda-9c9a-15ec1dc20746\\Pasted text.txt"
+}

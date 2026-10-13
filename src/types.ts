@@ -7,6 +7,7 @@ import { JobId, LocalCandidateId, VerifiedCandidateUUID, InterviewId, ResponseId
 
 export type RoundType = 'TECHNICAL' | 'BASIC' | 'HR';
 export type QuestionType = 'SPEAK_TO_ANSWER' | 'MCQ';
+export const MAX_MCQ_OPTIONS = 5;
 export type CandidateStatus = 'ACTIVE' | 'INACTIVE';
 export type ReportStatus = 'GENERATING' | 'GENERATED' | 'FAILED';
 
@@ -66,19 +67,6 @@ export interface Candidate {
   status: CandidateStatus;
   reportStatus: ReportStatus | null;
   lastInviteSentAt?: string; // For tracking resend behavior and invite-sent state
-  answers?: Record<string, string>; // questionId -> candidate's answer text or selected MCQ option
-  simulatedReport?: {
-    overallScore: number;
-    strengths: string[];
-    weaknesses: string[];
-    answersFeedback: Array<{
-      questionId: string;
-      score: number;
-      maxScore: number;
-      feedback: string;
-    }>;
-  };
-  
   // Custom Recruiter Mailing State Fields
   interviewId?: InterviewId | null;
   responseId?: ResponseId | null;
@@ -91,7 +79,6 @@ export interface Candidate {
   inviteSentAt?: string | null;
   lastReminderSentAt?: string | null;
   reminderCount?: number;
-  interviewExpired?: boolean;
   rowLoading?: boolean;
   mailStatus?: 'Not Sent' | 'Invite Sent' | 'Reminder Sent' | 'Failed' | 'Sending';
   mongoId?: string;   // MongoDB ObjectId (Phase 3C read cutover); never replaces id/candidateKey

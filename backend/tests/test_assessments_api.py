@@ -57,6 +57,17 @@ async def _boom_fetch(path, payload):
     raise remote.PrimehireError("PrimeHire unreachable: ConnectionError")
 
 
+@pytest.mark.parametrize("round_type", ["BASIC", "TECHNICAL", "HR"])
+def test_mcq_option_limit_in_provider_payload(round_type):
+    doc = _payload(round_type, questions=[_mcq(options=["A", "B", "C", "D", "E"], correctOption="E")])
+    question = map_assessment(doc)["questions"][0]
+    assert [option["id"] for option in question["options"]] == ["A", "B", "C", "D", "E"]
+    assert question["correct_option_id"] == "E"
+    doc["questions"][0]["options"].append("F")
+    with pytest.raises(PayloadError, match="max 5"):
+        map_assessment(doc)
+
+
 # ---------- payload matrix ----------
 
 def _matrix_cases():

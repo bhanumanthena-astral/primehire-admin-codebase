@@ -173,30 +173,62 @@ describe('BUG #20: Detailed Feedback vs Transcript separation in report normaliz
     expect(q.feedback).toBeNull();
   });
 
-  test('handles legacy reports where feedback was present without candidate transcript', () => {
-    const legacyReport = {
-      interview_details: { job_id: 'JOB-LEGACY', candidate_id: 'CAND-LEGACY', round_type: 'TECHNICAL' },
-      report: {
-        overallScore: 82,
-        answersFeedback: [
-          {
-            questionId: 'q-legacy-1',
-            question: 'Explain debouncing.',
-            score: 18,
-            maxScore: 20,
-            feedback: 'Solid explanation of rate limiting events.',
-          },
-        ],
-      },
-    };
+  test('ignores the retired simulator feedback schema', () => {
+    const norm = normalizeReport({
+      interview_details: { round_type: 'TECHNICAL' },
+      report: { overallScore: 82, answersFeedback: [{ questionId: 'q-old', score: 18, maxScore: 20, feedback: 'Test result' }] },
+    });
+    expect(norm!.questions).toEqual([]);
+    expect(norm!.overall.overallScore).toBeNull();
+  });
+});
 
-    const norm = normalizeReport(legacyReport);
-    expect(norm).not.toBeNull();
-    const q = norm!.questions[0];
+describe('ReportDialog close button UX and accessibility', () => {
+  test('ReportDialog close button is rendered with accessible labels and clean header layout', async () => {
+    const { vi } = await import('vitest');
+    const React = (await import('react')).default;
+    vi.doMock('@/components/ui/dialog', () => ({
+      Dialog: ({ children }: any) => React.createElement('div', { 'data-slot': 'dialog' }, children),
+      DialogContent: ({ children, className }: any) => React.createElement('div', { 'data-slot': 'dialog-content', className }, children),
+      DialogTitle: ({ children, className }: any) => React.createElement('div', { 'data-slot': 'dialog-title', className }, children),
+    }));
 
-    // Evaluator feedback is mapped to feedback
-    expect(q.feedback).toBe('Solid explanation of rate limiting events.');
-    // Transcript is not falsely set to the feedback
-    expect(q.transcript).toBeNull();
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const ReportDialog = (await import('../components/ReportDialog')).default;
+    const html = renderToStaticMarkup(
+      React.createElement(ReportDialog, {
+        isOpen: true,
+        onClose: () => {},
+        candidate: {
+          id: 'cand-1',
+          name: 'Jane Doe',
+          email: 'jane@example.com',
+          status: 'COMPLETED',
+          score: 85,
+          reportStatus: 'GENERATED',
+          assessmentId: 'job-1',
+          createdAt: '2026-10-12',
+          skills: ['React'],
+        },
+        assessment: {
+          id: 'job-1',
+          jobTitle: 'Senior Frontend Engineer',
+          roundType: 'TECHNICAL',
+          department: 'Engineering',
+          questions: [],
+          status: 'ACTIVE',
+          createdAt: '2026-10-12',
+        },
+        allCandidates: [],
+      })
+    );
+
+    // Verify accessible title and close button
+    expect(html).toContain('Candidate Evaluation Report - Jane Doe');
+    expect(html).toContain('aria-label="Close report"');
+    expect(html).toContain('title="Close report (Esc)"');
+    // Ensure the old broken 'absolute right-3 top-3' hack is gone
+    expect(html).not.toContain('absolute right-3 top-3');
+    expect(html).not.toContain('pr-12');
   });
 });

@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_OPTION_IDS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_OPTION_IDS = "ABCDE"
 
 
 class PayloadError(ValueError):

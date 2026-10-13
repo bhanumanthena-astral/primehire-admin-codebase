@@ -1,22 +1,25 @@
+import CandidateMobileCards from './CandidateMobileCards';
+import { matchesAssessmentFilters } from '../utils/portalFilters';
+import DateTimeInput from './ui/DateTimeInput';
+import ActionMenu from './ui/ActionMenu';
+import ViewportDialog from './ui/ViewportDialog';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { AssessmentProfile, Question, Candidate, MailTemplate, RoundType, QuestionType, CandidateStatus } from '../types';
+import { AssessmentProfile, Question, Candidate, MailTemplate, RoundType, QuestionType, CandidateStatus, MAX_MCQ_OPTIONS } from '../types';
 import { cn } from '@/lib/utils';
-import { 
-  mockGenerateLink,
-  mockRegenerateLink,
-  mockRescheduleInterview,
-  mockResetCandidatePassword,
-  mockSendInvite,
-  mockBulkSendInvite,
-  mockGetInterviewStatus,
-  generateId,
-  renderTemplate
-} from '../mockData';
+import {
+  generateInterviewLinks,
+  regenerateInterviewLink,
+  updateInterviewSchedule,
+  InterviewUnavailableError,
+  resetCandidatePassword,
+  getInterviewStatus,
+} from '../lib/interviewOperations';
+import { renderTemplate } from '../lib/mailTemplates';
 import {
   createCandidatesBulk,
   updateCandidate,
@@ -30,7 +33,7 @@ import {
   newIdempotencyKey,
   ApiError,
 } from '../lib/mongoApi';
-import { asJobId, asLocalCandidateId, JobId, LocalCandidateId, generate32BitId } from '../lib/primehireIds';
+import { asJobId, asLocalCandidateId, JobId, LocalCandidateId, generate32BitId, isRealInterviewId } from '../lib/primehireIds';
 import { primehireClient } from '../lib/primehireClient';
 import {
   SCHEDULE_GRACE_MS,
@@ -54,29 +57,29 @@ import { ScheduleDateTimeField, SchedulePairFields, SchedulePair } from './BulkS
 import { checkScoreFilter, getCandidateScore, REPORT_GRADE_OPTIONS } from '../utils/reportScoreFilters';
 import { useCandidateReports } from '../hooks/useCandidateReports';
 import { hasMinimumInterviewWindow, MIN_INTERVIEW_WINDOW_MESSAGE, INTERVIEW_WINDOW_NOTICE } from '../utils/interviewSchedulePolicy';
-import { 
-  ChevronRight, 
-  Plus, 
-  ArrowLeft, 
-  Trash2, 
-  Cpu, 
-  Calendar, 
-  Settings, 
-  Eye, 
-  UserPlus, 
-  Check, 
+import {
+  ChevronRight,
+  Plus,
+  ArrowLeft,
+  Trash2,
+  Cpu,
+  Calendar,
+  Settings,
+  Eye,
+  UserPlus,
+  Check,
   X,
-  AlertCircle, 
-  Clock, 
-  Lock, 
-  ExternalLink, 
-  Copy, 
-  Send, 
-  ChevronDown, 
-  ChevronUp, 
-  Upload, 
+  AlertCircle,
+  Clock,
+  Lock,
+  ExternalLink,
+  Copy,
+  Send,
+  ChevronDown,
+  ChevronUp,
+  Upload,
   Download,
-  Sparkles, 
+  Sparkles,
   Edit,
   Trash,
   CheckCircle,
@@ -119,13 +122,13 @@ const LAYER3_OPTIONS: Record<string, Record<string, string[]>> = {
     'Communication': ['Grammar', 'Fluency', 'Vocabulary', 'Pronunciation'],
     'Interview Analysis': ['Confidence'],
     'HR Competency Analysis': [
-      'Self Discipline', 'Time Management', 'Detail Orientation', 'Teamwork', 'Professionalism', 
-      'Leadership', 'Motivation', 'Learning Ability', 'Adaptability', 'Creativity & Innovation', 
+      'Self Discipline', 'Time Management', 'Detail Orientation', 'Teamwork', 'Professionalism',
+      'Leadership', 'Motivation', 'Learning Ability', 'Adaptability', 'Creativity & Innovation',
       'Positive Attitude', 'Problem Solving'
     ],
     'VILS Competency Analysis': [
-      'Leading and Deciding', 'Supporting and Cooperating', 'Interacting and Presenting', 
-      'Analysing and Interpreting', 'Creating and Conceptualising', 'Organising and Executing', 
+      'Leading and Deciding', 'Supporting and Cooperating', 'Interacting and Presenting',
+      'Analysing and Interpreting', 'Creating and Conceptualising', 'Organising and Executing',
       'Adapting and Coping', 'Enterprising and Performing'
     ],
     'Values & Personality': ['Personal Values (Big Five)', 'Societal Values', 'Dark Triad Risk Assessment']
@@ -135,7 +138,7 @@ const LAYER3_OPTIONS: Record<string, Record<string, string[]>> = {
 const LAYER4_OPTIONS: Record<string, string[]> = {
   'Personal Values (Big Five)': ['Openness', 'Extroversion', 'Conscientiousness', 'Agreeableness', 'Neurotic'],
   'Societal Values': [
-    'Hedonism', 'Power', 'Stimulation', 'Conformity', 'Universalism', 
+    'Hedonism', 'Power', 'Stimulation', 'Conformity', 'Universalism',
     'Self Direction', 'Achievement', 'Traditional', 'Benevolence', 'Security'
   ],
   'Dark Triad Risk Assessment': ['Machiavellianism', 'Narcissism', 'Psychopathy']
@@ -143,19 +146,19 @@ const LAYER4_OPTIONS: Record<string, string[]> = {
 
 function getScoreScale(round: string, layer2: string | null, layer3: string | null, layer4: string | null): 'scale5' | 'scale3' | null {
   if (round === 'ALL' || !round) return null;
-  
+
   if (round === 'BASIC') {
     if (layer2 === 'Overall Score') return 'scale5';
     if (layer2 === 'Communication') return 'scale5';
   }
-  
+
   if (round === 'TECHNICAL') {
     if (layer2 === 'Overall Result') return 'scale5';
     if (layer2 === 'Technical Analysis (Overall Score)') return 'scale5';
     if (layer2 === 'Interview Analysis (Confidence Score)') return 'scale5';
     if (layer2 === 'Communication') return 'scale5';
   }
-  
+
   if (round === 'HR') {
     if (layer2 === 'Communication') return 'scale5';
     if (layer2 === 'Interview Analysis') return 'scale5';
@@ -163,7 +166,7 @@ function getScoreScale(round: string, layer2: string | null, layer3: string | nu
     if (layer2 === 'VILS Competency Analysis') return 'scale3';
     if (layer2 === 'Values & Personality') return 'scale3';
   }
-  
+
   return null;
 }
 
@@ -225,7 +228,6 @@ export default function AssessmentsAndAssignments({
   const [formEndDate, setFormEndDate] = useState('');
   const [editingAssessmentId, setEditingAssessmentId] = useState<string | null>(null);
   const [activeDropdownAsmId, setActiveDropdownAsmId] = useState<string | null>(null);
-  const [simulateCreateFailure, setSimulateCreateFailure] = useState(false);
   const [isSavingAssessment, setIsSavingAssessment] = useState(false);
 
   // ==========================================
@@ -235,20 +237,7 @@ export default function AssessmentsAndAssignments({
   const [deleteConfirmCandId, setDeleteConfirmCandId] = useState<string | null>(null); // Step 1 delete
   const [doubleConfirmCandId, setDoubleConfirmCandId] = useState<string | null>(null); // Step 2 delete
   const [openMenuCandId, setOpenMenuCandId] = useState<string | null>(null); // Candidate actions dropdown menu
-  const menuContainerRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!openMenuCandId) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
-        setOpenMenuCandId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-    };
-  }, [openMenuCandId]);
 
   // ==========================================
   // 3b. RESCHEDULE MODAL STATE
@@ -257,6 +246,7 @@ export default function AssessmentsAndAssignments({
   const [rescheduleStartTime, setRescheduleStartTime] = useState('');
   const [rescheduleEndTime, setRescheduleEndTime] = useState('');
   const [isRescheduling, setIsRescheduling] = useState(false);
+  const [rescheduleNeedsReplacement, setRescheduleNeedsReplacement] = useState(false);
 
   const [passwordEditCandId, setPasswordEditCandId] = useState<LocalCandidateId | null>(null);
   const [newCandPassword, setNewCandPassword] = useState('');
@@ -330,10 +320,6 @@ export default function AssessmentsAndAssignments({
   const [manualName, setManualName] = useState('');
   const [manualEmail, setManualEmail] = useState('');
   const [manualPhone, setManualPhone] = useState('');
-  const [manualStartDate, setManualStartDate] = useState('');
-  const [manualStartTime12, setManualStartTime12] = useState('');
-  const [manualEndDate, setManualEndDate] = useState('');
-  const [manualEndTime12, setManualEndTime12] = useState('');
 
   // Row schedule shape: IST picker values (DD/MM/YYYY + hh:mm AM/PM).
   // startUtc/endUtc hold the canonical instant derived from the pickers
@@ -679,6 +665,10 @@ export default function AssessmentsAndAssignments({
       // MCQ Validation
       if (formQuestions[i].type === 'MCQ') {
         const opts = formQuestions[i].options || [];
+        if (opts.length > MAX_MCQ_OPTIONS) {
+          toast.error(`Question #${i + 1} (MCQ) allows a maximum of ${MAX_MCQ_OPTIONS} options. Remove the extra options before saving.`);
+          return;
+        }
         if (opts.length === 0 || opts.some(o => !o.trim())) {
           toast.error(`Question #${i + 1} (MCQ) needs options with non-empty content.`);
           return;
@@ -704,12 +694,6 @@ export default function AssessmentsAndAssignments({
     // 4. Technical/Basic weightage validation
     if (formRoundType !== 'HR' && totalWeightageSum !== 100) {
       toast.error(`Validation Failed: Sum of question weightages must be exactly 100%. Currently it is ${totalWeightageSum}%.`);
-      return;
-    }
-
-    // Simulate failure flag check
-    if (simulateCreateFailure) {
-      toast.error('API Error: Simulated POST /assessment server failure. Your entered form data was preserved.');
       return;
     }
 
@@ -739,7 +723,7 @@ export default function AssessmentsAndAssignments({
         });
         onSetAssessments(prev => prev.map(a => (a.id === editingAssessmentId ? updated : a)));
         toast.success(`Assessment "${updated.jobTitle}" updated successfully!`);
-        
+
         // Reset Creation Fields
         setEditingAssessmentId(null);
         setFormJobId('JOB-' + generate32BitId());
@@ -791,7 +775,7 @@ export default function AssessmentsAndAssignments({
       } else {
         toast.success(`Assessment "${newAsm.jobTitle}" created successfully!`);
       }
-      
+
       // Reset Creation Fields and generate a new Job ID
       setFormJobId('JOB-' + generate32BitId());
       setFormJobTitle('');
@@ -817,7 +801,7 @@ export default function AssessmentsAndAssignments({
     setFormLanguage(asm.language);
     setFormRoundType(asm.roundType);
     setFormQuestions(asm.questions);
-    
+
     // Convert ISO string back to local datetime-local format: 'YYYY-MM-DDTHH:mm'
     const formatToDatetimeLocal = (isoStr?: string) => {
       if (!isoStr) return '';
@@ -830,7 +814,7 @@ export default function AssessmentsAndAssignments({
         return '';
       }
     };
-    
+
     setFormStartDate(formatToDatetimeLocal(asm.startDate));
     setFormEndDate(formatToDatetimeLocal(asm.endDate));
     setCurrentView('EDIT');
@@ -970,7 +954,7 @@ export default function AssessmentsAndAssignments({
     onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: true } : c));
 
     try {
-      const updated = await mockGenerateLink([candId], candidates, activeAssessment.roundType, activeAssessment.jobId);
+      const updated = await generateInterviewLinks([candId], candidates, activeAssessment.roundType, activeAssessment.jobId);
       onSetCandidates(updated);
       toast.success('Evaluation link and password generated successfully.');
       const failed = await pushCandidatesToServer(updated.filter(c => c.id === candId));
@@ -987,6 +971,10 @@ export default function AssessmentsAndAssignments({
   const handleOpenRescheduleModal = (candId: LocalCandidateId) => {
     if (!activeAssessment) return;
     const cand = candidates.find(c => c.id === candId);
+    if (!cand) {
+      toast.error('Candidate not found. Reload the candidate list.');
+      return;
+    }
     if (cand && cand.status !== 'ACTIVE') {
       toast.error('Cannot reschedule for an Inactive candidate.');
       return;
@@ -997,10 +985,11 @@ export default function AssessmentsAndAssignments({
     setRescheduleStartTime(utcToIstDatetimeLocal(cand?.startTime));
     setRescheduleEndTime(utcToIstDatetimeLocal(cand?.endTime));
     setRescheduleCandId(candId);
+    setRescheduleNeedsReplacement(false);
   };
 
   const handleRescheduleSubmit = async () => {
-    if (!rescheduleCandId) return;
+    if (!rescheduleCandId || isRescheduling) return;
 
     if (!rescheduleStartTime) {
       toast.error('New Start Time is required.');
@@ -1046,40 +1035,36 @@ export default function AssessmentsAndAssignments({
 
     setIsRescheduling(true);
     try {
-      const cand = candidates.find(c => c.id === rescheduleCandId);
-
-      if (cand?.interviewId) {
-        // Candidate has an existing interview — call PrimeHire reschedule API
-        const updated = await mockRescheduleInterview(rescheduleCandId, candidates, startIso, endIso);
-        onSetCandidates(updated);
-        toast.success('Interview rescheduled successfully! New schedule window applied.');
-        if (await pushCandidatesToServer(updated.filter(c => c.id === rescheduleCandId)) > 0) {
-          toast.warning('Rescheduled, but server sync failed — the change may not appear in other browsers.');
-        }
+      if (rescheduleNeedsReplacement && !activeAssessment) throw new Error('Assessment not found. Reload the assessment list.');
+      const result = await updateInterviewSchedule(
+        rescheduleCandId, candidates, startIso, endIso,
+        rescheduleNeedsReplacement && activeAssessment
+          ? { roundType: activeAssessment.roundType, jobId: activeAssessment.jobId }
+          : undefined,
+      );
+      onSetCandidates(prev => prev.map(c => c.id === rescheduleCandId ? result.candidate : c));
+      if (!result.persisted) {
+        toast.warning(result.outcome === 'window_saved'
+          ? 'Window updated in this browser only. The candidate has not been saved to the server.'
+          : 'The provider accepted the change, but saving it to the portal failed. The displayed change may be lost after refresh.');
+      } else if (result.outcome === 'new_interview') {
+        toast.success('New interview created for the selected window. Send the new link and password to the candidate.');
+      } else if (result.outcome === 'rescheduled') {
+        toast.success('Interview rescheduled and the new window saved successfully.');
       } else {
-        // No interview yet — just update the stored times locally + MongoDB
-        onSetCandidates(prev => prev.map(c =>
-          c.id === rescheduleCandId
-            ? { ...c, startTime: startIso, endTime: endIso }
-            : c
-        ));
-        toast.success('Interview window updated. You can now generate a link.');
-        // Sync the updated candidate to MongoDB
-        const updatedCand = { ...cand!, startTime: startIso, endTime: endIso };
-        if (updatedCand.mongoId) {
-          try {
-            await updateCandidate(updatedCand.id, { startTime: startIso, endTime: endIso });
-          } catch {
-            toast.warning('Window updated locally, but server sync failed.');
-          }
-        }
+        toast.success('Interview window saved. Generate a real interview link before sending an invitation.');
       }
-
       setRescheduleCandId(null);
+      setRescheduleNeedsReplacement(false);
       setRescheduleStartTime('');
       setRescheduleEndTime('');
     } catch (err: any) {
-      toast.error('Reschedule failed: ' + err.message);
+      if (err instanceof InterviewUnavailableError) {
+        setRescheduleNeedsReplacement(true);
+        toast.error(err.message);
+      } else {
+        toast.error('Reschedule failed: ' + err.message);
+      }
     } finally {
       setIsRescheduling(false);
     }
@@ -1094,7 +1079,7 @@ export default function AssessmentsAndAssignments({
 
     setIsSavingPassword(true);
     try {
-      const updated = await mockResetCandidatePassword(passwordEditCandId, candidates, newCandPassword.trim());
+      const updated = await resetCandidatePassword(passwordEditCandId, candidates, newCandPassword.trim());
       onSetCandidates(updated);
       toast.success('Candidate password updated successfully on PrimeHire API!');
       setPasswordEditCandId(null);
@@ -1121,9 +1106,9 @@ export default function AssessmentsAndAssignments({
       return;
     }
     try {
-      const updated = await mockRegenerateLink(candId, candidates, activeAssessment.roundType, activeAssessment.jobId);
+      const updated = await regenerateInterviewLink(candId, candidates, activeAssessment.roundType, activeAssessment.jobId);
       onSetCandidates(updated);
-      toast.success('Previous link invalidated. Issued fresh credentials.');
+      toast.success('New interview link created. Send the updated link and password to the candidate.');
       if (await pushCandidatesToServer(updated.filter(c => c.id === candId)) > 0) {
         toast.warning('Link reissued, but server sync failed — the new link may not appear in other browsers.');
       }
@@ -1137,7 +1122,7 @@ export default function AssessmentsAndAssignments({
   const handleCheckCandidateStatus = async (candId: LocalCandidateId) => {
     setSyncingCandidateId(candId);
     try {
-      const updated = await mockGetInterviewStatus(candId, candidates);
+      const updated = await getInterviewStatus(candId, candidates);
       onSetCandidates(updated);
       const target = updated.find(c => c.id === candId);
       if (await pushCandidatesToServer(updated.filter(c => c.id === candId)) > 0) {
@@ -1194,7 +1179,7 @@ export default function AssessmentsAndAssignments({
     (c.link !== null && c.link !== '') &&
     c.status === 'ACTIVE' &&
     !c.submittedDate &&
-    !(new Date() > new Date(c.endTime) || c.interviewExpired);
+    !(new Date() > new Date(c.endTime));
 
   // Opens the template picker instead of sending immediately — the mail is
   // sent only with the template the operator selects in the dialog.
@@ -1214,7 +1199,7 @@ export default function AssessmentsAndAssignments({
         toast.error('Cannot send email to an inactive candidate.');
         return;
       }
-      if (new Date() > new Date(t.endTime) || t.interviewExpired) {
+      if (new Date() > new Date(t.endTime)) {
         toast.error('Cannot send invitation for an expired assessment.');
         return;
       }
@@ -1330,7 +1315,7 @@ export default function AssessmentsAndAssignments({
       return;
     }
     const isExpired = new Date() > new Date(target.endTime);
-    if (isExpired || target.interviewExpired) {
+    if (isExpired) {
       toast.error('Cannot send reminder for an expired assessment.');
       return;
     }
@@ -1417,7 +1402,7 @@ export default function AssessmentsAndAssignments({
     onSetCandidates(prev => prev.map(c => sendableIds.includes(c.id) ? { ...c, rowLoading: true } : c));
 
     try {
-      const updated = await mockGenerateLink(sendableIds, candidates, activeAssessment.roundType, activeAssessment.jobId);
+      const updated = await generateInterviewLinks(sendableIds, candidates, activeAssessment.roundType, activeAssessment.jobId);
       onSetCandidates(updated);
       if (sendableIds.length < selectedCandidateIds.length) {
         toast.success(`Generated links for ${sendableIds.length} candidate(s). Others were skipped (inactive or invalid window).`);
@@ -1444,11 +1429,11 @@ export default function AssessmentsAndAssignments({
   const handleBulkSendReminders = async () => {
     const selectedActiveCands = activeAssessmentCandidates.filter(c => selectedCandidateIds.includes(c.id));
     // Rule: selected rows with invite already sent and not completed only, must also be active and not expired
-    const targetCands = selectedActiveCands.filter(c => 
-      (c.inviteSent || !!c.lastInviteSentAt) && 
-      !c.submittedDate && 
+    const targetCands = selectedActiveCands.filter(c =>
+      (c.inviteSent || !!c.lastInviteSentAt) &&
+      !c.submittedDate &&
       c.status === 'ACTIVE' &&
-      !(new Date() > new Date(c.endTime) || c.interviewExpired)
+      !(new Date() > new Date(c.endTime))
     );
 
     if (targetCands.length === 0) {
@@ -1457,16 +1442,16 @@ export default function AssessmentsAndAssignments({
     }
 
     // Set row loading for all targets
-    onSetCandidates(prev => prev.map(c => 
-      targetCands.some(tc => tc.id === c.id) 
-        ? { ...c, rowLoading: true, mailStatus: 'Sending' } 
+    onSetCandidates(prev => prev.map(c =>
+      targetCands.some(tc => tc.id === c.id)
+        ? { ...c, rowLoading: true, mailStatus: 'Sending' }
         : c
     ));
 
     const template = templates.find(t => t.type === 'REMINDER') || templates.find(t => t.id === 'tpl-reminder') || templates[0];
     if (!template) {
       toast.error('No reminder template found.');
-      onSetCandidates(prev => prev.map(c => 
+      onSetCandidates(prev => prev.map(c =>
         targetCands.some(tc => tc.id === c.id) ? { ...c, rowLoading: false } : c
       ));
       return;
@@ -1531,55 +1516,6 @@ export default function AssessmentsAndAssignments({
       toast.warning(`Server sync failed for ${reminderSyncFailCount} reminded candidate(s).`);
     }
     setSelectedCandidateIds([]);
-  };
-
-  const handleSimulateCompletion = (candId: string) => {
-    const target = candidates.find(c => c.id === candId);
-    if (!target) return;
-
-    onSetCandidates(prev => prev.map(c => {
-      if (c.id === candId) {
-        return {
-          ...c,
-          submittedDate: new Date().toISOString(),
-          assessmentStatus: 'COMPLETED',
-          reportStatus: 'GENERATED' as const,
-          answers: { 'q-react-1': 'Simulated response from Recruiter Admin sandbox.' },
-          simulatedReport: {
-            overallScore: 88,
-            strengths: ['Clear articulate formulation', 'In-depth conceptual grasp'],
-            weaknesses: ['Minor edge case oversight'],
-            answersFeedback: [
-              { questionId: 'q-react-1', score: 18, maxScore: 20, feedback: 'Strong architectural answers.' }
-            ]
-          }
-        };
-      }
-      return c;
-    }));
-    toast.success(`Simulated candidate ${target.name} completing their assessment. Review AI Scorecard now!`);
-  };
-
-  const handleToggleExpiry = (candId: string) => {
-    const target = candidates.find(c => c.id === candId);
-    if (!target) return;
-
-    const isCurrentlyExpired = new Date() > new Date(target.endTime) || target.interviewExpired;
-    const nextEndTime = isCurrentlyExpired 
-      ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString() // 3 days in future
-      : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // 1 day in past
-
-    onSetCandidates(prev => prev.map(c => {
-      if (c.id === candId) {
-        return {
-          ...c,
-          endTime: nextEndTime,
-          interviewExpired: !isCurrentlyExpired
-        };
-      }
-      return c;
-    }));
-    toast.success(`Schedules updated for ${target.name}: evaluation is now ${!isCurrentlyExpired ? 'EXPIRED' : 'ACTIVE'}.`);
   };
 
   // Two step delete confirmation handlers
@@ -1671,30 +1607,10 @@ export default function AssessmentsAndAssignments({
     toast.success('CSV template downloaded — add candidate details, upload it, then schedule in IST here.');
   };
 
-  // Appends a blank editable row to the review list so a candidate can be
-  // added inline. Schedule stays empty — no arbitrary dates are assigned.
-  const handleAddBlankCandidateRow = () => {
-    setParsedRows(prev => [...prev, {
-      rowId: 'manual-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
-      name: '',
-      email: '',
-      phone: '',
-      startDate: '',
-      startTime: '',
-      endDate: '',
-      endTime: '',
-      startUtc: '',
-      endUtc: '',
-      rawStart: '',
-      rawEnd: '',
-    }]);
-    toast.info('Blank candidate row added — fill Name and Email, then schedule in IST.');
-  };
-
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     if (file.size > 10 * 1024 * 1024) {
       toast.error('Maximum upload size is 10MB.');
       return;
@@ -2058,47 +1974,15 @@ export default function AssessmentsAndAssignments({
       }
     }
 
-    // IST schedule is optional; when partially filled it must be completed.
-    const mStartPartial = Boolean(manualStartDate || manualStartTime12);
-    const mEndPartial = Boolean(manualEndDate || manualEndTime12);
-    if (mStartPartial && !(manualStartDate && manualStartTime12)) {
-      toast.error('Please select both Start Date and Start Time (IST), or leave both empty.');
-      return;
-    }
-    if (mEndPartial && !(manualEndDate && manualEndTime12)) {
-      toast.error('Please select both End Date and End Time (IST), or leave both empty.');
-      return;
-    }
-    if (mStartPartial !== mEndPartial) {
-      toast.error('Schedule is incomplete: select both Start and End windows (IST), or leave both empty.');
-      return;
-    }
-    if (mStartPartial) {
-      const sUtc = istDateTimeToUtc(manualStartDate, manualStartTime12);
-      const eUtc = istDateTimeToUtc(manualEndDate, manualEndTime12);
-      if (!sUtc || !eUtc) {
-        toast.error('Invalid schedule. Use the calendar and time picker (IST).');
-        return;
-      }
-      if (new Date(eUtc).getTime() <= new Date(sUtc).getTime()) {
-        toast.error('End Date & Time must be later than Start Date & Time.');
-        return;
-      }
-      if (!hasMinimumInterviewWindow(sUtc, eUtc)) {
-        toast.error(MIN_INTERVIEW_WINDOW_MESSAGE);
-        return;
-      }
-    }
-
     const newRowObj = {
       rowId: 'manual-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
       name: manualName.trim(),
       email: manualEmail.trim(),
       phone: manualPhone.trim() ? manualPhone.trim() : '',
-      startDate: manualStartDate,
-      startTime: manualStartTime12,
-      endDate: manualEndDate,
-      endTime: manualEndTime12,
+      startDate: '',
+      startTime: '',
+      endDate: '',
+      endTime: '',
       startUtc: '',
       endUtc: '',
       rawStart: '',
@@ -2112,10 +1996,110 @@ export default function AssessmentsAndAssignments({
     setManualName('');
     setManualEmail('');
     setManualPhone('');
-    setManualStartDate('');
-    setManualStartTime12('');
-    setManualEndDate('');
-    setManualEndTime12('');
+  };
+
+  const renderCandidateActions = (c: Candidate) => {
+    const isActive = c.status === 'ACTIVE';
+    return (
+      <ActionMenu label={`Actions for ${c.name}`} open={openMenuCandId === c.id} onOpenChange={open => setOpenMenuCandId(open ? c.id : null)}>
+      {/* Option: Activate */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenMenuCandId(null);
+          onSetCandidates(prev => prev.map(cand => cand.id === c.id ? { ...cand, status: 'ACTIVE', candidateStatus: 'ACTIVE' } : cand));
+          toast.success(`Candidate ${c.name} is now Activated`);
+          void pushStatusToServer([c.id], 'ACTIVE');
+        }}
+        disabled={isActive}
+        className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
+          isActive
+            ? 'text-slate-300 bg-muted/40 cursor-not-allowed'
+            : 'text-foreground hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer'
+        }`}
+      >
+        <Check className="w-3.5 h-3.5 text-emerald-500" />
+        Activate
+      </button>
+
+      {/* Option: Deactivate */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenMenuCandId(null);
+          onSetCandidates(prev => prev.map(cand => cand.id === c.id ? { ...cand, status: 'INACTIVE', candidateStatus: 'INACTIVE' } : cand));
+          toast.success(`Candidate ${c.name} is now Deactivated`);
+          void pushStatusToServer([c.id], 'INACTIVE');
+        }}
+        disabled={!isActive}
+        className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
+          !isActive
+            ? 'text-slate-300 bg-muted/40 cursor-not-allowed'
+            : 'text-foreground hover:bg-amber-50 hover:text-amber-700 cursor-pointer'
+        }`}
+      >
+        <X className="w-3.5 h-3.5 text-amber-500" />
+        Deactivate
+      </button>
+
+      <div className="border-t border-slate-100 my-1"></div>
+
+      {/* Option: Delete */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenMenuCandId(null);
+          handleTriggerDeleteCandidate(c.id);
+        }}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
+      >
+        <Trash2 className="w-3.5 h-3.5 text-destructive" />
+        Delete
+      </button>
+
+      <div className="border-t border-slate-100 my-1 font-sans"></div>
+
+      {/* Option: Update Password */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenMenuCandId(null);
+          setPasswordEditCandId(c.id);
+          setNewCandPassword(c.password || '');
+        }}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/40 transition cursor-pointer"
+      >
+        <Lock className="w-3.5 h-3.5 text-muted-foreground" />
+        Update Password
+      </button>
+
+      {/* Option: Reschedule */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenMenuCandId(null);
+          handleOpenRescheduleModal(c.id);
+        }}
+        disabled={!isActive}
+        title={
+          !isActive
+            ? 'Disabled: Candidate must be Active to reschedule.'
+            : 'Reschedule interview to a new time window'
+        }
+        className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
+          !isActive
+            ? 'text-slate-300 bg-muted/40 cursor-not-allowed'
+            : 'text-foreground hover:bg-muted/40 cursor-pointer'
+        }`}
+      >
+        <Calendar className={`w-3.5 h-3.5 ${isActive ? 'text-amber-500' : 'text-slate-300'}`} />
+        Reschedule
+      </button>
+
+        <button className="sm:hidden w-full px-3 py-2 text-left text-xs font-semibold hover:bg-muted disabled:opacity-50" disabled={!c.inviteSent || !isActive || !!c.submittedDate} onClick={() => { setOpenMenuCandId(null); handleSendReminder(c.id); }}>Send Reminder</button>
+        <button className="sm:hidden w-full px-3 py-2 text-left text-xs font-semibold hover:bg-muted disabled:opacity-50" disabled={!c.interviewId} onClick={() => { setOpenMenuCandId(null); handleCheckCandidateStatus(c.id); }}>Refresh Status</button>
+      </ActionMenu>
+    );
   };
 
   return (
@@ -2125,19 +2109,7 @@ export default function AssessmentsAndAssignments({
           ========================================================================= */}
       {currentView === 'LIST' && (
         <div className="space-y-6">
-          <div className="flex justify-between items-start gap-4">
-            <div className="flex items-start gap-3">
-              <IconSquare><Cpu className="w-5 h-5" /></IconSquare>
-              <div>
-                <span className="eyebrow block">Profiles & scheduling</span>
-                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-                  Assessments & Candidate Assignments
-                </h2>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Establish individual assessment profiles, assign candidate schedules via CSV uploads, and monitor security access credentials.
-                </p>
-              </div>
-            </div>
+<SectionHeader eyebrow="Profiles & scheduling" title="Assessments" subtitle="Create question sets, schedule candidates, and manage interview access." icon={<Cpu className="w-5 h-5" />} action={
             <PAButton
               onClick={() => {
                 setEditingAssessmentId(null);
@@ -2157,20 +2129,13 @@ export default function AssessmentsAndAssignments({
             >
               <Plus className="w-3.5 h-3.5" /> New Assessment
             </PAButton>
-          </div>
+          } />
 
 
 
           {(() => {
             const query = globalSearchQuery ? globalSearchQuery.trim().toLowerCase() : '';
-            const filteredAssessments = assessments.filter(asm => {
-              const matchesRound = !globalRoundFilter || globalRoundFilter === 'ALL' || asm.roundType === globalRoundFilter;
-              const matchesSearch = !query ||
-                (asm.jobTitle && asm.jobTitle.toLowerCase().includes(query)) ||
-                (asm.jobId && asm.jobId.toLowerCase().includes(query)) ||
-                (asm.jobDescription && asm.jobDescription.toLowerCase().includes(query));
-              return matchesRound && matchesSearch;
-            });
+            const filteredAssessments = assessments.filter(asm => matchesAssessmentFilters(asm, globalRoundFilter || 'ALL', globalSearchQuery || ''));
 
             if (assessmentsLoading && assessments.length === 0) {
               return (
@@ -2247,7 +2212,7 @@ export default function AssessmentsAndAssignments({
                           {asm.jobId}
                         </span>
                       </div>
-                      
+
                       {/* Actions: Edit icon & Three dots menu */}
                       <div className="flex items-center gap-1 shrink-0">
                         {/* Quick Edit icon */}
@@ -2260,26 +2225,8 @@ export default function AssessmentsAndAssignments({
                         </button>
 
                         {/* Three Dots Menu */}
-                        <div className="relative inline-block text-left">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDropdownAsmId(activeDropdownAsmId === asm.id ? null : asm.id);
-                            }}
-                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer"
-                            title="Actions"
-                          >
-                            <MoreVertical className="w-3.5 h-3.5" />
-                          </button>
-                          
-                          {activeDropdownAsmId === asm.id && (
-                            <>
-                              <div 
-                                className="fixed inset-0 z-10" 
-                                onClick={() => setActiveDropdownAsmId(null)} 
-                              />
-                              <div className="absolute right-0 mt-1.5 w-36 rounded-lg bg-card border border-border/70 shadow-md z-20 py-1 text-left">
-                                <button
+                        <ActionMenu label={`Actions for ${asm.jobTitle}`} open={activeDropdownAsmId === asm.id} onOpenChange={open => setActiveDropdownAsmId(open ? asm.id : null)}>
+<button
                                   onClick={() => {
                                     handleToggleAssessmentActiveState(asm.id);
                                     setActiveDropdownAsmId(null);
@@ -2290,10 +2237,7 @@ export default function AssessmentsAndAssignments({
                                   <span className={`w-1.5 h-1.5 rounded-full ${asm.isActive ? 'bg-destructive' : 'bg-success'}`} />
                                   {togglingAsmId === asm.id ? 'Saving…' : (asm.isActive ? 'Deactivate' : 'Activate')}
                                 </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                              </ActionMenu>
                       </div>
                     </div>
 
@@ -2312,15 +2256,10 @@ export default function AssessmentsAndAssignments({
                       <span className="text-[9px] font-semibold text-muted-foreground bg-muted/40 border border-border/70 px-2 py-0.5 rounded">
                         {assessmentCandidates.length} Registered
                       </span>
-                      {asm.syncState?.state === 'pending' && (
-                        <span className="text-[9px] font-bold text-amber-700 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded inline-flex items-center gap-1">
-                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Syncing…
-                        </span>
-                      )}
                       {asm.syncState?.state === 'failed' && (
                         <span className="inline-flex items-center gap-1">
                           <span className="text-[9px] font-bold text-rose-700 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded" title={asm.syncState?.error || 'PrimeHire sync failed'}>
-                            Sync failed
+                            Setup needs attention
                           </span>
                           <button
                             onClick={() => handleRetryAssessmentSync(asm)}
@@ -2338,7 +2277,7 @@ export default function AssessmentsAndAssignments({
                       <div>Created: {new Date(asm.createdAt).toLocaleDateString()}</div>
                       {asm.startDate && asm.endDate && (
                         <div className="text-muted-foreground font-medium">
-                          Active Window: {new Date(asm.startDate).toLocaleDateString()} - {new Date(asm.endDate).toLocaleDateString()}
+                          Assessment window (IST): {formatUtcAsIst(asm.startDate)} to {formatUtcAsIst(asm.endDate)}
                         </div>
                       )}
                       {!asm.isActive && asm.deactivatedAt && (
@@ -2410,8 +2349,8 @@ export default function AssessmentsAndAssignments({
                 {currentView === 'EDIT' ? 'Edit Assessment Profile' : 'Create Assessment Profile'}
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {currentView === 'EDIT' 
-                  ? 'Modify the structure, questions, and parameters for candidate evaluative screens.' 
+                {currentView === 'EDIT'
+                  ? 'Modify the structure, questions, and parameters for candidate evaluative screens.'
                   : 'Design the structure, questions, and parameters for candidate evaluative screens.'}
               </p>
             </div>
@@ -2528,24 +2467,14 @@ export default function AssessmentsAndAssignments({
                   <label className="text-xs font-bold text-foreground">
                     Start Date <span className="text-[10px] text-gray-400 font-normal">(Optional)</span>
                   </label>
-                  <Input
-                    type="datetime-local"
-                    value={formStartDate}
-                    onChange={(e) => setFormStartDate(e.target.value)}
-                    className="text-xs"
-                  />
+                  <DateTimeInput label="Assessment start" value={formStartDate} onChange={setFormStartDate} />
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground">
                     End Date <span className="text-[10px] text-gray-400 font-normal">(Optional)</span>
                   </label>
-                  <Input
-                    type="datetime-local"
-                    value={formEndDate}
-                    onChange={(e) => setFormEndDate(e.target.value)}
-                    className="text-xs"
-                  />
+                  <DateTimeInput label="Assessment end" value={formEndDate} onChange={setFormEndDate} />
                 </div>
               </div>
 
@@ -2735,18 +2664,24 @@ export default function AssessmentsAndAssignments({
                           <div className="flex justify-between items-center">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase">MCQ Options Configuration</label>
                             <button
+                              disabled={(q.options?.length || 0) >= MAX_MCQ_OPTIONS}
                               onClick={() => {
                                 const currentOpts = q.options || [];
+                                if (currentOpts.length >= MAX_MCQ_OPTIONS) return;
                                 const letter = String.fromCharCode(65 + currentOpts.length);
                                 handleUpdateQuestion(idx, {
                                   options: [...currentOpts, `Option ${letter}`]
                                 });
                               }}
-                              className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center gap-0.5"
+                              className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center gap-0.5 disabled:text-muted-foreground disabled:cursor-not-allowed disabled:no-underline"
                             >
-                              + Add MCQ Row
+                              + Add Option
                             </button>
                           </div>
+
+                          <p className={`text-[11px] ${(q.options?.length || 0) > MAX_MCQ_OPTIONS ? 'text-destructive' : 'text-muted-foreground'}`}>
+                            {q.options?.length || 0}/{MAX_MCQ_OPTIONS} options. Maximum {MAX_MCQ_OPTIONS} options per question.
+                          </p>
 
                           <div className="space-y-2">
                             {(q.options || []).map((opt, optIdx) => (
@@ -2802,7 +2737,7 @@ export default function AssessmentsAndAssignments({
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
                   Profile Summary
                 </span>
-                
+
                 <div className="space-y-3.5 text-xs">
                   <div className="flex justify-between font-bold">
                     <span className="text-gray-400">Round Type:</span>
@@ -2821,7 +2756,7 @@ export default function AssessmentsAndAssignments({
                           {totalWeightageSum} / 100%
                         </span>
                       </div>
-                      
+
                       {/* Progress bar */}
                       <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
                         <div
@@ -2829,7 +2764,7 @@ export default function AssessmentsAndAssignments({
                           style={{ width: `${Math.min(totalWeightageSum, 100)}%` }}
                         />
                       </div>
-                      
+
                       {totalWeightageSum !== 100 ? (
                         <div className="text-[10px] text-amber-500 font-semibold leading-snug flex items-start gap-1">
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -2843,20 +2778,7 @@ export default function AssessmentsAndAssignments({
                     </div>
                   )}
                 </div>
- 
-                <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-                  <input
-                    type="checkbox"
-                    id="sim-fail"
-                    checked={simulateCreateFailure}
-                    onChange={(e) => setSimulateCreateFailure(e.target.checked)}
-                    className="rounded border-gray-300 text-info focus:ring-ring"
-                  />
-                  <label htmlFor="sim-fail" className="text-[10px] font-semibold text-gray-400 cursor-pointer select-none">
-                    Simulate API POST Failure
-                  </label>
-                </div>
- 
+
                 <div className="space-y-2">
                   <button
                     onClick={handleCreateAssessmentSubmit}
@@ -2992,7 +2914,7 @@ export default function AssessmentsAndAssignments({
                         <span>Max Duration: {q.maxDuration}s {activeAssessment.roundType !== 'HR' && `• Max Score: ${q.maxScore} (Weightage: ${q.weightage}%)`}</span>
                       </div>
                       <p className="text-xs font-semibold text-foreground">{q.text}</p>
-                      
+
                       {q.type === 'MCQ' && q.options && (
                         <div className="grid grid-cols-2 gap-2 mt-2">
                           {q.options.map(opt => (
@@ -3039,7 +2961,7 @@ export default function AssessmentsAndAssignments({
                     </span>
                   )}
                 </div>
- 
+
                 {/* Reset button */}
                 {(filterRound !== 'ALL' || filterLayer2 !== null || filterLayer3 !== null || filterLayer4 !== null || filterScoreValue !== null) && (
                   <button
@@ -3051,7 +2973,7 @@ export default function AssessmentsAndAssignments({
                   </button>
                 )}
               </div>
- 
+
               {/* Responsive Cascading Select Bars */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
                 {/* 1. Round Selection (L1) */}
@@ -3070,7 +2992,7 @@ export default function AssessmentsAndAssignments({
                     <option value="HR">HR Round</option>
                   </select>
                 </div>
- 
+
                 {/* 2. Evaluation Metric (L2) */}
                 <div className={`space-y-1.5 transition-all duration-200 ${filterRound === 'ALL' ? 'opacity-40 pointer-events-none' : ''}`}>
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
@@ -3088,7 +3010,7 @@ export default function AssessmentsAndAssignments({
                     ))}
                   </select>
                 </div>
- 
+
                 {/* 3. Sub-Metric (L3) */}
                 <div className={`space-y-1.5 transition-all duration-200 ${!shouldShowLayer3 ? 'opacity-40 pointer-events-none' : ''}`}>
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
@@ -3106,7 +3028,7 @@ export default function AssessmentsAndAssignments({
                     ))}
                   </select>
                 </div>
- 
+
                 {/* 4. Competency / Personality (L4) */}
                 <div className={`space-y-1.5 transition-all duration-200 ${!shouldShowLayer4 ? 'opacity-40 pointer-events-none' : ''}`}>
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
@@ -3124,7 +3046,7 @@ export default function AssessmentsAndAssignments({
                     ))}
                   </select>
                 </div>
- 
+
                 {/* 5. Score Filter (L5) */}
                 <div className={`space-y-1.5 transition-all duration-200 ${!activeScale ? 'opacity-40 pointer-events-none' : ''}`}>
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
@@ -3155,7 +3077,7 @@ export default function AssessmentsAndAssignments({
                   </select>
                 </div>
               </div>
- 
+
               {filterScoreValue && (
                 <div className="text-xs text-muted-foreground" aria-live="polite">
                   {reportScores.loading && <p>Loading evaluation scores from reports…</p>}
@@ -3349,7 +3271,7 @@ export default function AssessmentsAndAssignments({
                 {(() => {
                   const selectedCands = filteredCandidates.filter(c => selectedCandidateIds.includes(c.id));
                   const selectedWithInvites = selectedCands.filter(c =>
-                    (c.inviteSent || !!c.lastInviteSentAt) && !c.submittedDate && c.status === 'ACTIVE' && !(new Date() > new Date(c.endTime) || c.interviewExpired)
+                    (c.inviteSent || !!c.lastInviteSentAt) && !c.submittedDate && c.status === 'ACTIVE' && !(new Date() > new Date(c.endTime))
                   );
                   const isReminderEnabled = selectedCandidateIds.length > 0 && selectedWithInvites.length > 0;
                   return (
@@ -3388,7 +3310,13 @@ export default function AssessmentsAndAssignments({
             </div>
 
             {/* Candidate Table Grid */}
-            <div className={`overflow-x-auto bg-card border border-border/70 rounded-xl shadow-2xs transition-all duration-200 ${openMenuCandId ? 'pb-40' : ''}`}>
+            <CandidateMobileCards candidates={activeAssessmentCandidates} assessments={assessments} selectedIds={selectedCandidateIds} onToggleSelection={id => setSelectedCandidateIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])} actions={c => <>
+              {!c.link && <PAButton onClick={() => handleGenerateCandidateLink(c.id)} disabled={c.status !== 'ACTIVE'}>Generate Link</PAButton>}
+              {c.link && <PAButton onClick={() => openInviteDialog([c.id])} disabled={c.status !== 'ACTIVE'}>Send Invite</PAButton>}
+              <PAButton variant="secondary" onClick={() => onOpenReport(c, activeAssessment)} disabled={c.reportStatus !== 'GENERATED'}>View Report</PAButton>
+              {renderCandidateActions(c)}
+            </>} />
+            <div className="hidden sm:block overflow-x-auto bg-card border border-border/70 rounded-xl shadow-2xs">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/70">
@@ -3412,7 +3340,6 @@ export default function AssessmentsAndAssignments({
                     <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center w-[90px]">Status</TableHead>
                     <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 min-w-[180px]">Credentials & Links</TableHead>
                     <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">Mailing Controls</TableHead>
-                    <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">Simulation Sandbox</TableHead>
                     <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">Mail Status</TableHead>
                     <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3">Mailing Stats & Timestamps</TableHead>
                     <TableHead className="font-bold text-foreground text-[10px] uppercase tracking-wider px-3 py-3 text-center">AI Scorecard</TableHead>
@@ -3424,8 +3351,7 @@ export default function AssessmentsAndAssignments({
                     const hasLink = c.link !== null && c.link !== '';
                     const isCompleted = !!c.submittedDate;
                     const isActive = c.status === 'ACTIVE';
-                    const isExpired = new Date() > new Date(c.endTime) || c.interviewExpired;
-                    const isLast = idx >= Math.max(0, filteredCandidates.length - 2);
+                    const isExpired = new Date() > new Date(c.endTime);
                     const hasInvite = c.inviteSent || !!c.lastInviteSentAt;
 
                     // Compute individual button states based on strict business rules
@@ -3435,8 +3361,8 @@ export default function AssessmentsAndAssignments({
                     const isReportReady = c.reportStatus === 'GENERATED';
 
                     // Mail Status display parameters
-                    const mailStatusValue = c.rowLoading 
-                      ? 'Sending' 
+                    const mailStatusValue = c.rowLoading
+                      ? 'Sending'
                       : (c.mailStatus || (hasInvite ? (c.reminderCount ? 'Reminder Sent' : 'Invite Sent') : 'Not Sent'));
 
                     return (
@@ -3514,8 +3440,8 @@ export default function AssessmentsAndAssignments({
                         {/* 3. Candidate Status (Static Status Badge) */}
                         <TableCell className="text-center px-3 py-3.5">
                           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            isActive 
-                              ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
+                            isActive
+                              ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
                               : 'bg-red-50 border-red-100 text-red-700'
                           }`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-success' : 'bg-destructive animate-pulse'}`}></span>
@@ -3657,38 +3583,6 @@ export default function AssessmentsAndAssignments({
                           )}
                         </TableCell>
 
-                        {/* 6. Simulation Sandbox (Helps Admin test active/completed/expired rules dynamically) */}
-                        <TableCell className="px-3 py-3.5 text-center">
-                          <div className="flex flex-col gap-1.5 max-w-[120px] mx-auto">
-                            {/* Simulate Completion Action */}
-                            <button
-                              onClick={() => handleSimulateCompletion(c.id)}
-                              disabled={isCompleted}
-                              className={`text-[9px] font-bold px-2 py-1 rounded border transition select-none ${
-                                isCompleted
-                                  ? 'bg-slate-150 border-border/70 text-muted-foreground cursor-not-allowed'
-                                  : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700 cursor-pointer'
-                              }`}
-                              title={isCompleted ? 'Assessment completed' : 'Simulate candidate completing assessment instantly'}
-                            >
-                              {isCompleted ? '✓ Completed' : '⚡ Simulate Submit'}
-                            </button>
-
-                            {/* Toggle Expiry Action */}
-                            <button
-                              onClick={() => handleToggleExpiry(c.id)}
-                              className={`text-[9px] font-bold px-2 py-1 rounded border transition cursor-pointer select-none ${
-                                isExpired
-                                  ? 'bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-150'
-                                  : 'bg-muted border-border/70 text-muted-foreground hover:bg-muted'
-                              }`}
-                              title="Toggle expired status to test reminder disable rules"
-                            >
-                              {isExpired ? 'Un-expire' : 'Expire'}
-                            </button>
-                          </div>
-                        </TableCell>
-
                         {/* 7. Mail Status Badge — Light pills */}
                         <TableCell className="text-center px-3 py-3.5">
                           {(() => {
@@ -3787,153 +3681,7 @@ export default function AssessmentsAndAssignments({
 
                         {/* 10. Actions (Three-dots dropdown menu or Confirmation states) */}
                         <TableCell className="text-center px-3 py-3.5 relative">
-                          {deleteConfirmCandId === c.id ? (
-                            <div className="flex items-center justify-center gap-1.5 min-w-[140px] mx-auto">
-                              {doubleConfirmCandId === c.id ? (
-                                <button
-                                  onClick={() => {
-                                    handleFinalDeleteCandidate(c.id);
-                                    setDeleteConfirmCandId(null);
-                                    setDoubleConfirmCandId(null);
-                                  }}
-                                  className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-bold px-2 py-1 rounded transition animate-pulse cursor-pointer shadow-3xs"
-                                  title="Final delete"
-                                >
-                                  Confirm Delete
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleDoubleConfirmDeleteCandidate(c.id)}
-                                  className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] font-bold px-2 py-1 rounded transition cursor-pointer shadow-3xs"
-                                  title="Click again to confirm"
-                                >
-                                  Sure?
-                                </button>
-                              )}
-                              <button
-                                onClick={() => {
-                                  setDeleteConfirmCandId(null);
-                                  setDoubleConfirmCandId(null);
-                                }}
-                                className="px-2 py-1 border border-border/70 bg-card hover:bg-muted/40 text-muted-foreground hover:text-foreground rounded transition cursor-pointer text-[9px] font-bold"
-                                title="Cancel Delete"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="inline-block text-left" ref={openMenuCandId === c.id ? menuContainerRef : undefined}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenMenuCandId(openMenuCandId === c.id ? null : c.id);
-                                }}
-                                className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer"
-                                title="More Actions"
-                              >
-                                <MoreVertical className="w-4 h-4" />
-                              </button>
-
-                              {openMenuCandId === c.id && (
-                                  <div className={cn("absolute right-0 w-44 bg-card border border-border/70 rounded-lg shadow-lg py-1.5 z-40 text-left font-sans max-h-64 overflow-y-auto", isLast ? "bottom-full mb-1" : "top-full mt-1")}>
-                                    {/* Option: Activate */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuCandId(null);
-                                        onSetCandidates(prev => prev.map(cand => cand.id === c.id ? { ...cand, status: 'ACTIVE', candidateStatus: 'ACTIVE' } : cand));
-                                        toast.success(`Candidate ${c.name} is now Activated`);
-                                        void pushStatusToServer([c.id], 'ACTIVE');
-                                      }}
-                                      disabled={isActive}
-                                      className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
-                                        isActive 
-                                          ? 'text-slate-300 bg-muted/40 cursor-not-allowed' 
-                                          : 'text-foreground hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer'
-                                      }`}
-                                    >
-                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                      Activate
-                                    </button>
-
-                                    {/* Option: Deactivate */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuCandId(null);
-                                        onSetCandidates(prev => prev.map(cand => cand.id === c.id ? { ...cand, status: 'INACTIVE', candidateStatus: 'INACTIVE' } : cand));
-                                        toast.success(`Candidate ${c.name} is now Deactivated`);
-                                        void pushStatusToServer([c.id], 'INACTIVE');
-                                      }}
-                                      disabled={!isActive}
-                                      className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
-                                        !isActive 
-                                          ? 'text-slate-300 bg-muted/40 cursor-not-allowed' 
-                                          : 'text-foreground hover:bg-amber-50 hover:text-amber-700 cursor-pointer'
-                                      }`}
-                                    >
-                                      <X className="w-3.5 h-3.5 text-amber-500" />
-                                      Deactivate
-                                    </button>
-
-                                    <div className="border-t border-slate-100 my-1"></div>
-
-                                    {/* Option: Delete */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuCandId(null);
-                                        handleTriggerDeleteCandidate(c.id);
-                                      }}
-                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                                      Delete
-                                    </button>
-
-                                    <div className="border-t border-slate-100 my-1 font-sans"></div>
-
-                                    {/* Option: Update Password */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuCandId(null);
-                                        setPasswordEditCandId(c.id);
-                                        setNewCandPassword(c.password || '');
-                                      }}
-                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/40 transition cursor-pointer"
-                                    >
-                                      <Lock className="w-3.5 h-3.5 text-muted-foreground" />
-                                      Update Password
-                                    </button>
-
-                                    {/* Option: Reschedule */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuCandId(null);
-                                        handleOpenRescheduleModal(c.id);
-                                      }}
-                                      disabled={!isActive}
-                                      title={
-                                        !isActive
-                                          ? 'Disabled: Candidate must be Active to reschedule.'
-                                          : 'Reschedule interview to a new time window'
-                                      }
-                                      className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition ${
-                                        !isActive
-                                          ? 'text-slate-300 bg-muted/40 cursor-not-allowed'
-                                          : 'text-foreground hover:bg-muted/40 cursor-pointer'
-                                      }`}
-                                    >
-                                      <Calendar className={`w-3.5 h-3.5 ${isActive ? 'text-amber-500' : 'text-slate-300'}`} />
-                                      Reschedule
-                                    </button>
-
-                                  </div>
-                              )}
-                            </div>
-                          )}
+                          {renderCandidateActions(c)}
                         </TableCell>
                       </TableRow>
                     );
@@ -3941,8 +3689,8 @@ export default function AssessmentsAndAssignments({
 
                   {activeAssessmentCandidates.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={11} className="py-12 text-center text-muted-foreground text-xs">
-                        No candidates are registered for this assessment. Click "Create Assignment (CSV Upload)" to populate candidates.
+                      <TableCell colSpan={10} className="py-12 text-center text-muted-foreground text-xs">
+                        No candidates are registered for this assessment. Choose Create Assignment to add candidates manually or upload a CSV.
                       </TableCell>
                     </TableRow>
                   )}
@@ -3978,11 +3726,11 @@ export default function AssessmentsAndAssignments({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left side upload interface */}
             <div className="lg:col-span-1 space-y-4">
-              {/* Manual Student Registration Form Space */}
+              {/* Manual Candidate Registration Form Space */}
               <form onSubmit={handleAddManualCandidate} className="bg-card border border-border/70 rounded-xl p-5 space-y-3.5 shadow-xs">
                 <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                    <UserPlus className="w-3.5 h-3.5 text-blue-500" /> Manual Student Registration
+                    <UserPlus className="w-3.5 h-3.5 text-blue-500" /> Manual Candidate Registration
                   </h3>
                   <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-sm font-bold">
                     Quick Add
@@ -4031,19 +3779,7 @@ export default function AssessmentsAndAssignments({
                     />
                   </div>
 
-                  <div className="rounded-lg border border-sky-200/60 bg-sky-50/40 p-2.5 space-y-2.5">
-                    <p className="text-[10px] font-bold text-sky-800 uppercase tracking-wider">
-                      Interview Window (Optional, IST)
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <ScheduleDateTimeField label="Start" date={manualStartDate} time={manualStartTime12} onChange={(d, t) => { setManualStartDate(d); setManualStartTime12(t); }} />
-                      <ScheduleDateTimeField label="End" date={manualEndDate} time={manualEndTime12} onChange={(d, t) => { setManualEndDate(d); setManualEndTime12(t); }} />
-                    </div>
-                    <p className="text-[10px] text-sky-700 leading-normal">
-                      Leave empty to add without a schedule, or pick both dates and times in IST.
-                    </p>
-                    <p className="text-[10px] font-semibold text-amber-700">{INTERVIEW_WINDOW_NOTICE}</p>
-                  </div>
+<p className="text-xs text-muted-foreground">Add the candidate here, then set their interview window in the review list.</p>
                 </div>
 
                 <button
@@ -4051,7 +3787,7 @@ export default function AssessmentsAndAssignments({
                   title="Add student to list"
                   className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-lg transition shadow-xs cursor-pointer"
                 >
-                  <UserPlus className="w-3.5 h-3.5" /> Add Student to List
+                  <UserPlus className="w-3.5 h-3.5" /> Add Candidate to Review
                 </button>
               </form>
 
@@ -4094,8 +3830,8 @@ export default function AssessmentsAndAssignments({
                   }
                 }}
                 className={`border-2 border-dashed rounded-xl p-8 text-center transition flex flex-col items-center justify-center min-h-[220px] ${
-                  isDragging 
-                    ? 'border-blue-500 bg-blue-50/10' 
+                  isDragging
+                    ? 'border-blue-500 bg-blue-50/10'
                     : 'border-border/70 bg-card hover:bg-muted/40/50'
                 }`}
               >
@@ -4110,7 +3846,7 @@ export default function AssessmentsAndAssignments({
                     <Loader2 className="w-3.5 h-3.5 animate-spin" /> Parsing CSV…
                   </span>
                 )}
-                
+
                 <div className="mt-4">
                   <label className="bg-muted hover:bg-muted text-foreground text-xs font-bold px-3 py-1.5 rounded-lg transition cursor-pointer">
                     Choose File
@@ -4137,16 +3873,16 @@ export default function AssessmentsAndAssignments({
                         Validation Log ({validationErrors.length} Checks flagged)
                       </span>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        validationErrors.some(e => e.type === 'red') 
-                          ? 'bg-red-100 text-red-700' 
-                          : validationErrors.length > 0 
-                            ? 'bg-amber-100 text-amber-700' 
+                        validationErrors.some(e => e.type === 'red')
+                          ? 'bg-red-100 text-red-700'
+                          : validationErrors.length > 0
+                            ? 'bg-amber-100 text-amber-700'
                             : 'bg-emerald-100 text-emerald-700'
                       }`}>
-                        {validationErrors.some(e => e.type === 'red') 
-                          ? 'BLOCKING ERRORS DETECTED' 
-                          : validationErrors.length > 0 
-                            ? 'WARNINGS ONLY - CAN PROCEED' 
+                        {validationErrors.some(e => e.type === 'red')
+                          ? 'BLOCKING ERRORS DETECTED'
+                          : validationErrors.length > 0
+                            ? 'WARNINGS ONLY - CAN PROCEED'
                             : 'ALL CLEAR'}
                       </span>
                     </div>
@@ -4369,12 +4105,7 @@ export default function AssessmentsAndAssignments({
 
                   {/* Submission and Confirmation actions */}
                   <div className="flex justify-between items-center gap-3.5 flex-wrap">
-                    <button
-                      onClick={handleAddBlankCandidateRow}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 border border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-700 rounded-lg text-xs font-semibold transition cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add Candidate
-                    </button>
+
                     <div className="flex gap-3.5">
                     <button
                       onClick={() => {
@@ -4398,7 +4129,7 @@ export default function AssessmentsAndAssignments({
                       }`}
                     >
                       {isConfirmingImport && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                      {isConfirmingImport ? 'Saving to MongoDB…' : 'Confirm and Load Candidates'}
+                      {isConfirmingImport ? 'Saving candidates...' : 'Confirm and Load Candidates'}
                     </button>
                     </div>
                   </div>
@@ -4411,16 +4142,11 @@ export default function AssessmentsAndAssignments({
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-foreground">No candidates in the review list yet</p>
                     <p className="text-xs text-muted-foreground">
-                      Upload a candidate .csv — or add one right here.
+                      Upload a candidate CSV or use the manual registration form.
                     </p>
                   </div>
                   <div className="flex items-center justify-center gap-2.5 flex-wrap">
-                    <button
-                      onClick={handleAddBlankCandidateRow}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add Candidate
-                    </button>
+
                   </div>
                 </div>
               )}
@@ -4428,16 +4154,23 @@ export default function AssessmentsAndAssignments({
           </div>
         </div>
       )}
+      {deleteConfirmCandId && <ViewportDialog label="Delete Candidate" onClose={() => { setDeleteConfirmCandId(null); setDoubleConfirmCandId(null); }}>
+        <div className="bg-card rounded-xl border border-border p-5 space-y-4">
+          <h3 className="font-semibold">Delete Candidate</h3>
+          <p className="text-sm text-muted-foreground">Remove {candidates.find(c => c.id === deleteConfirmCandId)?.name || 'this candidate'} from this assessment?</p>
+          <div className="flex gap-2">
+            <PAButton variant="secondary" onClick={() => { setDeleteConfirmCandId(null); setDoubleConfirmCandId(null); }}>Cancel</PAButton>
+            <PAButton onClick={() => { if (doubleConfirmCandId === deleteConfirmCandId) { handleFinalDeleteCandidate(deleteConfirmCandId); setDeleteConfirmCandId(null); setDoubleConfirmCandId(null); } else handleDoubleConfirmDeleteCandidate(deleteConfirmCandId); }}>
+              {doubleConfirmCandId === deleteConfirmCandId ? 'Delete Candidate' : 'Continue'}
+            </PAButton>
+          </div>
+        </div>
+      </ViewportDialog>}
     {/* =========================================================================
         BULK APPLY SCHEDULE MODAL (IST)
         ========================================================================= */}
       {bulkScheduleOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => setBulkScheduleOpen(false)}
-          />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <ViewportDialog label="Apply Schedule to Selected" onClose={() => { setBulkScheduleOpen(false); }}>
             <div className="bg-card rounded-xl border border-border/70 shadow-xl w-full max-w-md p-6 space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -4475,38 +4208,20 @@ export default function AssessmentsAndAssignments({
                 </button>
               </div>
             </div>
-          </div>
-        </>
+        </ViewportDialog>
       )}
     {/* =========================================================================
         RESCHEDULE INTERVIEW MODAL
         ========================================================================= */}
       {rescheduleCandId && (
-        <>
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => {
-              if (!isRescheduling) {
-                setRescheduleCandId(null);
-                setRescheduleStartTime('');
-                setRescheduleEndTime('');
-              }
-            }}
-          />
-          {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <ViewportDialog label={rescheduleNeedsReplacement ? 'Create New Interview' : 'Reschedule Interview'} onClose={() => { if (!isRescheduling) { setRescheduleCandId(null); setRescheduleStartTime(''); setRescheduleEndTime(''); setRescheduleNeedsReplacement(false); }; }}>
             <div className="bg-card rounded-xl border border-border/70 shadow-xl w-full max-w-md p-6 space-y-5">
               <div>
-                <h3 className="text-sm font-bold text-foreground">Reschedule Interview</h3>
+                <h3 className="text-sm font-bold text-foreground">{rescheduleNeedsReplacement ? 'Create New Interview' : 'Reschedule Interview'}</h3>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Set a new scheduling window for this candidate.
-                  {(() => {
-                    const c = candidates.find(c => c.id === rescheduleCandId);
-                    return c?.interviewId
-                      ? <> This calls <span className="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded border border-border/70">PUT /interview/{'{id}'}/reschedule</span>.</>
-                      : <> Updates the stored times so Generate Link can proceed.</>;
-                  })()}
+                  {rescheduleNeedsReplacement
+                    ? 'The provider could not find the old interview. Creating a new interview will issue a new link and password for the times below. Send those credentials to the candidate.'
+                    : 'Set a new scheduling window for this candidate. An existing interview keeps its link; a candidate without an interview needs a generated link after saving.'}
                 </p>
               </div>
 
@@ -4529,6 +4244,9 @@ export default function AssessmentsAndAssignments({
                         <span className="text-muted-foreground font-semibold">Interview ID:</span>
                         <span className="font-mono text-[10px] text-muted-foreground">{cand.interviewId}</span>
                       </div>
+                    )}
+                    {!isRealInterviewId(cand.interviewId) && (
+                      <p className="text-amber-800">No live interview is linked. Save the window, then use Generate Link to create real interview credentials.</p>
                     )}
                     {s && e && (
                       <div className={`mt-1 p-2 rounded border text-[10px] ${
@@ -4568,24 +4286,14 @@ export default function AssessmentsAndAssignments({
                   <label className="text-xs font-bold text-foreground">
                     New Start Time (IST) <span className="text-destructive">*</span>
                   </label>
-                  <Input
-                    type="datetime-local"
-                    value={rescheduleStartTime}
-                    onChange={(e) => setRescheduleStartTime(e.target.value)}
-                    className="text-xs"
-                  />
+                  <DateTimeInput label="New start" value={rescheduleStartTime} onChange={setRescheduleStartTime} />
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground">
                     New End Time (IST) <span className="text-destructive">*</span>
                   </label>
-                  <Input
-                    type="datetime-local"
-                    value={rescheduleEndTime}
-                    onChange={(e) => setRescheduleEndTime(e.target.value)}
-                    className="text-xs"
-                  />
+                  <DateTimeInput label="New end" value={rescheduleEndTime} onChange={setRescheduleEndTime} />
                 </div>
 
                 {/* Validation hints */}
@@ -4611,6 +4319,7 @@ export default function AssessmentsAndAssignments({
                     setRescheduleCandId(null);
                     setRescheduleStartTime('');
                     setRescheduleEndTime('');
+                    setRescheduleNeedsReplacement(false);
                   }}
                   disabled={isRescheduling}
                   className="flex-1 py-2 bg-card border border-border/70 hover:bg-muted/40 text-foreground rounded-md text-xs font-semibold text-center transition cursor-pointer"
@@ -4632,31 +4341,20 @@ export default function AssessmentsAndAssignments({
                       Rescheduling...
                     </>
                   ) : (
-                    'Reschedule Interview'
+                    rescheduleNeedsReplacement ? 'Create New Interview'
+                      : isRealInterviewId(candidates.find(c => c.id === rescheduleCandId)?.interviewId) ? 'Reschedule Interview'
+                      : 'Save Interview Window'
                   )}
                 </button>
               </div>
             </div>
-          </div>
-        </>
+        </ViewportDialog>
       )}
       {/* =========================================================================
           UPDATE PASSWORD DIALOG
           ========================================================================= */}
       {passwordEditCandId && (
-        <>
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => {
-              if (!isSavingPassword) {
-                setPasswordEditCandId(null);
-                setNewCandPassword('');
-              }
-            }}
-          />
-          {/* Dialog Container */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <ViewportDialog label="Update Candidate Password" onClose={() => { if (!isSavingPassword) { setPasswordEditCandId(null); setNewCandPassword(''); }; }}>
             <div className="bg-card rounded-xl border border-border/70 shadow-xl w-full max-w-md p-6 space-y-4 text-left">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -4718,23 +4416,13 @@ export default function AssessmentsAndAssignments({
                 </button>
               </div>
             </div>
-          </div>
-        </>
+        </ViewportDialog>
       )}
       {/* =========================================================================
           SEND INVITE — TEMPLATE PICKER DIALOG
           ========================================================================= */}
       {inviteDialogCandIds.length > 0 && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => {
-              if (!isSendingInvite) setInviteDialogCandIds([]);
-            }}
-          />
-          {/* Dialog Container */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <ViewportDialog label="Send Invitation" onClose={() => { if (!isSendingInvite) setInviteDialogCandIds([]); }} wide>
             <div className="bg-card rounded-xl border border-border/70 shadow-xl w-full max-w-lg p-6 space-y-4 text-left max-h-[90vh] overflow-y-auto">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -4775,13 +4463,13 @@ export default function AssessmentsAndAssignments({
                         {selected && <span className="w-2 h-2 rounded-full bg-primary" />}
                       </span>
                       <span className="flex-1 min-w-0">
-                        <span className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-foreground truncate">{t.name}</span>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-sm text-foreground break-words">{t.name}</span>
                           <Pill tone={t.type === 'STANDARD_INVITATION' ? 'info' : t.type === 'REMINDER' ? 'warning' : 'success'}>
                             <span className="uppercase tracking-wide text-[10px]">{t.type}</span>
                           </Pill>
                         </span>
-                        <span className="block text-[11px] text-muted-foreground truncate mt-0.5">{t.subject}</span>
+                        <span className="block text-[11px] text-muted-foreground break-words mt-0.5">{t.subject}</span>
                       </span>
                     </button>
                   );
@@ -4842,8 +4530,7 @@ export default function AssessmentsAndAssignments({
                 </button>
               </div>
             </div>
-          </div>
-        </>
+        </ViewportDialog>
       )}
     </div>
   );

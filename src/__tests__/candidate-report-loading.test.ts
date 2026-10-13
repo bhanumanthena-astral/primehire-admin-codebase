@@ -3,7 +3,7 @@ import type { Candidate } from '../types';
 import { asInterviewId, asLocalCandidateId } from '../lib/primehireIds';
 import { loadCandidateFilterReport } from '../hooks/useCandidateReports';
 import { candidateReportKey, cacheCandidateReport, getCachedCandidateReport } from '../lib/candidateReportCache';
-import { mockGetReport } from '../mockData';
+import { getCandidateReport } from '../lib/interviewOperations';
 import { checkScoreFilter, getCandidateScore } from '../utils/reportScoreFilters';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -29,7 +29,7 @@ describe('candidate filters load actual reports', () => {
   test('opening View Report updates the same cache used by grade filters', async () => {
     const c = candidate('view');
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => response()));
-    const viewed = await mockGetReport(c.id, [c]);
+    const viewed = await getCandidateReport(c.id, [c]);
     expect(getCachedCandidateReport(c)).toBe(viewed);
     expect(getCandidateScore(c, 'BASIC', 'Overall Score', null, null, 'BASIC', viewed)).toBe(82);
   });

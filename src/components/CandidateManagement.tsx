@@ -1,3 +1,7 @@
+import { matchesCandidateFilters } from '../utils/portalFilters';
+import CandidateMobileCards from './CandidateMobileCards';
+import ActionMenu from './ui/ActionMenu';
+import ViewportDialog from './ui/ViewportDialog';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -7,16 +11,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Candidate, AssessmentProfile } from '../types';
 import { checkScoreFilter, getCandidateScore, REPORT_GRADE_OPTIONS } from '../utils/reportScoreFilters';
 import { useCandidateReports } from '../hooks/useCandidateReports';
-import { mockGetInterviewStatus, mockResetCandidatePassword } from '../mockData';
+import { getInterviewStatus, resetCandidatePassword } from '../lib/interviewOperations';
 import { deleteCandidate, syncCandidateToServer } from '../lib/mongoApi';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  Search, 
-  Filter, 
-  CheckCircle, 
-  RefreshCw, 
-  Eye, 
+import {
+  Search,
+  Filter,
+  CheckCircle,
+  RefreshCw,
+  Eye,
   RotateCcw,
   Info,
   MoreVertical,
@@ -54,13 +58,13 @@ const LAYER3_OPTIONS: Record<string, Record<string, string[]>> = {
     'Communication': ['Grammar', 'Fluency', 'Vocabulary', 'Pronunciation'],
     'Interview Analysis': ['Confidence'],
     'HR Competency Analysis': [
-      'Self Discipline', 'Time Management', 'Detail Orientation', 'Teamwork', 'Professionalism', 
-      'Leadership', 'Motivation', 'Learning Ability', 'Adaptability', 'Creativity & Innovation', 
+      'Self Discipline', 'Time Management', 'Detail Orientation', 'Teamwork', 'Professionalism',
+      'Leadership', 'Motivation', 'Learning Ability', 'Adaptability', 'Creativity & Innovation',
       'Positive Attitude', 'Problem Solving'
     ],
     'VILS Competency Analysis': [
-      'Leading and Deciding', 'Supporting and Cooperating', 'Interacting and Presenting', 
-      'Analysing and Interpreting', 'Creating and Conceptualising', 'Organising and Executing', 
+      'Leading and Deciding', 'Supporting and Cooperating', 'Interacting and Presenting',
+      'Analysing and Interpreting', 'Creating and Conceptualising', 'Organising and Executing',
       'Adapting and Coping', 'Enterprising and Performing'
     ],
     'Values & Personality': ['Personal Values (Big Five)', 'Societal Values', 'Dark Triad Risk Assessment']
@@ -70,7 +74,7 @@ const LAYER3_OPTIONS: Record<string, Record<string, string[]>> = {
 const LAYER4_OPTIONS: Record<string, string[]> = {
   'Personal Values (Big Five)': ['Openness', 'Extroversion', 'Conscientiousness', 'Agreeableness', 'Neurotic'],
   'Societal Values': [
-    'Hedonism', 'Power', 'Stimulation', 'Conformity', 'Universalism', 
+    'Hedonism', 'Power', 'Stimulation', 'Conformity', 'Universalism',
     'Self Direction', 'Achievement', 'Traditional', 'Benevolence', 'Security'
   ],
   'Dark Triad Risk Assessment': ['Machiavellianism', 'Narcissism', 'Psychopathy']
@@ -82,19 +86,19 @@ const LAYER4_OPTIONS: Record<string, string[]> = {
 
 function getScoreScale(round: string, layer2: string | null, layer3: string | null, layer4: string | null): 'scale5' | 'scale3' | null {
   if (round === 'ALL' || !round) return null;
-  
+
   if (round === 'BASIC') {
     if (layer2 === 'Overall Score') return 'scale5';
     if (layer2 === 'Communication') return 'scale5';
   }
-  
+
   if (round === 'TECHNICAL') {
     if (layer2 === 'Overall Result') return 'scale5';
     if (layer2 === 'Technical Analysis (Overall Score)') return 'scale5';
     if (layer2 === 'Interview Analysis (Confidence Score)') return 'scale5';
     if (layer2 === 'Communication') return 'scale5';
   }
-  
+
   if (round === 'HR') {
     if (layer2 === 'Communication') return 'scale5';
     if (layer2 === 'Interview Analysis') return 'scale5';
@@ -102,7 +106,7 @@ function getScoreScale(round: string, layer2: string | null, layer3: string | nu
     if (layer2 === 'VILS Competency Analysis') return 'scale3';
     if (layer2 === 'Values & Personality') return 'scale3';
   }
-  
+
   return null;
 }
 
@@ -189,20 +193,7 @@ export default function CandidateManagement({
 }: CandidateManagementProps) {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [openMenuCandId, setOpenMenuCandId] = useState<string | null>(null);
-  const menuContainerRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!openMenuCandId) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
-        setOpenMenuCandId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-    };
-  }, [openMenuCandId]);
 
   const [passwordEditCandId, setPasswordEditCandId] = useState<string | null>(null);
   const [newCandPassword, setNewCandPassword] = useState('');
@@ -251,7 +242,7 @@ export default function CandidateManagement({
       if (pending.length === 0) return;
       for (const c of pending.slice(0, 3)) {
         try {
-          const updated = await withSyncTimeout(mockGetInterviewStatus(c.id as any, candidates));
+          const updated = await withSyncTimeout(getInterviewStatus(c.id as any, candidates));
           onSetCandidates(updated);
         } catch { /* keep Analyzing state; manual sync still available */ }
       }
@@ -266,7 +257,7 @@ export default function CandidateManagement({
   const handleCheckStatus = async (candId: string) => {
     setSyncingId(candId);
     try {
-      const updated = await withSyncTimeout(mockGetInterviewStatus(candId as any, candidates));
+      const updated = await withSyncTimeout(getInterviewStatus(candId as any, candidates));
       onSetCandidates(updated);
       const target = updated.find(c => c.id === candId);
       if (target && (await withSyncTimeout(syncCandidateToServer(target))) === 'failed') {
@@ -297,7 +288,7 @@ export default function CandidateManagement({
     }
     setIsSavingPassword(true);
     try {
-      const updated = await mockResetCandidatePassword(passwordEditCandId as any, candidates, newCandPassword.trim());
+      const updated = await resetCandidatePassword(passwordEditCandId as any, candidates, newCandPassword.trim());
       onSetCandidates(updated);
       toast.success('Candidate password updated successfully!');
       setPasswordEditCandId(null);
@@ -386,7 +377,7 @@ export default function CandidateManagement({
         toast.info(`Updated filter for "${metricLabel}"`);
         return updated;
       }
-      toast.success(`Filter added: ${metricLabel} → ${rangeLabel}`);
+      toast.success(`Filter applied: ${metricLabel} → ${rangeLabel}`);
       return [...prev, newBadge];
     });
     resetPicker();
@@ -395,20 +386,8 @@ export default function CandidateManagement({
   // Candidate Filtering
   const filteredCandidates = candidates.filter(c => {
     const assessment = assessments.find(a => a.id === c.assessmentId);
-    
-    // Global filter bar state check
-    const matchesGlobalRound = filterRound === 'ALL' || (assessment?.roundType === filterRound);
-    const matchesGlobalStatus = filterStatus === 'ALL' || 
-      (filterStatus === 'GENERATED' && c.reportStatus === 'GENERATED') ||
-      (filterStatus === 'GENERATING' && c.reportStatus === 'GENERATING') ||
-      (filterStatus === 'PENDING' && !c.reportStatus);
 
-    const matchesSearch = !searchQuery ||
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (assessment?.jobTitle || '').toLowerCase().includes(searchQuery.toLowerCase());
-
-    if (!matchesGlobalRound || !matchesGlobalStatus || !matchesSearch) return false;
+    if (!matchesCandidateFilters(c, assessments, filterRound, filterStatus, searchQuery)) return false;
 
     if (activeFilters.length === 0) return true;
 
@@ -419,11 +398,38 @@ export default function CandidateManagement({
     });
   });
 
+  const renderCandidateActions = (c: Candidate) => {
+    const isActive = c.status === 'ACTIVE';
+    return (
+      <ActionMenu label={`Actions for ${c.name}`} open={openMenuCandId === c.id} onOpenChange={open => setOpenMenuCandId(open ? c.id : null)}>
+      <button
+      onClick={() => { setOpenMenuCandId(null); onToggleCandidateStatus(c.id); }}
+      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer transition"
+      >
+      <Check className="w-3.5 h-3.5 text-success" /> Toggle Active
+      </button>
+      <button
+      onClick={() => { setOpenMenuCandId(null); setPasswordEditCandId(c.id); setNewCandPassword(c.password || ''); }}
+      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer transition"
+      >
+      <Lock className="w-3.5 h-3.5 text-muted-foreground" /> Update Password
+      </button>
+      <div className="my-1 border-t border-border/60" />
+      <button
+      onClick={() => { setOpenMenuCandId(null); setDeleteTargetCandId(c.id); }}
+      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10 cursor-pointer transition"
+      >
+      <Trash2 className="w-3.5 h-3.5" /> Delete Candidate
+      </button>
+      </ActionMenu>
+    );
+  };
+
   return (
     <div className="space-y-6 text-foreground font-sans">
       <SectionHeader
         eyebrow="Directory & pipeline"
-        title="Candidate Directory Workspace"
+        title="Candidate Directory"
         subtitle="Which candidates require status sync, credential updates, or report evaluation inspection?"
         icon={<Users className="w-5 h-5" />}
       />
@@ -599,7 +605,11 @@ export default function CandidateManagement({
       )}
 
       {/* ── Aggregate Candidate Table ─────────────────────────────── */}
-      <Panel padded={false} className="overflow-hidden">
+      <CandidateMobileCards candidates={filteredCandidates} assessments={assessments} actions={c => <>
+        <PAButton variant="secondary" onClick={() => { const assessment = assessments.find(a => a.id === c.assessmentId); if (assessment) onOpenReport(c, assessment); }} disabled={c.reportStatus !== 'GENERATED'}>View Report</PAButton>
+        {renderCandidateActions(c)}
+      </>} />
+      <Panel padded={false} className="hidden sm:block overflow-hidden">
         <div className="overflow-auto rounded-lg">
           <Table>
             <TableHeader className="bg-card border-b border-border/60">
@@ -629,7 +639,6 @@ export default function CandidateManagement({
               ) : (
                 filteredCandidates.map((c, idx) => {
                 const assessment = assessments.find(a => a.id === c.assessmentId);
-                const isLast = idx >= Math.max(0, filteredCandidates.length - 2);
                 return (
                   <TableRow key={c.id} className="hover:bg-muted/40">
                     <TableCell>
@@ -693,40 +702,7 @@ export default function CandidateManagement({
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
-                        <div className="relative inline-block" ref={openMenuCandId === c.id ? menuContainerRef : undefined}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenMenuCandId(openMenuCandId === c.id ? null : c.id);
-                            }}
-                            className="p-1.5 rounded-full hover:bg-muted text-muted-foreground cursor-pointer transition"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                          {openMenuCandId === c.id && (
-                              <div className={cn("absolute right-0 w-44 bg-card border border-border/70 rounded-2xl shadow-[var(--shadow-card)] py-1.5 z-40 text-left max-h-64 overflow-y-auto", isLast ? "bottom-full mb-1" : "top-full mt-1")}>
-                                <button
-                                  onClick={() => { setOpenMenuCandId(null); onToggleCandidateStatus(c.id); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer transition"
-                                >
-                                  <Check className="w-3.5 h-3.5 text-success" /> Toggle Active
-                                </button>
-                                <button
-                                  onClick={() => { setOpenMenuCandId(null); setPasswordEditCandId(c.id); setNewCandPassword(c.password || ''); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer transition"
-                                >
-                                  <Lock className="w-3.5 h-3.5 text-muted-foreground" /> Update Password
-                                </button>
-                                <div className="my-1 border-t border-border/60" />
-                                <button
-                                  onClick={() => { setOpenMenuCandId(null); setDeleteTargetCandId(c.id); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10 cursor-pointer transition"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" /> Delete Candidate
-                                </button>
-                              </div>
-                          )}
-                        </div>
+                        {renderCandidateActions(c)}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -744,7 +720,7 @@ export default function CandidateManagement({
 
       {/* Update Password Dialog Modal */}
       {passwordEditCandId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-sm">
+        <ViewportDialog label="Update Candidate Password" onClose={() => { if (!isSavingPassword) setPasswordEditCandId(null); }}>
           <Panel className="w-full max-w-md space-y-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -776,7 +752,7 @@ export default function CandidateManagement({
               </PAButton>
             </div>
           </Panel>
-        </div>
+        </ViewportDialog>
       )}
 
       {/* Delete Candidate Confirm Modal (server-first soft-delete) */}
@@ -784,7 +760,7 @@ export default function CandidateManagement({
         const target = candidates.find(c => c.id === deleteTargetCandId);
         const assessment = target ? assessments.find(a => a.id === target.assessmentId) : undefined;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-sm">
+          <ViewportDialog label="Delete Candidate" onClose={() => { if (!isDeletingCandidate) setDeleteTargetCandId(null); }}>
             <Panel className="w-full max-w-md space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -801,8 +777,7 @@ export default function CandidateManagement({
                   )}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-2">
-                  The record is soft-deleted on the server (kept with an audit trail, hidden from
-                  lists). Assessment profiles, PrimeHire interviews, and generated reports are untouched.
+                  This candidate will be removed from the directory. Their assessment profile and existing reports will remain available.
                 </p>
               </div>
               <div className="flex gap-2 pt-3 border-t border-border/60">
@@ -823,7 +798,7 @@ export default function CandidateManagement({
                 </PAButton>
               </div>
             </Panel>
-          </div>
+          </ViewportDialog>
         );
       })()}
 

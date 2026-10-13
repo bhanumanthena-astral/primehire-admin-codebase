@@ -116,12 +116,6 @@ export function normalizeReport(raw: any, fallbackRoundType?: string, assessment
   const reportBlock = raw?.report || raw;
   const questionsRaw: any[] = reportBlock?.question_wise_result || reportBlock?.questionWiseResult || [];
 
-  // Legacy mock/simulated shape used by Candidate Directory demo candidates:
-  // { overallScore, answersFeedback: [{ questionId, score, maxScore, feedback }] }
-  const legacyFeedback: any[] = reportBlock?.answersFeedback || reportBlock?.answers_feedback || [];
-  const legacyOverall: number | null =
-    reportBlock?.overallScore ?? reportBlock?.overall_score ?? raw?.overallScore ?? null;
-
   const isTechnical = roundType === 'TECHNICAL';
   const isBasic = roundType === 'BASIC';
   const isHR = roundType === 'HR';
@@ -192,41 +186,8 @@ export function normalizeReport(raw: any, fallbackRoundType?: string, assessment
     };
   });
 
-  // Fallback for legacy mock/simulated reports that carry no question_wise_result.
-  if (questions.length === 0 && legacyFeedback.length > 0) {
-    legacyFeedback.forEach((a, idx) => {
-      const max = a.maxScore ?? a.max_score ?? 100;
-      const rawScore = a.score ?? 0;
-      const pct = max > 0 ? Math.round((rawScore / max) * 100) : 0;
-      questions.push({
-        key: String(a.questionId || a.question_id || idx),
-        index: idx + 1,
-        question: a.question || a.questionId || a.question_id || `Question ${idx + 1}`,
-        isGenerated: true,
-        message: null,
-        maxScore: 100,
-        weightage: null,
-        obtainedScore: pct,
-        percentage: pct,
-        transcript: a.transcript || a.candidateAnswer || null,
-        relevancy: a.relevancy || null,
-        technicalScore: pct,
-        confidenceScore: null,
-        communication: null,
-        videoUrl: null,
-        feedback: a.feedback || null,
-        strengths: a.strengths || [],
-        weaknesses: a.weaknesses || [],
-      });
-    });
-  }
-
-  if (overall.overallScore === null && legacyOverall !== null) {
-    overall.overallScore = legacyOverall;
-  }
-
   const generatedCount = questions.filter((q) => q.isGenerated).length;
-  const isEmpty = (questionsRaw.length > 0 || legacyFeedback.length > 0) && generatedCount === 0;
+  const isEmpty = (questionsRaw.length > 0) && generatedCount === 0;
 
   return {
     meta: { jobId, candidateId, roundType, submittedAt, status: raw.status ?? null },
