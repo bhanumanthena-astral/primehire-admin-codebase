@@ -1,0 +1,15 @@
+{
+  "previewBeforeRequest": true,
+  "acknowledgementRequired": true,
+  "draftPreservedOnBack": true,
+  "submittedReviewedQuestion": true,
+  "mobileWidth": 360,
+  "candidateCreationBlockedDuringBuffer": true,
+  "refreshRetainsRemainingWait": true,
+  "unlockAtFiveMinutes": true,
+  "refreshAfterExpiryStaysUnlocked": true,
+  "noEditButton": true,
+  "providerRequests": 0,
+  "assessmentRequests": 1,
+  "consoleErrors": []
+}

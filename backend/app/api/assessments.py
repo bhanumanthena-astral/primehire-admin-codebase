@@ -2,8 +2,7 @@
 
 - POST validates, stores as syncState "pending", calls PrimeHire
   server-side, then marks "synced" or "failed". The record always exists.
-- PUT/PATCH carry a `version`; stale writes get HTTP 409 with the current
-  document ("This was changed by someone else, reload").
+- PUT/PATCH reject content changes after creation. Lifecycle actions remain separate.
 - POST accepts an Idempotency-Key header (24h TTL); repeats return the
   original response without creating a duplicate.
 """
@@ -22,7 +21,7 @@ from ..auth import require_admin_auth
 from ..config import settings
 from ..db.mongodb import get_database
 from ..models.assessment import AssessmentConflict
-from ..services.assessment_service import AssessmentNotFound, AssessmentService
+from ..services.assessment_service import AssessmentLocked, AssessmentNotFound, AssessmentService
 from ..services.primehire_payload import PayloadError
 
 logger = logging.getLogger(__name__)
@@ -128,6 +127,8 @@ async def put_assessment(
 ) -> dict[str, Any]:
     try:
         return await service.put(job_id.strip(), body, updated_by=actor)
+    except AssessmentLocked as exc:
+        raise HTTPException(status_code=403, detail={"code": "ASSESSMENT_LOCKED", "message": str(exc)}) from None
     except AssessmentNotFound:
         raise HTTPException(status_code=404, detail={
             "code": "ASSESSMENT_NOT_FOUND",
@@ -149,6 +150,8 @@ async def patch_assessment(
 ) -> dict[str, Any]:
     try:
         return await service.patch(job_id.strip(), body, updated_by=actor)
+    except AssessmentLocked as exc:
+        raise HTTPException(status_code=403, detail={"code": "ASSESSMENT_LOCKED", "message": str(exc)}) from None
     except AssessmentNotFound:
         raise HTTPException(status_code=404, detail={
             "code": "ASSESSMENT_NOT_FOUND",

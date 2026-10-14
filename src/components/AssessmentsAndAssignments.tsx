@@ -1,3 +1,6 @@
+import AssessmentPreview, { AssessmentDraft } from './AssessmentPreview';
+import AssessmentPreparationNotice from './AssessmentPreparationNotice';
+import { getAssessmentAvailability } from '../utils/assessmentAvailability';
 import CandidateMobileCards from './CandidateMobileCards';
 import { matchesAssessmentFilters } from '../utils/portalFilters';
 import DateTimeInput from './ui/DateTimeInput';
@@ -26,7 +29,6 @@ import {
   deleteCandidate,
   syncCandidateToServer,
   createAssessment as apiCreateAssessment,
-  putAssessment as apiPutAssessment,
   setAssessmentActive as apiSetAssessmentActive,
   retryAssessmentSync as apiRetryAssessmentSync,
   assessmentToPayload,
@@ -80,7 +82,6 @@ import {
   Upload,
   Download,
   Sparkles,
-  Edit,
   Trash,
   CheckCircle,
   HelpCircle,
@@ -200,8 +201,8 @@ export default function AssessmentsAndAssignments({
   onOpenReport
 }: AssessmentsAndAssignmentsProps) {
   // Navigation inside this module
-  // 'LIST' | 'CREATE' | 'DETAIL' | 'UPLOAD' | 'EDIT'
-  const [currentView, setCurrentView] = useState<'LIST' | 'CREATE' | 'DETAIL' | 'UPLOAD' | 'EDIT'>('LIST');
+  // 'LIST' | 'CREATE' | 'PREVIEW' | 'DETAIL' | 'UPLOAD'
+  const [currentView, setCurrentView] = useState<'LIST' | 'CREATE' | 'PREVIEW' | 'DETAIL' | 'UPLOAD'>('LIST');
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
 
   // Detail collapsible sections
@@ -226,7 +227,20 @@ export default function AssessmentsAndAssignments({
   ]);
   const [formStartDate, setFormStartDate] = useState('');
   const [formEndDate, setFormEndDate] = useState('');
-  const [editingAssessmentId, setEditingAssessmentId] = useState<string | null>(null);
+  const [previewDraft, setPreviewDraft] = useState<AssessmentDraft | null>(null);
+  const creationKeyRef = useRef<string | null>(null);
+  const creationInFlightRef = useRef(false);
+  const [preparationNow, setPreparationNow] = useState(() => Date.now());
+  useEffect(() => {
+    const hasWaitingAssessment = () => assessments.some(a => Date.parse(a.candidateCreationAvailableAt || '') > Date.now());
+    setPreparationNow(Date.now());
+    if (!hasWaitingAssessment()) return;
+    const timer = window.setInterval(() => {
+      setPreparationNow(Date.now());
+      if (!hasWaitingAssessment()) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [assessments]);
   const [activeDropdownAsmId, setActiveDropdownAsmId] = useState<string | null>(null);
   const [isSavingAssessment, setIsSavingAssessment] = useState(false);
 
@@ -627,6 +641,7 @@ export default function AssessmentsAndAssignments({
 
   const handleCreateAssessmentSubmit = async () => {
     if (isSavingAssessment) return; // double-submit protection (clicks + Enter)
+    if (formQuestions.length === 0) { toast.error('Add at least one question.'); return; }
     // 1. Check required headers
     if (!formJobId.trim() || !formJobTitle.trim() || !formJobDescription.trim()) {
       toast.error('Job ID, Job Title, and Job Description are mandatory fields.');
@@ -646,18 +661,18 @@ export default function AssessmentsAndAssignments({
         return;
       }
       const dur = Number(formQuestions[i].maxDuration);
-      if (!Number.isFinite(dur) || dur < 1 || dur > 120) {
+      if (!Number.isInteger(dur) || dur < 1 || dur > 120) {
         toast.error(`Question #${i + 1} Max Duration must be between 1 and 120 seconds.`);
         return;
       }
       if (formRoundType !== 'HR') {
         const ms = Number(formQuestions[i].maxScore);
         const wt = Number(formQuestions[i].weightage);
-        if (!Number.isFinite(ms) || ms < 1) {
+        if (!Number.isInteger(ms) || ms < 1) {
           toast.error(`Question #${i + 1} Max Score is required and must be at least 1.`);
           return;
         }
-        if (!Number.isFinite(wt) || wt < 0) {
+        if (!Number.isInteger(wt) || wt < 0 || wt > 100) {
           toast.error(`Question #${i + 1} Weightage % is required.`);
           return;
         }
@@ -697,70 +712,25 @@ export default function AssessmentsAndAssignments({
       return;
     }
 
-    // Handle Edit Save — server-truth via PUT with optimistic concurrency.
-    if (editingAssessmentId) {
-      const target = assessments.find(a => a.id === editingAssessmentId);
-      if (!target) {
-        toast.error('Assessment not found — it may have been removed. Reloading.');
-        onRefreshAssessments();
-        return;
-      }
-      setIsSavingAssessment(true);
-      try {
-        const payload = assessmentToPayload({
-          jobId: target.jobId,
-          jobTitle: formJobTitle,
-          jobDescription: formJobDescription,
-          language: formLanguage,
-          roundType: target.roundType,
-          questions: formQuestions,
-          startDate: formStartDate ? new Date(formStartDate).toISOString() : undefined,
-          endDate: formEndDate ? new Date(formEndDate).toISOString() : undefined,
-        });
-        const updated = await apiPutAssessment(target.jobId, {
-          ...payload,
-          version: target.version ?? 1,
-        });
-        onSetAssessments(prev => prev.map(a => (a.id === editingAssessmentId ? updated : a)));
-        toast.success(`Assessment "${updated.jobTitle}" updated successfully!`);
+    setPreviewDraft({
+      jobId: asJobId(formJobId), jobTitle: formJobTitle, jobDescription: formJobDescription,
+      language: formLanguage, roundType: formRoundType,
+      questions: formQuestions.map(q => ({ ...q, options: q.options ? [...q.options] : undefined })),
+      startDate: formStartDate ? new Date(formStartDate).toISOString() : undefined,
+      endDate: formEndDate ? new Date(formEndDate).toISOString() : undefined,
+    });
+    creationKeyRef.current = newIdempotencyKey();
+    setCurrentView('PREVIEW');
+  };
 
-        // Reset Creation Fields
-        setEditingAssessmentId(null);
-        setFormJobId('JOB-' + generate32BitId());
-        setFormJobTitle('');
-        setFormJobDescription('');
-        setFormQuestions([{ id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }]);
-        setFormStartDate('');
-        setFormEndDate('');
-        setCurrentView('LIST');
-      } catch (err: any) {
-        const msg = friendlyAssessmentError(err, 'update this assessment');
-        if (err instanceof ApiError && err.status === 409) {
-          toast.error(msg, { action: { label: 'Reload', onClick: () => onRefreshAssessments() } });
-          onRefreshAssessments();
-        } else {
-          toast.error(msg);
-        }
-      } finally {
-        setIsSavingAssessment(false);
-      }
-      return;
-    }
-
-    // Fresh Idempotency-Key per submit attempt (reused only on auto-retry).
-    const idempotencyKey = newIdempotencyKey();
+  const handleConfirmAssessmentCreate = async () => {
+    if (!previewDraft || currentView !== 'PREVIEW' || creationInFlightRef.current) return;
+    creationInFlightRef.current = true;
+    // Keep this key when retrying a failed confirmation to prevent duplicate creates.
+    const idempotencyKey = creationKeyRef.current || (creationKeyRef.current = newIdempotencyKey());
     setIsSavingAssessment(true);
     try {
-      const payload = assessmentToPayload({
-        jobId: formJobId,
-        jobTitle: formJobTitle,
-        jobDescription: formJobDescription,
-        language: formLanguage,
-        roundType: formRoundType,
-        questions: formQuestions,
-        startDate: formStartDate ? new Date(formStartDate).toISOString() : undefined,
-        endDate: formEndDate ? new Date(formEndDate).toISOString() : undefined,
-      });
+      const payload = assessmentToPayload(previewDraft);
 
       // Server-truth create: FastAPI validates, stores pending, calls
       // PrimeHire server-side, then marks synced/failed. The browser never
@@ -773,7 +743,7 @@ export default function AssessmentsAndAssignments({
           `Assessment "${newAsm.jobTitle}" saved, but PrimeHire sync failed. Retry from the list.`,
         );
       } else {
-        toast.success(`Assessment "${newAsm.jobTitle}" created successfully!`);
+        toast.success(`Assessment "${newAsm.jobTitle}" created. Candidates unlock after the five-minute preparation buffer.`);
       }
 
       // Reset Creation Fields and generate a new Job ID
@@ -783,41 +753,18 @@ export default function AssessmentsAndAssignments({
       setFormQuestions([{ id: 'q-1', text: '', type: 'SPEAK_TO_ANSWER', maxDuration: 120, maxScore: 50, weightage: 100 }]);
       setFormStartDate('');
       setFormEndDate('');
-      setCurrentView('LIST');
+      setPreviewDraft(null);
+      creationKeyRef.current = null;
+      setSelectedAssessmentId(newAsm.id);
+      setCurrentView('DETAIL');
     } catch (err: any) {
       console.error('[Create Assessment Error]', err);
       // Keep entered form data intact on failure (no reset here) so nothing is lost.
       toast.error(friendlyAssessmentError(err, 'create this assessment'));
     } finally {
+      creationInFlightRef.current = false;
       setIsSavingAssessment(false);
     }
-  };
-
-  const handleStartEditAssessment = (asm: AssessmentProfile) => {
-    setEditingAssessmentId(asm.id);
-    setFormJobId(asm.jobId);
-    setFormJobTitle(asm.jobTitle);
-    setFormJobDescription(asm.jobDescription);
-    setFormLanguage(asm.language);
-    setFormRoundType(asm.roundType);
-    setFormQuestions(asm.questions);
-
-    // Convert ISO string back to local datetime-local format: 'YYYY-MM-DDTHH:mm'
-    const formatToDatetimeLocal = (isoStr?: string) => {
-      if (!isoStr) return '';
-      try {
-        const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return '';
-        const pad = (num: number) => num.toString().padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      } catch {
-        return '';
-      }
-    };
-
-    setFormStartDate(formatToDatetimeLocal(asm.startDate));
-    setFormEndDate(formatToDatetimeLocal(asm.endDate));
-    setCurrentView('EDIT');
   };
 
   // =========================================================================
@@ -1861,6 +1808,12 @@ export default function AssessmentsAndAssignments({
   };
 
   const handleConfirmCandidateImport = async () => {
+    if (!activeAssessment || !activeAssessment.isActive) {
+      toast.error('Choose an active assessment before adding candidates.');
+      return;
+    }
+    const availability = getAssessmentAvailability(activeAssessment);
+    if (!availability.canAddCandidates) { toast.error(availability.message); return; }
     if (parsedRows.length === 0) {
       toast.error('No candidate data rows found.');
       return;
@@ -2112,7 +2065,6 @@ export default function AssessmentsAndAssignments({
 <SectionHeader eyebrow="Profiles & scheduling" title="Assessments" subtitle="Create question sets, schedule candidates, and manage interview access." icon={<Cpu className="w-5 h-5" />} action={
             <PAButton
               onClick={() => {
-                setEditingAssessmentId(null);
                 setFormJobId('JOB-' + generate32BitId());
                 setFormJobTitle('');
                 setFormJobDescription('');
@@ -2191,6 +2143,7 @@ export default function AssessmentsAndAssignments({
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {filteredAssessments.map((asm) => {
               const assessmentCandidates = candidates.filter(c => c.assessmentId === asm.id);
+              const availability = getAssessmentAvailability(asm, preparationNow);
               const activeCandCount = assessmentCandidates.filter(c => c.status === 'ACTIVE').length;
               return (
                 <div
@@ -2202,7 +2155,7 @@ export default function AssessmentsAndAssignments({
                   }`}
                 >
                   <div>
-                    {/* Header: Title and edit options */}
+                    {/* Header: Title and lifecycle actions */}
                     <div className="flex items-start justify-between">
                       <div className="space-y-1 pr-12 min-w-0">
                         <h3 className="text-sm font-bold text-foreground truncate" title={asm.jobTitle}>
@@ -2213,17 +2166,8 @@ export default function AssessmentsAndAssignments({
                         </span>
                       </div>
 
-                      {/* Actions: Edit icon & Three dots menu */}
+                      {/* Actions menu */}
                       <div className="flex items-center gap-1 shrink-0">
-                        {/* Quick Edit icon */}
-                        <button
-                          onClick={() => handleStartEditAssessment(asm)}
-                          className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer"
-                          title="Edit Assessment"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-
                         {/* Three Dots Menu */}
                         <ActionMenu label={`Actions for ${asm.jobTitle}`} open={activeDropdownAsmId === asm.id} onOpenChange={open => setActiveDropdownAsmId(open ? asm.id : null)}>
 <button
@@ -2272,6 +2216,9 @@ export default function AssessmentsAndAssignments({
                       )}
                     </div>
 
+                    {!availability.canAddCandidates && asm.syncState?.state !== 'failed' && (
+                      <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-violet-700"><Clock className="h-3.5 w-3.5 shrink-0" />{availability.message}</p>
+                    )}
                     {/* Dates detail */}
                     <div className="text-[10px] text-gray-400 mt-4 space-y-0.5">
                       <div>Created: {new Date(asm.createdAt).toLocaleDateString()}</div>
@@ -2304,9 +2251,10 @@ export default function AssessmentsAndAssignments({
                         setSelectedAssessmentId(asm.id);
                         setCurrentView('UPLOAD');
                       }}
-                      disabled={!asm.isActive}
+                      disabled={!asm.isActive || !availability.canAddCandidates}
+                      title={availability.message || (!asm.isActive ? 'Activate the assessment before adding candidates.' : 'Add candidates')}
                       className={`flex-1 text-center text-xs font-bold py-2 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer ${
-                        asm.isActive
+                        asm.isActive && availability.canAddCandidates
                           ? 'bg-gradient-primary hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5 text-white shadow-xs'
                           : 'bg-gray-100 text-gray-400 border border-border/70 cursor-not-allowed'
                       }`}
@@ -2324,15 +2272,14 @@ export default function AssessmentsAndAssignments({
       )}
 
       {/* =========================================================================
-          VIEW 2: CREATION / EDIT MODULE
+          VIEW 2: CREATION MODULE
           ========================================================================= */}
-      {(currentView === 'CREATE' || currentView === 'EDIT') && (
+      {currentView === 'CREATE' && (
         <div className="space-y-6 text-foreground">
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
                 setCurrentView('LIST');
-                setEditingAssessmentId(null);
                 setFormJobId('JOB-' + generate32BitId());
                 setFormJobTitle('');
                 setFormJobDescription('');
@@ -2346,12 +2293,10 @@ export default function AssessmentsAndAssignments({
             </button>
             <div>
               <h2 className="text-lg font-bold text-foreground">
-                {currentView === 'EDIT' ? 'Edit Assessment Profile' : 'Create Assessment Profile'}
+                Create Assessment Profile
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {currentView === 'EDIT'
-                  ? 'Modify the structure, questions, and parameters for candidate evaluative screens.'
-                  : 'Design the structure, questions, and parameters for candidate evaluative screens.'}
+                Step 1 of 2: Enter the details, then review everything before creating the assessment.
               </p>
             </div>
           </div>
@@ -2434,7 +2379,6 @@ export default function AssessmentsAndAssignments({
                     Round Type <span className="text-destructive">*</span>
                   </label>
                   <select
-                    disabled={currentView === 'EDIT'}
                     value={formRoundType}
                     onChange={(e) => {
                       const selectedType = e.target.value as RoundType;
@@ -2450,9 +2394,7 @@ export default function AssessmentsAndAssignments({
                         ]);
                       }
                     }}
-                    className={`w-full text-xs rounded-md border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden font-bold ${
-                      currentView === 'EDIT' ? 'bg-gray-100 text-muted-foreground cursor-not-allowed' : ''
-                    }`}
+                    className="w-full text-xs rounded-md border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden font-bold"
                   >
                     <option value="TECHNICAL">TECHNICAL (Coding & Technical Speech)</option>
                     <option value="BASIC">BASIC (Behavioral & Criteria Speech)</option>
@@ -2794,16 +2736,15 @@ export default function AssessmentsAndAssignments({
                     {isSavingAssessment ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        {currentView === 'EDIT' ? 'Saving Changes...' : 'Creating Assessment...'}
+                        Preparing preview…
                       </>
                     ) : (
-                      currentView === 'EDIT' ? 'Save Changes' : 'Create Assessment Profile'
+                      'Review assessment'
                     )}
                   </button>
                   <button
                     onClick={() => {
                       setCurrentView('LIST');
-                      setEditingAssessmentId(null);
                       setFormJobId('JOB-' + generate32BitId());
                       setFormJobTitle('');
                       setFormJobDescription('');
@@ -2820,6 +2761,12 @@ export default function AssessmentsAndAssignments({
             </div>
           </div>
         </div>
+      )}
+
+      {currentView === 'PREVIEW' && previewDraft && (
+        <AssessmentPreview draft={previewDraft} saving={isSavingAssessment}
+          onBack={() => { if (!creationInFlightRef.current) { setPreviewDraft(null); setCurrentView('CREATE'); } }}
+          onConfirm={handleConfirmAssessmentCreate} />
       )}
 
       {/* =========================================================================
@@ -2844,6 +2791,8 @@ export default function AssessmentsAndAssignments({
               </p>
             </div>
           </div>
+
+          <AssessmentPreparationNotice assessment={activeAssessment} now={preparationNow} />
 
           {/* Expanded Assessment details */}
           <div className="border border-border/70 rounded-xl overflow-hidden bg-card">
@@ -3117,7 +3066,9 @@ export default function AssessmentsAndAssignments({
               <div className="flex gap-2">
                 <button
                   onClick={() => setCurrentView('UPLOAD')}
-                  className="flex items-center gap-1.5 bg-muted/40 hover:bg-muted border border-border/70 text-foreground text-xs font-semibold px-3 py-2 rounded-lg transition"
+                  disabled={!activeAssessment.isActive || !getAssessmentAvailability(activeAssessment, preparationNow).canAddCandidates}
+                  title={getAssessmentAvailability(activeAssessment, preparationNow).message}
+                  className="flex items-center gap-1.5 bg-muted/40 hover:bg-muted border border-border/70 text-foreground text-xs font-semibold px-3 py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <UserPlus className="w-4 h-4 text-blue-500" /> Create Assignment (CSV Upload)
                 </button>
@@ -3704,7 +3655,13 @@ export default function AssessmentsAndAssignments({
       {/* =========================================================================
           VIEW 4: CANDIDATE UPLOAD / IMPORT FLOW (CSV PARSER WORKSPACE)
           ========================================================================= */}
-      {currentView === 'UPLOAD' && activeAssessment && (
+      {currentView === 'UPLOAD' && activeAssessment && !getAssessmentAvailability(activeAssessment, preparationNow).canAddCandidates && (
+        <div className="space-y-4">
+          <button onClick={() => setCurrentView('DETAIL')} className="inline-flex items-center gap-2 text-sm text-primary"><ArrowLeft className="h-4 w-4" /> Back to assessment</button>
+          <AssessmentPreparationNotice assessment={activeAssessment} now={preparationNow} />
+        </div>
+      )}
+      {currentView === 'UPLOAD' && activeAssessment && getAssessmentAvailability(activeAssessment, preparationNow).canAddCandidates && (
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <button

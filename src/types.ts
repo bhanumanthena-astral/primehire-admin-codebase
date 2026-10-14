@@ -43,6 +43,7 @@ export interface AssessmentProfile {
   // Slice 2A server-truth fields (from FastAPI; absent on legacy local rows)
   version?: number;
   updatedAt?: string;
+  candidateCreationAvailableAt?: string | null; // Server-persisted end of the preparation buffer.
   syncState?: {
     state: 'pending' | 'synced' | 'failed';
     error?: string | null;

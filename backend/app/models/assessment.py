@@ -89,7 +89,7 @@ def to_public(doc: dict[str, Any]) -> dict[str, Any]:
     out = dict(doc)
     oid = out.pop("_id", None)
     out["id"] = str(oid) if oid is not None else out.get("id", "")
-    for key in ("createdAt", "updatedAt", "deactivatedAt", "startDate", "endDate"):
+    for key in ("createdAt", "updatedAt", "deactivatedAt", "startDate", "endDate", "candidateCreationAvailableAt"):
         out[key] = as_utc_iso(out.get(key))
     sync = out.get("syncState")
     if isinstance(sync, dict):

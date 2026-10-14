@@ -25,6 +25,7 @@ from ..services.candidate_service import (
 )
 
 from ..auth import require_admin_auth
+from ..services.assessment_availability import AssessmentPreparing
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,9 @@ async def create_candidate(
 ) -> dict[str, Any]:
     try:
         return await service.create(body.to_doc())
+    except AssessmentPreparing as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": exc.code, "message": str(exc), "availableAt": exc.available_at}) from None
     except CandidateConflict as exc:
         raise HTTPException(status_code=409, detail={
             "code": "DUPLICATE_KEY",
@@ -101,6 +105,9 @@ async def update_candidate(
     try:
         payload = body.model_dump(exclude_unset=True)
         return await service.update(candidate_key.strip(), payload)
+    except AssessmentPreparing as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": exc.code, "message": str(exc), "availableAt": exc.available_at}) from None
     except CandidateNotFound:
         raise HTTPException(status_code=404, detail={
             "code": "CANDIDATE_NOT_FOUND",

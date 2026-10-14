@@ -12,6 +12,7 @@ import Dashboard from './components/Dashboard';
 import AssessmentsAndAssignments from './components/AssessmentsAndAssignments';
 import CandidateManagement from './components/CandidateManagement';
 import MailTemplates from './components/MailTemplates';
+import SelfHelp from './components/SelfHelp';
 import ReportDialog from './components/ReportDialog';
 import { Toaster } from '@/components/ui/sonner';
 import {
@@ -30,6 +31,7 @@ import {
   RotateCcw,
   Search,
   RefreshCw,
+  BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -41,6 +43,7 @@ const MODULE_TABS = [
   { id: 'candidates', label: 'Candidate Directory', short: 'Candidate Directory', icon: Users, desc: 'Pipeline, reports & credentials' },
   { id: 'assessments', label: 'Assessments', short: 'Assessments', icon: Briefcase, desc: 'Profiles, scheduling & links' },
   { id: 'templates', label: 'Mail Templates', short: 'Mail Templates', icon: Mail, desc: 'Invites & reminder sequences' },
+  { id: 'self-help', label: 'Self Help', short: 'Self Help', icon: BookOpen, desc: 'Video tutorial & portal walkthrough' },
 ];
 
 /**
@@ -464,6 +467,11 @@ export default function App() {
           title: 'Mail Templates',
           subtitle: 'Configure automated invite and reminder email templates with dynamic merge variables.',
         };
+      case 'self-help':
+        return {
+          title: 'Self Help',
+          subtitle: 'Learn how to use the portal with a guided video tutorial.',
+        };
       default:
         return {
           title: 'Dashboard Overview',
@@ -543,7 +551,7 @@ export default function App() {
                   PV
                 </div>
                 <div className="text-left hidden lg:block">
-                  <div className="font-semibold text-xs leading-tight">PNS Varma</div>
+                  <div className="font-semibold text-xs leading-tight">Elite HR </div>
                   <div className="text-[10px] uppercase tracking-wide text-primary-foreground/70 font-medium">Administrator</div>
                 </div>
               </div>
@@ -612,6 +620,7 @@ export default function App() {
           where pills are hidden. Constant padding; never resized by scroll. */}
       <div className="sticky top-16 md:top-28 z-30 bg-gradient-primary text-primary-foreground shadow-[var(--shadow-glow)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          {activeTab !== 'self-help' && <>
           <div className="flex flex-wrap items-center gap-2 py-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70 mr-1">
               <SlidersHorizontal className="w-3.5 h-3.5" /> Filters
@@ -684,7 +693,8 @@ export default function App() {
             </div>
           )}
 
-          {/* mobile nav */}
+          </>}
+          {/* mobile nav stays available in every module */}
           {isMobileNavOpen && (
             <div className="md:hidden pb-3 grid grid-cols-2 gap-2">
               {MODULE_TABS.map(({ id, label, icon: Icon }) => {
@@ -711,7 +721,7 @@ export default function App() {
       </div>
 
       {/* ── Main: selectable cards + single frosted workspace ── */}
-      {(apiDown || apiError) && (
+      {activeTab !== 'self-help' && (apiDown || apiError) && (
         <div className="relative z-10 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4" role="alert">
           <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-800 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -782,6 +792,7 @@ export default function App() {
               onDeleteTemplate={handleDeleteMailTemplate}
             />
           )}
+          {activeTab === 'self-help' && <SelfHelp />}
         </FrostedDetailPanel>
       </main>
 

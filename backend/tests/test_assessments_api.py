@@ -15,7 +15,7 @@ import app.api.directory as directory_api
 from app.db.mongodb import ensure_indexes
 from app.main import app
 from app.services import primehire_client as remote
-from app.services.assessment_service import AssessmentService
+from app.services.assessment_service import AssessmentLocked, AssessmentService
 from app.services.primehire_payload import PayloadError, map_assessment
 
 
@@ -227,22 +227,18 @@ def test_route_duplicate_job_round_conflicts():
         _teardown()
 
 
-def test_route_put_accepts_echoed_identity_fields():
-    """Frontend sends jobId/roundType in the PUT body; must not 422."""
+@pytest.mark.parametrize("method", ["put", "patch"])
+def test_route_content_is_locked_after_creation(method):
     db = _fresh_db()
     client, _ = _client_with(db, fetch=_ok_fetch)
     try:
-        client.post("/api/assessments", json=_payload())
-        ok = client.put("/api/assessments/JOB-T1", json={
-            **_payload(), "version": 1,
-            "jobTitle": "Echoed",
+        created = client.post("/api/assessments", json=_payload()).json()
+        changed = getattr(client, method)("/api/assessments/JOB-T1", json={
+            **_payload(jobTitle="Changed", questions=[_mcq()]), "version": 1,
         })
-        assert ok.status_code == 200, ok.text
-        assert ok.json()["jobTitle"] == "Echoed"
-        mismatch = client.put("/api/assessments/JOB-T1", json={
-            **_payload(), "version": 2, "jobId": "JOB-OTHER",
-        })
-        assert mismatch.status_code == 422
+        assert changed.status_code == 403, changed.text
+        assert changed.json()["detail"]["code"] == "ASSESSMENT_LOCKED"
+        assert client.get("/api/assessments/JOB-T1").json() == created
     finally:
         _teardown()
 
@@ -252,51 +248,29 @@ def test_route_version_conflict_409_with_current():
     client, _ = _client_with(db, fetch=_ok_fetch)
     try:
         created = client.post("/api/assessments", json=_payload()).json()
-        assert created["version"] == 1
-        ok = client.put("/api/assessments/JOB-T1", json={
-            "version": 1, "jobTitle": "Renamed", "jobDescription": "d",
-            "language": "ENGLISH",
-            "questions": [_verbal(referenceAnswer="r", weightage=100)],
-        })
-        assert ok.status_code == 200, ok.text
-        assert ok.json()["version"] == 2
-        stale = client.put("/api/assessments/JOB-T1", json={
-            "version": 1, "jobTitle": "Stale", "jobDescription": "d",
-            "language": "ENGLISH",
-            "questions": [_verbal(referenceAnswer="r", weightage=100)],
-        })
+        off = client.patch("/api/assessments/JOB-T1/deactivate", json={"version": created["version"]})
+        assert off.status_code == 200 and off.json()["version"] == 2
+        stale = client.patch("/api/assessments/JOB-T1/activate", json={"version": 1})
         assert stale.status_code == 409
         body = stale.json()["detail"]
         assert body["code"] == "VERSION_CONFLICT"
-        assert "someone else" in body["message"]
-        assert body["current"]["jobTitle"] == "Renamed"
+        assert body["current"]["isActive"] is False
     finally:
         _teardown()
 
 
-def test_route_patch_and_activate_cycle():
+def test_route_activate_cycle_preserves_locked_content():
     db = _fresh_db()
     client, _ = _client_with(db, fetch=_ok_fetch)
     try:
         created = client.post("/api/assessments", json=_payload()).json()
-        patched = client.patch("/api/assessments/JOB-T1", json={
-            "version": created["version"], "jobTitle": "Patched"})
-        assert patched.status_code == 200 and patched.json()["jobTitle"] == "Patched"
-        # Untouched fields preserved (targeted $set, no whole-doc replace).
-        assert patched.json()["jobDescription"] == "desc"
-
-        deact = client.patch("/api/assessments/JOB-T1", json={
-            "version": patched.json()["version"]})
-        # PATCH without isActive leaves state alone.
-        assert deact.status_code == 200 and deact.json()["isActive"] is True
-
-        off = client.patch("/api/assessments/JOB-T1/deactivate", json={
-            "version": deact.json()["version"]})
+        off = client.patch("/api/assessments/JOB-T1/deactivate", json={"version": created["version"]})
         assert off.status_code == 200 and off.json()["isActive"] is False
         assert off.json()["deactivatedAt"]
-        on = client.patch("/api/assessments/JOB-T1/activate", json={
-            "version": off.json()["version"]})
+        on = client.patch("/api/assessments/JOB-T1/activate", json={"version": off.json()["version"]})
         assert on.status_code == 200 and on.json()["isActive"] is True
+        for field in ("jobTitle", "questions", "candidateCreationAvailableAt"):
+            assert on.json()[field] == created[field]
     finally:
         _teardown()
 
@@ -365,7 +339,7 @@ def test_route_retry_endpoint():
 
 
 async def test_legacy_doc_without_version_adopts_on_first_write(db):
-    """Pre-2A documents (no version/syncState) load, edit and toggle."""
+    """Legacy content is locked too; lifecycle actions still adopt a version."""
     await db["assessments"].insert_one({
         "jobId": "JOB-LEGACY", "jobTitle": "Old", "jobDescription": "d",
         "language": "ENGLISH", "roundType": "TECHNICAL",
@@ -374,10 +348,12 @@ async def test_legacy_doc_without_version_adopts_on_first_write(db):
     svc = AssessmentService(db, fetch=_ok_fetch)
     current = await svc.get_by_job_id("JOB-LEGACY")
     assert "version" not in current  # legacy shape loads fine
-    updated = await svc.patch("JOB-LEGACY", {"version": 1, "jobTitle": "Old v2"})
-    assert updated["version"] == 2 and updated["jobTitle"] == "Old v2"
-    toggled = await svc.set_active("JOB-LEGACY", False, updated["version"])
-    assert toggled["isActive"] is False and toggled["version"] == 3
+    with pytest.raises(AssessmentLocked):
+        await svc.patch("JOB-LEGACY", {"version": 1, "jobTitle": "Old v2"})
+    toggled = await svc.set_active("JOB-LEGACY", False, 1)
+    assert toggled["isActive"] is False and toggled["version"] == 2
+    assert toggled["jobTitle"] == "Old"
+
 
 
 async def test_find_duplicates_dry_run(db):

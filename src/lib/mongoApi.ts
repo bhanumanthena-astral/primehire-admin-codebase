@@ -156,6 +156,7 @@ export function mapMongoAssessment(doc: any): AssessmentProfile {
     isActive: doc.isActive ?? true,
     createdAt: asUtcIso(doc.createdAt ?? new Date().toISOString()),
     updatedAt: asUtcIso(doc.updatedAt),
+    candidateCreationAvailableAt: asUtcIso(doc.candidateCreationAvailableAt),
     deactivatedAt: asUtcIso(doc.deactivatedAt ?? null),
     startDate: asUtcIso(doc.startDateIso ?? doc.startDate),
     endDate: asUtcIso(doc.endDateIso ?? doc.endDate),
@@ -274,20 +275,6 @@ export async function createAssessment(
 ): Promise<AssessmentProfile> {
   const headers = idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined;
   const doc = await sendJson<any>('POST', '/api/assessments', input, headers);
-  return mapMongoAssessment(doc);
-}
-
-export async function putAssessment(
-  jobId: string, input: AssessmentWritePayload & { version: number },
-): Promise<AssessmentProfile> {
-  const doc = await sendJson<any>('PUT', `/api/assessments/${encodeURIComponent(jobId)}`, input);
-  return mapMongoAssessment(doc);
-}
-
-export async function patchAssessment(
-  jobId: string, patch: Record<string, unknown> & { version: number },
-): Promise<AssessmentProfile> {
-  const doc = await sendJson<any>('PATCH', `/api/assessments/${encodeURIComponent(jobId)}`, patch);
   return mapMongoAssessment(doc);
 }
 

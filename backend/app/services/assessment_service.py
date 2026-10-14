@@ -8,7 +8,7 @@ looks like a success.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from pymongo.errors import DuplicateKeyError
@@ -18,10 +18,15 @@ from ..models import audit as audit_log
 from ..schemas.assessment import AssessmentIn
 from . import primehire_client as remote
 from .primehire_payload import PayloadError, map_assessment
+from .assessment_availability import ASSESSMENT_PREPARATION_SECONDS
 
 
 class AssessmentNotFound(Exception):
     """jobId does not exist."""
+
+
+class AssessmentLocked(Exception):
+    """Assessment content is immutable after creation."""
 
 
 class AssessmentService:
@@ -83,6 +88,8 @@ class AssessmentService:
             })
         try:
             result = await remote.create_assessment_remote(prime_payload, fetch=self._fetch)
+            if isinstance(result, dict) and str(result.get("status", "")).upper() in ("ERROR", "FAILED", "FAILURE"):
+                raise remote.PrimehireError(str(result.get("message") or "Assessment creation was rejected."))
         except remote.PrimehireError as exc:
             return await self._repo.set_sync_state(job_id, {
                 "state": "failed",
@@ -101,12 +108,14 @@ class AssessmentService:
                     if data.get(key) is not None:
                         prime_ids["assessmentId"] = data[key]
                         break
+        synced_at = utcnow()
         await self._db["assessments"].update_one(
             {"jobId": job_id},
             {"$set": {
                 "primehire": prime_ids,
-                "syncState": {"state": "synced", "syncedAt": utcnow()},
-                "updatedAt": utcnow(),
+                "syncState": {"state": "synced", "syncedAt": synced_at},
+                "candidateCreationAvailableAt": synced_at + timedelta(seconds=ASSESSMENT_PREPARATION_SECONDS),
+                "updatedAt": synced_at,
             }},
         )
         stored = await self._repo.get_by_job_id(job_id)
@@ -147,37 +156,12 @@ class AssessmentService:
         return items, total
 
     async def put(self, job_id: str, payload: dict[str, Any], *, updated_by: str = "unknown") -> dict[str, Any]:
-        from ..schemas.assessment import AssessmentPut
-
-        data = AssessmentPut.model_validate(payload)
-        if data.jobId is not None and data.jobId != job_id:
-            raise ValueError("jobId in body does not match the path.")
-        current = await self._repo.get_by_job_id(job_id)
-        if current is None:
+        if await self._repo.get_by_job_id(job_id) is None:
             raise AssessmentNotFound(job_id)
-        if data.roundType is not None and data.roundType != current.get("roundType"):
-            raise ValueError("roundType cannot be changed by PUT.")
-        changes = data.to_set_paths()
-        changes["updatedBy"] = updated_by
-        try:
-            return await self._repo.update_versioned(job_id, data.version, changes)
-        except KeyError:
-            raise AssessmentNotFound(job_id) from None
+        raise AssessmentLocked("Assessment content cannot be edited after creation. Create a new assessment instead.")
 
     async def patch(self, job_id: str, payload: dict[str, Any], *, updated_by: str = "unknown") -> dict[str, Any]:
-        from ..schemas.assessment import AssessmentUpdate
-
-        data = AssessmentUpdate.model_validate(payload)
-        changes = data.to_set_paths()
-        changes["updatedBy"] = updated_by
-        if data.isActive is False:
-            changes["deactivatedAt"] = utcnow()
-        elif data.isActive is True:
-            changes["deactivatedAt"] = None
-        try:
-            return await self._repo.update_versioned(job_id, data.version, changes)
-        except KeyError:
-            raise AssessmentNotFound(job_id) from None
+        return await self.put(job_id, payload, updated_by=updated_by)
 
     async def set_active(self, job_id: str, active: bool, version: int, *, updated_by: str = "unknown") -> dict[str, Any]:
         changes: dict[str, Any] = {

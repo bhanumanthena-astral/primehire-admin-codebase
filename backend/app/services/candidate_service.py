@@ -13,6 +13,7 @@ from pymongo.errors import DuplicateKeyError
 from ..models.candidate import CandidateRepository
 from ..models import audit as audit_log
 from ..schemas.candidate import CandidateIn, CandidateUpdate
+from .assessment_availability import AssessmentPreparing, require_candidate_creation_available
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,7 @@ class CandidateService:
     async def create(self, payload: dict[str, Any]) -> dict[str, Any]:
         data = CandidateIn.model_validate(payload)  # rejects password/rowLoading
         doc = data.to_doc()
+        await require_candidate_creation_available(self._db, doc["assessmentId"])
         if not doc.get("candidateKey"):
             doc["candidateKey"] = generate_candidate_key()
         else:
@@ -148,6 +150,9 @@ class CandidateService:
         for index, payload in enumerate(items):
             try:
                 created.append(await self.create(payload))
+            except AssessmentPreparing as exc:
+                errors.append({"index": index, "code": exc.code, "message": str(exc),
+                               "availableAt": exc.available_at})
             except CandidateConflict as exc:
                 errors.append({"index": index, "code": "DUPLICATE_KEY",
                                "message": str(exc)})
@@ -162,6 +167,10 @@ class CandidateService:
 
     async def update(self, candidate_key: str, payload: dict[str, Any]) -> dict[str, Any]:
         data = CandidateUpdate.model_validate(payload)  # rejects password/rowLoading
+        if data.assessmentId is not None:
+            current = await self._repo.get_by_key(candidate_key)
+            if current and data.assessmentId != current.get("assessmentId"):
+                await require_candidate_creation_available(self._db, data.assessmentId)
         try:
             doc = await self._repo.update_by_key(candidate_key, data.to_set_paths())
         except DuplicateKeyError as exc:
