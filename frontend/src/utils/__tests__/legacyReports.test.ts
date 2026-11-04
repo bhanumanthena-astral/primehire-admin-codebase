@@ -1,29 +1,19 @@
-/** Data-layer verification for the report redesign. Run: .\node_modules\.bin\tsx scratch\verify-report.ts */
-import { readFileSync } from 'node:fs';
-import { normalizeReport, generateInsights } from '../src/utils/normalizeReport';
+import {expect,it} from 'vitest';
+import { normalizeReport, generateInsights } from '../normalizeReport';
 import {
   getAggregates,
   getCoverage,
   getRadarPoints,
   getDistribution,
   deriveTopic,
-} from '../src/utils/reportMetrics';
-import { TECHNICAL_RADAR_AXES, COMM_RADAR_AXES } from '../src/utils/reportConfig';
+} from '../reportMetrics';
+import { TECHNICAL_RADAR_AXES, COMM_RADAR_AXES } from '../reportConfig';
 
-let failures = 0;
-function check(name: string, cond: boolean, extra?: unknown) {
-  if (cond) {
-    console.log(`PASS ${name}`);
-  } else {
-    failures++;
-    console.error(`FAIL ${name}`, extra ?? '');
-  }
-}
+import {technicalReportFixture as tech,hrReportFixture as hr,basicReportFixture as basic} from './fixtures/legacyReports';
 
-const tech = JSON.parse(readFileSync('scratch/report-technical.json', 'utf8'));
-const hr = JSON.parse(readFileSync('scratch/report-hr.json', 'utf8'));
-const basic = JSON.parse(readFileSync('scratch/report-basic.json', 'utf8'));
+function check(name:string,condition:boolean,_details?:unknown){expect(condition,name).toBe(true);}
 
+it('preserves legacy report scores, missing evidence and derived coverage',()=>{
 // ── TECHNICAL (spec values: 44 / 55 / 51; comm 66/52/51/52) ──
 const t = normalizeReport(tech)!;
 check('tech: overall 44', t.overall.overallScore === 44, t.overall);
@@ -73,8 +63,4 @@ const empty = normalizeReport({} as any)!;
 check('empty object never throws, UNKNOWN round', empty.meta.roundType === 'UNKNOWN' && empty.questions.length === 0);
 check('empty radar -> [] (never zeros)', getRadarPoints(empty.overall, TECHNICAL_RADAR_AXES).length === 0);
 
-if (failures > 0) {
-  console.error(`\n${failures} FAILURE(S)`);
-  process.exit(1);
-}
-console.log('\nAll report data checks passed.');
+});

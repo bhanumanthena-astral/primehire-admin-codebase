@@ -10,7 +10,26 @@ coverage/
 __pycache__/
 *.py[cod]
 .venv/
+.venv-v2/
 .pytest_cache/
 .coverage
 # Local resume uploads (runtime data, may contain PII — never commit)
 backend/storage/
+backend/tools/
+backend/runtime/
+test-results/
+playwright-report/
+v2-admin-invite.txt
+jobs-*-check.*
+jobs-final-regression.txt
+artifacts/
+# Local credentials and audit/browser output must never enter source control.
+client_secret*.json
+backend/secrets/
+.tmp/
+scratch/
+backend/logs/
+htmlcov/
+.coverage.*
+*.tsbuildinfo
+tunnel_url.txt
