@@ -16,6 +16,7 @@ import asyncio
 import logging
 import random
 import time
+from functools import partial
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -84,6 +85,7 @@ async def score_candidate(
     output_ref: str,
     timeout_s: int = 30,
     max_attempts: int = 3,
+    model_override: str | None = None,
 ) -> LlmOutcome:
     """Score a PII-stripped digest against job requirements. Never raises.
 
@@ -102,12 +104,14 @@ async def score_candidate(
         sanitized_message,
     )
 
+    selected_model = (model_override or settings.openrouter_model or '').strip()
+    log_run = partial(_log, model=selected_model)
     if detect_injection(raw_text or ""):
         return LlmOutcome(injection_suspected=True, llm_unavailable=True,
                           reasons=["Prompt-injection pattern detected; LLM score skipped."])
     digest = build_stripped_digest(parsed)
     request_payload = {"candidate": digest, "job": job_reqs}
-    digest_hash = input_hash(request_payload)
+    digest_hash = input_hash({**request_payload, 'model': selected_model} if model_override else request_payload)
     cached = await cache_get(db, PROMPT_VERSION_SCORE, digest_hash)
     if cached is not None:
         try:
@@ -119,7 +123,7 @@ async def score_candidate(
             pass
     if fake_mode() != "off":
         return await _fake_score(db, org_id, digest_hash, output_ref)
-    if not _is_configured():
+    if not settings.openrouter_api_key.strip() or not selected_model:
         return LlmOutcome(llm_unavailable=True, reasons=["LLM not configured."])
     user_block = (
         "<<<RESUME-START\n"
@@ -127,7 +131,7 @@ async def score_candidate(
         "RESUME-END>>>"
     )
     body = {
-        "model": settings.openrouter_model.strip(),
+        "model": selected_model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_block},
@@ -136,6 +140,10 @@ async def score_candidate(
         "max_tokens": 400,
         "temperature": 0.2,
     }
+    if model_override:
+        # Free providers may require internal reasoning. Leave a bounded
+        # allowance for that work before the short structured ATS answer.
+        body["max_tokens"] = 1600
     headers = {
         "Authorization": f"Bearer {settings.openrouter_api_key.strip()}",
         "Content-Type": "application/json",
@@ -155,7 +163,7 @@ async def score_candidate(
                 remaining = rate_limit_remaining(resp.headers)
                 if resp.status_code == 429:
                     retry_after = parse_retry_after(resp.headers)
-                    await _log(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
+                    await log_run(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
                                error="rate_limited")
                     if attempt + 1 < attempts:
                         await asyncio.sleep(min(60, retry_after) + random.uniform(0, 2))
@@ -166,7 +174,7 @@ async def score_candidate(
                         reasons=[sanitized_message("rate_limited")])
                 if resp.status_code >= 500:
                     code, _ = classify_status(resp.status_code)
-                    await _log(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
+                    await log_run(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
                                error=code)
                     if attempt + 1 < attempts:
                         await asyncio.sleep(2 ** attempt + random.uniform(0, 1))
@@ -176,7 +184,7 @@ async def score_candidate(
                         error_code=code, rate_limit_remaining=remaining,
                         reasons=[sanitized_message(code)])
                 if resp.status_code in (401, 403):
-                    await _log(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
+                    await log_run(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
                                error="auth_error")
                     logger.warning("OpenRouter auth error (key name only: OPENROUTER_API_KEY)")
                     return LlmOutcome(
@@ -185,21 +193,24 @@ async def score_candidate(
                         reasons=[sanitized_message("auth_error")])
                 if resp.status_code != 200:
                     code, _ = classify_status(resp.status_code)
-                    await _log(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
+                    await log_run(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
                                error=code)
                     return LlmOutcome(
                         llm_unavailable=True, error_code=code,
                         rate_limit_remaining=remaining,
                         reasons=[sanitized_message(code)])
-                data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                usage = data.get("usage", {}) or {}
+                usage = {}
                 try:
                     import json as _json
-
+                    data = resp.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    usage = data.get("usage", {}) or {}
+                    if not isinstance(usage,dict):usage={}
+                    usage = {key: max(0,int(usage.get(key,0) or 0)) for key in ['prompt_tokens','completion_tokens']}
                     scored = LlmScorePayload.model_validate(_json.loads(content))
-                except (ValueError, ValidationError):
-                    await _log(db, org_id, digest_hash, output_ref,
+                except (ValueError, TypeError, KeyError, IndexError, AttributeError, ValidationError):
+                    usage = {}
+                    await log_run(db, org_id, digest_hash, output_ref,
                                int(usage.get("prompt_tokens", 0) or 0),
                                int(usage.get("completion_tokens", 0) or 0),
                                latency_ms, error="bad_schema")
@@ -209,7 +220,7 @@ async def score_candidate(
                         llm_unavailable=True, error_code="bad_schema",
                         rate_limit_remaining=remaining,
                         reasons=[sanitized_message("bad_schema")])
-                await _log(db, org_id, digest_hash, output_ref,
+                await log_run(db, org_id, digest_hash, output_ref,
                            int(usage.get("prompt_tokens", 0) or 0),
                            int(usage.get("completion_tokens", 0) or 0),
                            latency_ms)
@@ -223,7 +234,7 @@ async def score_candidate(
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 latency_ms = int((time.monotonic() - started) * 1000)
                 code = "timeout" if isinstance(exc, httpx.TimeoutException) else "transport_error"
-                await _log(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
+                await log_run(db, org_id, digest_hash, output_ref, 0, 0, latency_ms,
                            error=code)
                 if attempt + 1 < attempts:
                     await asyncio.sleep(2 ** attempt + random.uniform(0, 1))
@@ -270,13 +281,13 @@ async def _fake_score(db: Any, org_id: str, digest_hash: str, output_ref: str) -
 
 
 async def _log(db: Any, org_id: str, digest_hash: str, output_ref: str,
-               tokens_in: int, tokens_out: int, latency_ms: int, error: str | None = None) -> None:
+               tokens_in: int, tokens_out: int, latency_ms: int, error: str | None = None, *, model: str | None = None) -> None:
     try:
         repo = LlmRunRepository(db)
         await repo.create({
             "orgId": org_id,
             "promptVersion": PROMPT_VERSION_SCORE,
-            "model": (settings.openrouter_model or "").strip() or "unconfigured",
+            "model": (model or settings.openrouter_model or "").strip() or "unconfigured",
             "tokensIn": tokens_in,
             "tokensOut": tokens_out,
             "inputHash": digest_hash,  # hash only — never content

@@ -1,0 +1,11 @@
+[Unit]
+Description=Elite HR aggregate budget for a dedicated 8 GB host
+
+[Slice]
+CPUAccounting=true
+MemoryAccounting=true
+CPUQuota=70%
+MemoryHigh=4000M
+MemoryMax=4500M
+MemorySwapMax=0
+TasksMax=768

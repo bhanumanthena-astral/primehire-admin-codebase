@@ -97,6 +97,7 @@ async def backfill_interview_report(
     stored = await rep_repo.upsert_by_interview_id(
         to_document(
             interview_id=interview_id,
+            org_id=candidate.get("orgId"),
             raw=data,  # exact upstream data payload, verbatim
             raw_response=body,  # complete upstream envelope, verbatim
             candidate_id=str(candidate["_id"]),

@@ -141,70 +141,10 @@ def _upload(client, data, filename, headers, mode=None):
     return client.post("/api/jobs/parse-jd", headers=headers, **kwargs)
 
 
-async def test_doc_configured_returns_structured_review(client, mock_db, monkeypatch):
-    """Valid LLM config → PM-shaped doc yields structured review.values."""
-    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
-    monkeypatch.setattr(settings, "openrouter_model", "test-model")
-    calls: list = []
-    _install_fake(monkeypatch, [_ok(PM_JSON)], calls)
-    await mock_db["users"].insert_one({
-        "userId": uuid.uuid4().hex, "orgId": "default",
-        "email": "int-owner@test.com", "name": "Int Owner",
-        "role": "hr", "isActive": True,
-        "createdAt": datetime.now(timezone.utc),
-    })
-    res = _upload(client, _docx(["Product Manager role", LONG_JD]),
-                  "pm.docx", _hr(), mode="document")
-    assert res.status_code == 200, res.text
-    body = res.json()
-    assert len(calls) == 1  # the LLM was actually invoked
-    assert body["aiExtract"]["companyName"] == "Elite HR Technologies"
-    values = body["review"]["values"]
-    assert values["title"] == "Product Manager - SaaS & AI Products"
-    assert values["minExperienceYears"] == 3.0
-    assert values["maxExperienceYears"] == 6.0
-    assert values["positionsTotal"] == 2
-    assert "AI" in values["keywords"] and values["workMode"] == "HYBRID"
-    assert values["location"] == "Hyderabad, Telangana, India"
-    assert body["review"]["resolvedAssignee"]["email"] == "int-owner@test.com"
-    assert body["review"]["missingFields"] == []
-    assert body["review"]["fieldErrors"] == []
-    runs = [d async for d in mock_db["llm_runs"].find({})]
-    assert len(runs) == 1 and runs[0]["promptVersion"] == "jd-extract-v1"
 
 
-async def test_doc_missing_config_honest_fallback(client, mock_db, monkeypatch):
-    """No LLM credentials → text-only fallback, accurate messaging, no calls."""
-    monkeypatch.setattr(settings, "openrouter_api_key", "")
-    monkeypatch.setattr(settings, "openrouter_model", "")
-    calls: list = []
-    _install_fake(monkeypatch, [_ok(PM_JSON)], calls)
-    res = _upload(client, _docx(["Product Manager role", LONG_JD]),
-                  "pm.docx", _hr(), mode="document")
-    assert res.status_code == 200, res.text
-    body = res.json()
-    assert calls == []  # provider never touched
-    assert body["aiExtract"] is None and body["review"] is None
-    assert "Product Manager" in body["text"]
-    assert JD_DOCUMENT_AI_PENDING_WARNING in body["warnings"]
-    assert any("not configured" in w.lower() for w in body["warnings"])
-    assert "phase" not in " ".join(body["warnings"]).lower()
-    runs = [d async for d in mock_db["llm_runs"].find({})]
-    assert runs == []
 
 
-async def test_doc_provider_failure_honest_fallback(client, mock_db, monkeypatch):
-    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
-    monkeypatch.setattr(settings, "openrouter_model", "test-model")
-    calls: list = []
-    _install_fake(monkeypatch, [_FakeResp(500)] * 3, calls)
-    res = _upload(client, _docx(["Product Manager role", LONG_JD]),
-                  "pm.docx", _hr(), mode="document")
-    assert res.status_code == 200, res.text
-    body = res.json()
-    assert body["aiExtract"] is None and body["review"] is None
-    assert "Product Manager" in body["text"]
-    assert "phase" not in " ".join(body["warnings"]).lower()
 
 
 async def test_template_zero_llm_with_config(client, mock_db, monkeypatch):

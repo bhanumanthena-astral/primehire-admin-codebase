@@ -1,6 +1,7 @@
 """PrimeHire application backend (FastAPI + MongoDB Atlas)."""
 
 from pathlib import Path
+from pydantic import Field
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,36 +19,52 @@ class Settings(BaseSettings):
     # local | development | test | staging | production (alias APP_ENV accepted)
     env: str = "local"
     debug: bool = False
-    mongodb_uri: str = ""
+    google_oauth_enabled: bool = False
+    google_client_id: str = Field(default="", repr=False)
+    google_client_secret: str = Field(default="", repr=False)
+    google_redirect_uri: str = "http://localhost:3000/api/auth/google/callback"
+    google_login_org_id: str = "default"
+    google_token_encryption_key: str = Field(default="", repr=False)
+    google_calendar_daily_limit: int = 10000
+    recruitment_portals_enabled: bool = False
+    recruitment_outbox_encryption_key: str = Field(default="", repr=False)
+    recruitment_zeptomail_api_key: str = Field(default="", repr=False)
+    recruitment_email_dry_run: bool | None = None
+    recruitment_email_test_recipient_allowlist: str = ""
+    mongodb_uri: str = Field(default="", repr=False)
     mongodb_database: str = "primehire"
+    database_backend: str = "mongodb"
+    postgres_url: str = Field(default="", repr=False)
+    postgres_schema: str = "elitehr"
 
     primehire_base_url: str = "https://api.placement.vils.ai/primehire/api/v1"
-    primehire_access_key: str = ""
-    primehire_secret_key: str = ""
+    primehire_access_key: str = Field(default="", repr=False)
+    primehire_secret_key: str = Field(default="", repr=False)
 
     allowed_origins: str = ""
     proxy_origin: str = ""
 
     # Auth (required in production; auth routes land with the feature).
-    jwt_secret: str = ""
+    jwt_secret: str = Field(default="", repr=False)
 
     # Writable dir for uploads/resumes/storage (see §3). Relative paths resolve
     # against the backend dir; absolute paths are used as-is.
     storage_dir: str = ""
+    report_media_allowed_hosts: str = ""
 
     # Optional Sentry-compatible DSN for error tracking (empty = disabled).
-    sentry_dsn: str = ""
+    sentry_dsn: str = Field(default="", repr=False)
 
     # Server-side secret guarding POST /api/migration/import. Empty = disabled.
     # NEVER put this in React, NEVER log it.
-    migration_secret: str = ""
+    migration_secret: str = Field(default="", repr=False)
 
     # --- Phase 2: resume pipeline / LLM / outbox / uploads ---
     # LLM provider adapter: "openrouter" (free tier) — swappable later.
     # The model name comes ONLY from OPENROUTER_MODEL env; nothing is
     # hardcoded. Empty = LLM disabled → deterministic scores + visible flag.
     llm_provider: str = "openrouter"
-    openrouter_api_key: str = ""
+    openrouter_api_key: str = Field(default="", repr=False)
     openrouter_model: str = ""
     # Max concurrent LLM calls (free-tier rate-limit guard). Slice B enforces.
     llm_concurrency: int = 2
@@ -79,10 +96,10 @@ class Settings(BaseSettings):
 
     # Fernet key (base64 urlsafe 32 bytes) encrypting email_outbox bodies.
     # REQUIRED in production. Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    outbox_encryption_key: str = ""
+    outbox_encryption_key: str = Field(default="", repr=False)
 
     # Backend ZeptoMail sender (server-side only, never the browser).
-    zeptomail_api_key: str = ""
+    zeptomail_api_key: str = Field(default="", repr=False)
     email_from_address: str = "noreply@nxtagent.ai"
     email_from_name: str = "PrimeHire Careers"
 
@@ -95,7 +112,7 @@ class Settings(BaseSettings):
 
     # Completion-sync sweep knobs (Slice C).
     assessment_sync_batch: int = 20
-    assessment_sync_interval_s: int = 300
+    assessment_sync_interval_s: int = 60
 
     # Automatic job closure sweep in the background worker (Slice V1).
     jobs_auto_close_interval_s: int = 60
@@ -103,11 +120,34 @@ class Settings(BaseSettings):
     # Upload caps (§3). Enforced pre-read via Content-Length + streaming cap.
     upload_max_mb: int = 5
     upload_batch_max: int = 10
+    # Module 2 is explicitly opt-in; the V2 launcher enables it only in V2.
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_graph_version: str = ""
+    whatsapp_template_name: str = ""
+    whatsapp_template_language: str = "en_US"
+    whatsapp_price_per_message: float = 0
+    whatsapp_currency: str = "INR"
+    resume_module_v2_enabled: bool = False
+    resume_identity_secret: str = Field(default="", repr=False)
+    resume_clamd_host: str = "127.0.0.1"
+    resume_clamd_port: int = 3310
+    resume_scan_timeout_s: int = 30
+    resume_ocr_tessdata: str = ""
+    resume_doc_converter: str = ""
+    # Opt-in, single-host Oracle free deployment profile.
+    free_tier_guard_enabled: bool = False
+    free_tier_active_resume_limit: int = 1000
+    resume_kafka_enabled: bool = False
+    resume_kafka_bootstrap_servers: str = "127.0.0.1:9092"
+    resume_worker_concurrency: int = 2
+    resume_upload_concurrency: int = 32
+    # Optional ATS-only model override; legacy workflows keep OPENROUTER_MODEL.
+    resume_ats_model: str = ''
     # Total uncompressed cap for DOCX (zip) members — zip-bomb guard.
     upload_max_uncompressed_mb: int = 20
 
-    # ClamAV hook: interface + quarantined status ship in Phase 2;
-    # real clamd integration lands in Phase 7.
+    # Shared JD/resume scanner uses the configured private ClamAV INSTREAM service.
     clamav_enabled: bool = False
 
     # DPDP retention (days) — retentionUntil = now + this on upload.
@@ -115,7 +155,7 @@ class Settings(BaseSettings):
 
     @property
     def has_mongo(self) -> bool:
-        return bool(self.mongodb_uri.strip())
+        return bool(self.postgres_url.strip()) if self.database_backend == "postgresql" else bool(self.mongodb_uri.strip())
 
     @property
     def has_primehire_credentials(self) -> bool:
@@ -163,6 +203,51 @@ def validate_settings(candidate: Settings | None = None) -> None:
     send can never fire at an unnamed audience by misconfiguration.
     """
     target = candidate if candidate is not None else settings
+    if target.google_oauth_enabled:
+        if target.mongodb_database != 'primehire_admin_v2':
+            raise RuntimeError('Google workspace requires the isolated V2 database.')
+        from urllib.parse import urlsplit
+        from cryptography.fernet import Fernet
+        if not target.google_client_id.strip() or not target.google_client_secret.strip():
+            raise RuntimeError('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required for Google OAuth.')
+        try:
+            Fernet(target.google_token_encryption_key.encode())
+        except (ValueError, TypeError):
+            raise RuntimeError('GOOGLE_TOKEN_ENCRYPTION_KEY must be a valid Fernet key.') from None
+        redirect = urlsplit(target.google_redirect_uri)
+        if (redirect.path != '/api/auth/google/callback' or redirect.query or redirect.fragment
+                or redirect.username or redirect.password or not redirect.hostname
+                or (redirect.scheme != 'https' and not (
+                    not target.is_production and redirect.scheme == 'http'
+                    and redirect.hostname in {'localhost', '127.0.0.1'}))):
+            raise RuntimeError('GOOGLE_REDIRECT_URI must be the registered HTTPS callback (localhost HTTP allowed in development).')
+        if not target.google_login_org_id.strip() or not 1 <= target.google_calendar_daily_limit <= 10000:
+            raise RuntimeError('Google login organization and Calendar daily limit (1–10000) are required.')
+    if target.recruitment_portals_enabled and target.mongodb_database != 'primehire_admin_v2':
+        raise RuntimeError('Recruitment portals require the isolated V2 database.')
+    if target.recruitment_portals_enabled and target.recruitment_email_dry_run is False:
+        if not (target.recruitment_zeptomail_api_key or target.zeptomail_api_key).strip():
+            raise RuntimeError('Recruitment email requires RECRUITMENT_ZEPTOMAIL_API_KEY or ZEPTOMAIL_API_KEY.')
+        if not target.is_production and not (target.recruitment_email_test_recipient_allowlist or target.email_test_recipient_allowlist).strip():
+            raise RuntimeError('RECRUITMENT_EMAIL_TEST_RECIPIENT_ALLOWLIST is required for real recruitment email outside production.')
+    if target.recruitment_portals_enabled and target.recruitment_outbox_encryption_key:
+        try:
+            from cryptography.fernet import Fernet
+            Fernet(target.recruitment_outbox_encryption_key.strip().encode())
+        except (ValueError, TypeError):
+            raise RuntimeError('RECRUITMENT_OUTBOX_ENCRYPTION_KEY must be a valid Fernet key.') from None
+    if target.resume_module_v2_enabled:
+        import re
+        if target.resume_ats_model and not re.fullmatch(r'[A-Za-z0-9_.:/-]{1,200}',target.resume_ats_model):
+            raise RuntimeError('RESUME_ATS_MODEL must be a valid provider model identifier (max 200 characters).')
+        if target.mongodb_database != "primehire_admin_v2":
+            raise RuntimeError("Module 2 requires the isolated V2 database.")
+        if not 1 <= target.resume_worker_concurrency <= 8 or not 1 <= target.resume_upload_concurrency <= 64:
+            raise RuntimeError("Resume worker/upload concurrency is outside safe bounds.")
+        if not 1 <= target.resume_scan_timeout_s <= 60 or not 1 <= target.resume_clamd_port <= 65535:
+            raise RuntimeError("Resume scanner configuration is outside safe bounds.")
+        if target.is_production and len(target.resume_identity_secret) < 32:
+            raise RuntimeError("RESUME_IDENTITY_SECRET must be set in production (>=32 characters).")
     # Non-production guardrail (always enforced): a real send must name test recipients.
     if (not target.is_production and not target.email_dry_run
             and not [o for o in target.email_test_recipient_allowlist.split(",") if o.strip()]):
@@ -174,7 +259,23 @@ def validate_settings(candidate: Settings | None = None) -> None:
     if not target.is_production:
         return
     problems: list[str] = []
-    if not target.mongodb_uri.strip():
+    if target.database_backend not in {"mongodb", "postgresql"}:
+        problems.append("DATABASE_BACKEND must be mongodb or postgresql")
+    if target.database_backend == "postgresql":
+        from urllib.parse import urlsplit
+        import re
+        try:
+            parsed = urlsplit(target.postgres_url)
+            valid = parsed.scheme in {"postgresql", "postgres"} and parsed.hostname and parsed.username and parsed.password and parsed.path not in {"", "/"}
+        except ValueError:
+            valid = False
+        if not valid:
+            problems.append("POSTGRES_URL must be a complete authenticated PostgreSQL URL")
+        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", target.postgres_schema):
+            problems.append("POSTGRES_SCHEMA must be a valid SQL identifier")
+        if target.mongodb_database != "primehire_admin_v2":
+            problems.append("PostgreSQL is restricted to the isolated V2 database")
+    elif not target.mongodb_uri.strip():
         problems.append("MONGODB_URI is required in production")
     secret = target.jwt_secret or ""
     if len(secret) < 32 or secret.strip().lower() in _WEAK_JWT_SECRETS:

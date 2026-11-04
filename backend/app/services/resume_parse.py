@@ -42,6 +42,7 @@ def parse_bytes_isolated(data: bytes, kind: str, timeout: int = PARSE_TIMEOUT_S)
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
+        encoding="utf-8",
         cwd=_BACKEND_DIR,
     )
     try:
@@ -50,14 +51,14 @@ def parse_bytes_isolated(data: bytes, kind: str, timeout: int = PARSE_TIMEOUT_S)
         proc.kill()
         proc.wait()
         raise ParseTimeout(f"Parsing exceeded {timeout}s and was killed.") from None
-    if proc.returncode != 0:
-        raise ParseFailed("Parser child failed.")
     try:
         result = json.loads(out or "")
     except ValueError:
         raise ParseFailed("Parser child returned invalid output.") from None
     if not result.get("ok"):
         raise ParseFailed(result.get("error", "Parser child failed."))
+    if proc.returncode != 0:
+        raise ParseFailed("Parser child failed.")
     return {"rawText": result.get("rawText", ""), "parsed": result.get("parsed", {})}
 
 

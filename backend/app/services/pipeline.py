@@ -78,7 +78,8 @@ async def process_resume_file(db: Any, *, org_id: str, file_id: str,
         return {"failed": "job removed"}
 
     lifecycle = str(job.get("lifecycleStatus") or "DRAFT").upper()
-    if lifecycle in ("CLOSED", "ARCHIVED"):
+    from .job_intake import intake_error
+    if fdoc.get("processingMode") != "parse_only" and intake_error(job):
         await files.update(file_id, org_id, {"status": FileStatus.FAILED.value,
                                               "error": f"Job is {lifecycle.lower()}; new applications are not accepted."})
         await _recompute_batch(db, org_id, fdoc["batchId"])
@@ -111,10 +112,16 @@ async def process_resume_file(db: Any, *, org_id: str, file_id: str,
     structured["lowConfidence"] = kind == "doc"
     await files.update(file_id, org_id, {
         "status": FileStatus.PARSED.value,
+        "rawText": raw_text,
         "rawTextChars": len(raw_text),
         "parsedJson": structured,
-        "llmStatus": LLM_PENDING,
+        "llmStatus": LLM_SKIPPED if fdoc.get("processingMode") == "parse_only" else LLM_PENDING,
     })
+
+    # Upload intake stores reusable facts; JD matching is performed separately.
+    if fdoc.get("processingMode") == "parse_only":
+        await _recompute_batch(db, org_id, fdoc["batchId"])
+        return {"fileId": file_id, "parsed": True, "matchingPending": True}
 
     # Deterministic-first: the keyword score is computed immediately so a
     # busy/dead model never blocks the pipeline or loses the file.
@@ -574,19 +581,21 @@ async def process_llm_followup(db: Any, *, org_id: str, file_id: str,
 async def _recompute_batch(db: Any, org_id: str, batch_id: str) -> None:
     files = ResumeFileRepository(db)
     docs = await files.list_for_batch(batch_id, org_id)
-    if not docs:
+    batches = ResumeBatchRepository(db)
+    batch = await batches.get(batch_id, org_id)
+    if not batch:
         return
+    rejected = len(batch.get("failures") or [])
     parsed = sum(1 for d in docs if d.get("status") == FileStatus.PARSED.value)
-    failed = sum(1 for d in docs if d.get("status") == FileStatus.FAILED.value)
+    failed = rejected + sum(1 for d in docs if d.get("status") == FileStatus.FAILED.value)
     quarantined = sum(1 for d in docs if d.get("status") == FileStatus.QUARANTINED.value)
     # Files awaiting the model keep the batch visibly PROCESSING (with an
     # "AI scoring pending" chip in the UI) instead of looking done/frozen.
     pending_ai = sum(1 for d in docs if d.get("llmStatus") == LLM_PENDING)
     pending = pending_ai > 0 or any(d.get("status") not in (
         FileStatus.PARSED.value, FileStatus.FAILED.value, FileStatus.QUARANTINED.value) for d in docs)
-    batches = ResumeBatchRepository(db)
     await batches.update(batch_id, org_id, {
-        "counts": {"total": len(docs), "parsed": parsed, "failed": failed,
+        "counts": {"total": len(docs) + rejected, "parsed": parsed, "failed": failed,
                    "quarantined": quarantined, "pendingAI": pending_ai},
         "status": BatchStatus.PROCESSING.value if pending else (
             BatchStatus.DONE.value if (failed == 0 and quarantined == 0)

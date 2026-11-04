@@ -31,6 +31,7 @@ from ..schemas.user import (
     ChangePasswordRequest,
     ResetPasswordRequest,
     ResetPasswordConfirm,
+    AcceptInviteRequest,
     ViewAsRequest,
     SessionPublic,
     UserPublic,
@@ -64,6 +65,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 REFRESH_COOKIE_NAME = "primehire_refresh_token"
+
+
+@router.post("/accept-invite")
+async def accept_invite(payload: AcceptInviteRequest, request: Request, db: Any = Depends(get_db)):
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    result = limiter.check(f"invite:{request.client.host if request.client else 'unknown'}", 10, 60)
+    if not result.allowed:
+        raise HTTPException(status_code=429, detail="Too many attempts; try again later", headers={"Retry-After":str(result.retry_after)})
+    token_hash = hash_token(payload.token)
+    invites = InvitationRepository(db)
+    invitation = await invites.get_valid(token_hash, "invite")
+    if not invitation:
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation")
+    user = await UserRepository(db).get_by_id(invitation["userId"], invitation["orgId"])
+    if not user or not user.get("isActive", True) or user.get("passwordHash"):
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation")
+    try:
+        password_hash = hash_password(payload.newPassword)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if await invites.consume(token_hash, "invite") is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation")
+    saved = await db["users"].update_one(
+        {"userId":user["userId"], "orgId":user["orgId"], "isActive":True, "passwordHash":""},
+        {"$set":{"passwordHash":password_hash,"updatedAt":utcnow()}},
+    )
+    if saved.modified_count != 1:
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation")
+    from ..models.hiring import AuditLogRepository
+    await AuditLogRepository(db).log(org_id=user["orgId"], actor_user_id=user["userId"],
+        action="user.password_setup", resource_type="user", resource_id=user["userId"],
+        details={"source":"invitation"}, ip_address="")
+    return {"ok":True}
 
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:

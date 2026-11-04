@@ -83,7 +83,7 @@ async def test_create_user_success_super_admin(client, mock_db):
     assert "user" in data
     assert data["user"]["email"] == "newhr@example.com"
     assert "inviteUrl" in data
-    assert "/accept-invite?token=" in data["inviteUrl"]
+    assert "/accept-invite#token=" in data["inviteUrl"]
 
 
 @pytest.mark.asyncio

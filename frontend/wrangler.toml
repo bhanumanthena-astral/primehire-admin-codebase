@@ -1,0 +1,5 @@
+name = "elitehr-v2"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-10-26"
+# BACKEND_ORIGIN belongs in Pages runtime Variables, not in this source file.
+# Set Production and Preview independently; leave empty until Oracle HTTPS exists.

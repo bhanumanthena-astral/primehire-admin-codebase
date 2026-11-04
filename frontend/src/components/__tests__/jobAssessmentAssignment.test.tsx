@@ -1,0 +1,36 @@
+import React from 'react';
+import {beforeEach,expect,it,vi} from 'vitest';
+import userEvent from '@testing-library/user-event';
+import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {JobAssessmentAssignment} from '../JobAssessmentAssignment';
+import {assessmentRequest} from '../../lib/assessmentManagementApi';
+import {candidateRequest} from '../../lib/candidateManagementApi';
+import {authFetch} from '../../lib/authFetch';
+vi.mock('../../lib/authContext',()=>({useAuth:()=>({user:{role:'admin'}})}));
+vi.mock('../../lib/assessmentManagementApi',async original=>({...await original<any>(),assessmentRequest:vi.fn()}));
+vi.mock('../../lib/candidateManagementApi',async original=>({...await original<any>(),candidateRequest:vi.fn()}));
+vi.mock('../../lib/authFetch',()=>({authFetch:vi.fn()}));
+const assessment:any={id:'ASSESS-one',jobTitle:'Existing technical test',roundType:'TECHNICAL',publicationState:'published',status:'Active'};
+beforeEach(()=>{vi.clearAllMocks();vi.mocked(assessmentRequest).mockResolvedValue(assessment);vi.mocked(candidateRequest).mockResolvedValue({items:[{assessmentId:assessment.id,title:assessment.jobTitle,roundType:'TECHNICAL'}],total:1});vi.mocked(authFetch).mockResolvedValue(new Response(JSON.stringify({assessmentId:'ASSESS-one',roundType:'TECHNICAL'})));});
+it('links a published assessment from a dropdown without a candidate table or assignment dates',async()=>{
+ const changed=vi.fn();render(<JobAssessmentAssignment job={{jobId:'job-a',title:'Engineer'} as any} onLinked={changed}/>);
+ const select=await screen.findByRole('combobox',{name:'Published assessment'});
+ await waitFor(()=>expect(select).toBeEnabled());await userEvent.click(select);
+ await userEvent.click(await screen.findByRole('option',{name:/Existing technical test/}));
+ fireEvent.click(screen.getByRole('button',{name:'Link assessment'}));
+ await waitFor(()=>expect(changed).toHaveBeenCalledWith('ASSESS-one','TECHNICAL'));
+ expect(screen.queryByRole('table')).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('Assignment starts')).not.toBeInTheDocument();
+ expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+ const call=vi.mocked(authFetch).mock.calls[0];
+ expect(String(call[0])).toContain('/job-assessments/job-a/link');
+ expect(JSON.parse(call[1]!.body as string)).toMatchObject({assessmentId:'ASSESS-one',expectedAssessmentId:null});
+ expect(vi.mocked(authFetch).mock.calls.some(([url])=>String(url).includes('/assign')||String(url).includes('/applications'))).toBe(false);
+});
+it('preserves the dropdown selection on a stale-link error',async()=>{
+ vi.mocked(authFetch).mockResolvedValue(new Response(JSON.stringify({detail:'The linked assessment changed'}),{status:409}));
+ const changed=vi.fn();render(<JobAssessmentAssignment job={{jobId:'job-a',title:'Engineer'} as any} onLinked={changed}/>);
+ const select=await screen.findByRole('combobox',{name:'Published assessment'});await waitFor(()=>expect(select).toBeEnabled());await userEvent.click(select);
+ await userEvent.click(await screen.findByRole('option',{name:/Existing technical test/}));fireEvent.click(screen.getByRole('button',{name:'Link assessment'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('The linked assessment changed');expect(changed).not.toHaveBeenCalled();
+});

@@ -1,0 +1,13 @@
+[Unit]
+Description=Encrypted Elite HR V2 PostgreSQL and storage backup
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/elitehr/current
+ExecStart=/opt/elitehr/current/.venv/bin/python /usr/local/lib/elitehr/backup.py
+UMask=0077
+TimeoutStartSec=900
+Nice=10

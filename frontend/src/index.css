@@ -1,0 +1,517 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/shadcn.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-glow: var(--primary-glow);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success-foreground: var(--success-foreground);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-heading: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+/* Apple-inspired web tokens. Content is opaque; materials belong to navigation. */
+:root {
+  color-scheme: light;
+  --background: #f5f5f7;
+  --foreground: #1d1d1f;
+  --card: #ffffff;
+  --card-foreground: #1d1d1f;
+  --popover: #ffffff;
+  --popover-foreground: #1d1d1f;
+  --primary: #0066cc;
+  --primary-foreground: #ffffff;
+  --primary-glow: #0057b0;
+  --secondary: #ededf0;
+  --secondary-foreground: #39393c;
+  --muted: #f0f0f3;
+  --muted-foreground: #636366;
+  --accent: #0066cc;
+  --accent-foreground: #ffffff;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --success: #237a3b;
+  --warning: #8a5700;
+  --warning-foreground: #ffffff;
+  --success-foreground: #ffffff;
+  --info: #0066cc;
+  --border: #dcdce1;
+  --input: #8e8e93;
+  --ring: #0066cc;
+  --accent-soft: #e7f1ff;
+  --primary-soft: #e7f1ff;
+  --success-soft: #eaf5ed;
+  --warning-soft: #fff4dc;
+  --destructive-soft: #feece9;
+  --info-soft: #e7f1ff;
+  --chart-1: #0066cc;
+  --chart-2: #237a3b;
+  --chart-3: #845ec2;
+  --chart-4: #b42318;
+  --chart-5: #8a5700;
+  --grade-a: #237a3b;
+  --grade-b: #0066cc;
+  --grade-c: #8a5700;
+  --grade-d: #ac4c15;
+  --grade-e: #b42318;
+  --sidebar: #ececf0;
+  --sidebar-foreground: #39393c;
+  --sidebar-primary: #0066cc;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e0e0e6;
+  --sidebar-accent-foreground: #1d1d1f;
+  --sidebar-border: #d8d8de;
+  --sidebar-ring: #0066cc;
+  --gradient-primary: var(--primary);
+  --gradient-app: var(--background);
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.035), 0 6px 20px -16px rgb(0 0 0 / 0.15);
+  --shadow-glow: 0 2px 5px rgb(0 102 204 / 0.16);
+  --shadow-dialog: 0 24px 80px rgb(0 0 0 / 0.2), 0 0 0 1px rgb(0 0 0 / 0.06);
+  --radius: .75rem;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+}
+.dark {
+  color-scheme: dark;
+  --background: #141416;
+  --foreground: #f5f5f7;
+  --card: #1c1c1e;
+  --card-foreground: #f5f5f7;
+  --popover: #242426;
+  --popover-foreground: #f5f5f7;
+  --primary: #64a8ff;
+  --primary-foreground: #081a33;
+  --primary-glow: #8abaff;
+  --secondary: #303034;
+  --secondary-foreground: #e5e5e7;
+  --muted: #29292d;
+  --muted-foreground: #a1a1a6;
+  --accent: #8abaff;
+  --accent-foreground: #081a33;
+  --destructive: #ff9b93;
+  --destructive-foreground: #38110c;
+  --success: #7bd99a;
+  --warning: #f2c66d;
+  --warning-foreground: #2c2108;
+  --success-foreground: #0b2915;
+  --info: #8abaff;
+  --border: #3b3b40;
+  --input: #85858d;
+  --ring: #8abaff;
+  --accent-soft: #1e324e;
+  --primary-soft: #1e324e;
+  --success-soft: #193a27;
+  --warning-soft: #3a301b;
+  --destructive-soft: #45231f;
+  --info-soft: #1e324e;
+  --chart-1: #8abaff;
+  --chart-2: #7bd99a;
+  --chart-3: #c8a7f2;
+  --chart-4: #ff9b93;
+  --chart-5: #f2c66d;
+  --grade-a: #7bd99a;
+  --grade-b: #8abaff;
+  --grade-c: #f2c66d;
+  --grade-d: #f4ac7c;
+  --grade-e: #ff9b93;
+  --sidebar: #202023;
+  --sidebar-foreground: #e5e5e7;
+  --sidebar-primary: #64a8ff;
+  --sidebar-primary-foreground: #081a33;
+  --sidebar-accent: #323237;
+  --sidebar-accent-foreground: #f5f5f7;
+  --sidebar-border: #39393e;
+  --sidebar-ring: #8abaff;
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.15);
+  --shadow-glow: 0 2px 6px rgb(0 0 0 / 0.2);
+  --shadow-dialog: 0 24px 80px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background: var(--gradient-app);
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: .9375rem;
+    line-height: 1.5;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.02em;
+    color: var(--foreground);
+  }
+
+  :focus-visible:not([data-slot]) {
+    outline: 2px solid var(--ring) !important;
+    outline-offset: 2px !important;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background: var(--primary-soft);
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ring); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Form labels containing bare text need a real layout gap: space-y cannot
+   separate a text node from its first input. Keep this shared across modules. */
+label.space-y-2 {
+  display: grid;
+  align-content: start;
+  gap: .5rem;
+  min-width: 0;
+}
+label.space-y-1 {
+  display: grid;
+  align-content: start;
+  gap: .25rem;
+  min-width: 0;
+}
+label.space-y-2 > *, label.space-y-1 > * { margin-block: 0; }
+fieldset { min-inline-size: 0; }
+form { min-width: 0; }
+#root { min-width: 0; }
+.apple-page-content { width: 100%; min-width: 0; }
+
+/* ── Elite HR utilities ── */
+@layer utilities {
+  .bg-gradient-primary { background: var(--gradient-primary); }
+  .bg-gradient-app { background: var(--gradient-app); }
+  .shadow-card { box-shadow: var(--shadow-card); }
+  .shadow-glow { box-shadow: var(--shadow-glow); }
+
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--muted-foreground);
+  }
+
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* Opaque grouped content surface. */
+  .glass-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
+    border-radius: 1.25rem;
+  }
+
+  .bar-track {
+    height: 26px;
+    border-radius: 9999px;
+    background: var(--muted);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 9999px;
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* ── Elite HR tables ── */
+  .ehr-table {
+    width: 100%;
+    text-align: left;
+    font-size: 0.8125rem;
+    border-collapse: collapse;
+  }
+  .ehr-table thead th {
+    padding: 10px 14px;
+    font-size: .75rem;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 700;
+    color: var(--muted-foreground);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .ehr-table tbody td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .ehr-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .ehr-table tbody tr {
+    transition: background-color 0.15s ease;
+  }
+  .ehr-table tbody tr:hover {
+    background: color-mix(in srgb, var(--primary-soft) 55%, transparent);
+  }
+
+  /* ── Elite HR inputs ── */
+  .ehr-input {
+    background: var(--card);
+    border: 1px solid var(--input);
+    border-radius: 10px;
+    color: var(--foreground);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .ehr-input::placeholder {
+    color: var(--muted-foreground);
+    opacity: 1;
+  }
+  .ehr-input:focus {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent);
+  }
+
+  /* ── Elite HR rich-text editor ── */
+  .ehr-richtext {
+    min-height: 180px;
+    padding: 12px 14px;
+    font-size: 0.84375rem;
+    line-height: 1.65;
+    color: var(--foreground);
+  }
+  .ehr-richtext:focus {
+    outline: none;
+  }
+  .ehr-richtext p {
+    margin: 0 0 0.6em;
+  }
+  .ehr-richtext h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0.4em 0 0.4em;
+  }
+  .ehr-richtext h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0.4em 0 0.4em;
+  }
+  .ehr-richtext ul,
+  .ehr-richtext ol {
+    padding-left: 1.4em;
+    margin: 0 0 0.6em;
+  }
+  .ehr-richtext blockquote {
+    border-left: 3px solid var(--ring);
+    padding-left: 0.8em;
+    margin: 0 0 0.6em;
+    color: var(--muted-foreground);
+  }
+  .ehr-richtext a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .ehr-richtext code {
+    background: var(--muted);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: 0.78125rem;
+  }
+
+  /* ── hand-drawn brand line ── */
+  .ehr-squiggle {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.2;
+    stroke-linecap: round;
+    opacity: 0.7;
+  }
+
+  /* ── editorial timeline ── */
+  .ehr-timeline {
+    position: relative;
+    padding-left: 22px;
+  }
+  .ehr-timeline::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 8px;
+    bottom: 8px;
+    width: 1.5px;
+    background: var(--border);
+    border-radius: 99px;
+  }
+  .ehr-timeline-dot {
+    position: absolute;
+    left: 0;
+    top: 4px;
+    width: 13px;
+    height: 13px;
+    border-radius: 99px;
+    background: var(--card);
+    border: 2.5px solid var(--primary);
+  }
+  .ehr-timeline-dot.done {
+    background: var(--primary);
+  }
+
+  /* ── entrance motion ── */
+  @keyframes ehr-rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .ehr-rise {
+    animation: ehr-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .ehr-rise-1 { animation-delay: 0.05s; }
+  .ehr-rise-2 { animation-delay: 0.12s; }
+  .ehr-rise-3 { animation-delay: 0.19s; }
+  .ehr-rise-4 { animation-delay: 0.26s; }
+  .ehr-rise-5 { animation-delay: 0.33s; }
+
+  @keyframes ehr-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+  }
+  .ehr-float {
+    animation: ehr-float 7s ease-in-out infinite;
+  }
+}
+
+/* Shared adaptation for semantic HTML and older feature views. */
+@layer base {
+  button, input, select, textarea { font: inherit; }
+  button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+  input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
+  input[type="file"]::file-selector-button { border: 1px solid var(--border); border-radius: .5rem; background: var(--secondary); color: var(--foreground); padding: .4rem .75rem; margin-right: .75rem; }
+  h1, h2 { font-weight: 650; letter-spacing: -.025em; }
+  h3, h4 { font-weight: 600; }
+  table { font-variant-numeric: tabular-nums; }
+  thead { background: var(--muted); }
+  th { color: var(--muted-foreground); font-weight: 600; }
+  tbody tr { transition: background-color 120ms ease; }
+  tbody tr:nth-child(even) { background-color: color-mix(in srgb, var(--muted) 34%, transparent); }
+  tbody tr:hover { background-color: var(--primary-soft); }
+  :where(input, textarea, select)::placeholder { color: var(--muted-foreground); opacity: 1; }
+}
+@layer components {
+  .apple-sidebar { background: color-mix(in srgb, var(--sidebar) 92%, transparent); backdrop-filter: blur(20px) saturate(1.25); }
+  .apple-toolbar { background: color-mix(in srgb, var(--background) 90%, transparent); backdrop-filter: blur(20px) saturate(1.2); }
+  .apple-sidebar [aria-current="page"] { background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); box-shadow: none; }
+  .apple-sidebar [aria-current="page"] svg, .apple-sidebar [aria-current="page"] span { color: inherit; }
+  .apple-sidebar [aria-current="page"] span.rounded-full { background: transparent; }
+  .apple-sidebar [data-slot="button"] { justify-content: flex-start; border-radius: .5rem; min-height: 2.25rem; }
+  .apple-sidebar nav [data-slot="button"] { width: 100%; }
+  .apple-sidebar .apple-account [data-slot="button"] { justify-content: center; }
+  .apple-page-content { min-width: 0; }
+  .apple-page-content > :first-child { min-width: 0; }
+  .apple-hiring-stages { gap: .375rem; padding: .375rem; border: 1px solid var(--border); border-radius: .875rem; background: var(--secondary); }
+  .apple-hiring-stages [data-slot="button"] { border: 0; background: transparent; box-shadow: none; color: var(--muted-foreground); }
+  .apple-hiring-stages [aria-current="step"] { background: var(--card); color: var(--accent); box-shadow: 0 1px 4px rgb(0 0 0 / .1); }
+  .apple-skip-link { position: fixed; left: 1rem; top: -6rem; z-index: 200; border-radius: .5rem; padding: .75rem 1rem; color: var(--primary-foreground); background: var(--primary); }
+  .apple-skip-link:focus { top: 1rem; }
+}
+@media (max-width: 639px), (pointer: coarse) {
+  [data-slot="button"], [data-slot="select-trigger"], [data-slot="input"] { min-height: 2.75rem; }
+  [data-slot="button"]:has(>svg:only-child) { min-width: 2.75rem; }
+  [data-slot="checkbox"] { min-width: 1.375rem; min-height: 1.375rem; }
+  input, select, textarea { font-size: 1rem; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .apple-sidebar { background: var(--sidebar); backdrop-filter: none; }
+  .apple-toolbar { background: var(--background); backdrop-filter: none; }
+  [data-slot="dialog-overlay"] { backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --border: #727277; --input: #636366; --muted-foreground: #424245; }
+  .dark { --border: #99999f; --input: #b5b5bb; --muted-foreground: #d1d1d6; }
+  [data-slot="button"] { border-color: currentColor; }
+}
+@media (forced-colors: active) {
+  .apple-sidebar, .apple-toolbar { background: Canvas; backdrop-filter: none; }
+  [data-slot="button"], [data-slot="input"], [data-slot="select-trigger"] { border: 1px solid ButtonText; }
+  .apple-sidebar [aria-current="page"] { color: HighlightText; background: Highlight; }
+}
+
+/* Content-based sizing keeps job controls readable as the text scale grows. */
+.apple-job-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr)); }
+.apple-job-filter-panel { container: job-filters / inline-size; }
+.apple-job-filters { display: grid; gap: .625rem; grid-template-columns: minmax(0, 1fr); }
+.apple-job-search > input { flex: 1 1 12rem; min-width: min(100%, 12rem); }
+.apple-job-search > [data-slot="select-trigger"] { flex: 0 1 8rem; }
+.apple-job-extra-filters { grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
+@container job-filters (min-width: 42rem) {
+  .apple-job-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .apple-job-search-field { grid-column: span 2; }
+}
+
+/* Active navigation stays legible when the pointer remains over the selection. */
+.apple-sidebar [aria-current="page"], .apple-sidebar [aria-current="page"]:hover {
+  background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); box-shadow: none;
+}
+@media (forced-colors: active) {
+  .apple-sidebar [aria-current="page"], .apple-sidebar [aria-current="page"]:hover { background: Highlight; color: HighlightText; }
+}

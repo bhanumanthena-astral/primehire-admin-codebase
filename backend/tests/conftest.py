@@ -2,13 +2,80 @@
 
 import pytest
 import mongomock_motor
+import asyncio
+import inspect
 from app.config import settings
 from app.security.tokens import create_access_token
 
 
+@pytest.fixture(autouse=True)
+def synchronous_fixture_loop(request):
+    """Own the loop used by legacy synchronous Mongo seed helpers.
+
+    pytest-asyncio 1.x no longer leaves a main-thread loop behind after async
+    tests. Async tests retain the plugin's loop and its lifecycle unchanged.
+    """
+    if inspect.iscoroutinefunction(request.node.obj):
+        yield
+        return
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        yield
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
+        asyncio.set_event_loop(None)
+
+
 @pytest.fixture()
 def db():
-    return mongomock_motor.AsyncMongoMockClient()["testdb"]
+    import os
+    if os.environ.get('ELITEHR_TEST_POSTGRES_ENV'):
+        from postgres_support import validation_database, dispose
+        database = validation_database()
+        try:
+            yield database
+        finally:
+            dispose(database)
+    else:
+        yield mongomock_motor.AsyncMongoMockClient()["testdb"]
+
+
+@pytest.fixture(autouse=True)
+def postgres_repository_compatibility(request, monkeypatch):
+    """Opt-in replay of existing mock-seeded workflows against real PostgreSQL.
+
+    Reference-comparison tests keep their independent mongomock oracle. Each
+    replay uses a generated schema in the dedicated validation database only.
+    """
+    import os
+    if (os.environ.get('ELITEHR_TEST_POSTGRES_COMPAT') != '1'
+            or request.node.module.__name__.endswith('test_postgresql_v2')):
+        yield
+        return
+    if not os.environ.get('ELITEHR_TEST_POSTGRES_ENV'):
+        raise RuntimeError('PostgreSQL workflow replay needs the validation environment')
+    from postgres_support import validation_database, dispose
+    databases = []
+    class Client:
+        def __init__(self, *args, **kwargs): self.databases = {}
+        def __getitem__(self, name):
+            if name not in self.databases:
+                database = validation_database()
+                database.name = name
+                self.databases[name] = database
+                databases.append(database)
+            return self.databases[name]
+        def __getattr__(self, name): return self[name]
+        def get_database(self, name): return self[name]
+        def close(self): pass
+    monkeypatch.setattr(mongomock_motor, 'AsyncMongoMockClient', Client)
+    try:
+        yield
+    finally:
+        for database in databases:
+            dispose(database)
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +94,46 @@ def hermetic_llm_config(monkeypatch):
     """
     monkeypatch.setattr(settings, "openrouter_api_key", "")
     monkeypatch.setattr(settings, "openrouter_model", "")
+    monkeypatch.setattr(settings, "resume_ats_model", "")
     monkeypatch.setattr(settings, "llm_fake_provider", "off")
+    # Local PostgreSQL testing reuses real configured providers. Regression
+    # tests must still remain hermetic; explicit synthetic test kwargs win.
+    for field in ['primehire_access_key','primehire_secret_key','zeptomail_api_key','recruitment_zeptomail_api_key']:
+        monkeypatch.setattr(settings,field,'')
+        monkeypatch.setenv(field.upper(),'')
+    monkeypatch.setattr(settings, "google_oauth_enabled", False)
+    # Settings() constructed inside tests must not re-read the workstation's
+    # newly enabled OAuth client from backend/.env. Explicit test kwargs win.
+    monkeypatch.setenv('GOOGLE_OAUTH_ENABLED', 'false')
+    for name in ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_TOKEN_ENCRYPTION_KEY']:
+        monkeypatch.setenv(name, '')
+
+
+@pytest.fixture(autouse=True)
+def hermetic_database_config(monkeypatch):
+    """TestClient startup must never connect to an ambient developer database."""
+    monkeypatch.setattr(settings, "mongodb_uri", "")
+    monkeypatch.setattr(settings, "database_backend", "mongodb")
+    monkeypatch.setattr(settings, "postgres_url", "")
+    monkeypatch.setenv('DATABASE_BACKEND','mongodb')
+    monkeypatch.setenv('POSTGRES_URL','')
+    for field in ['resume_module_v2_enabled','recruitment_portals_enabled','free_tier_guard_enabled','resume_kafka_enabled']:
+        monkeypatch.setattr(settings,field,False)
+        monkeypatch.setenv(field.upper(),'false')
+
+
+@pytest.fixture()
+def legacy_matching_intent(monkeypatch):
+    """Opt in only legacy engine tests to matching, beyond parse-only intake.
+
+    This seeds the persisted intent that a later explicit matching operation
+    would supply. Production upload behavior and Module 2 remain unchanged.
+    """
+    from app.models.resume import ResumeFileRepository
+    original = ResumeFileRepository.create
+    async def matching_file(self, doc):
+        return await original(self, {**doc, 'processingMode': 'matching'})
+    monkeypatch.setattr(ResumeFileRepository, 'create', matching_file)
 
 
 def auth_headers(role: str = "super_admin", user_id: str = "test-user", org_id: str = "default") -> dict[str, str]:
@@ -79,6 +185,22 @@ def ensure_user(client, sa_headers: dict, email: str | None = None, role: str = 
     }, headers=sa_headers)
     assert res.status_code == 201, res.text
     return res.json()["user"]["userId"]
+
+
+def ensure_hr_owner(client, sa_headers=None) -> str:
+    """Persist the actor used by synthetic HR JWTs, so ownership is real."""
+    from app.security.deps import get_db
+    async def persist():
+        database = client.app.dependency_overrides[get_db]()
+        await database['users'].update_one({'userId':'test-user', 'orgId':'default'},
+            {'$setOnInsert':{'email':'actor@example.test','name':'HR actor','role':'hr',
+                            'isActive':True,'passwordHash':''}}, upsert=True)
+    if client.portal:
+        client.portal.call(persist)
+    else:
+        with client._portal_factory() as portal:
+            portal.call(persist)
+    return 'test-user'
 
 
 def post_job(client, job_headers: dict, sa_headers: dict, job_key: str,

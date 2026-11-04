@@ -4,12 +4,13 @@ password canary, outbox crypto/wipe, bulk results, sync, authz. No real network.
 
 import mongomock_motor
 import pytest
+pytestmark = pytest.mark.usefixtures('legacy_matching_intent')
 from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
-from tests.conftest import auth_headers, job_payload, ensure_user
+from tests.conftest import auth_headers, job_payload, ensure_hr_owner
 
 
 @pytest.fixture(autouse=True)
@@ -92,6 +93,12 @@ class FakeAsyncClient:
                 return FakeResp(200, {"data": {"interview": {
                     "id": "int-1", "url": "https:// upstream.test/i/int-1".replace(" ", ""),
                     "password": CANARY, "responseId": "res-1"}}})
+            if mode == "batch":
+                assert set(json) == {'job_id','round_type','candidates'}
+                candidate = json['candidates'][0]
+                assert set(candidate) == {'candidate_id','start_time','end_time'}
+                return FakeResp(200, {'data':{'interviews':[{'interview_id':'batch-int',
+                    'candidate_id':candidate['candidate_id'],'interview_link':'https://upstream.test/batch-int'}]}})
             if mode == "duplicate_known":
                 return FakeResp(409, {"message": "candidate already has interview",
                                       "data": {"id": "int-old",
@@ -106,6 +113,12 @@ class FakeAsyncClient:
     async def get(self, url, headers=None):
         if url.endswith("/status"):
             mode = FakeAsyncClient.scenario["status"]
+            if mode == 'started_snake':
+                return FakeResp(200,{'data':{'interview_status':{'is_interview_started':True,
+                    'is_interview_submitted':False,'is_report_available':False,'started_at':'2026-11-03T10:00:00Z'}}})
+            if mode == "submitted_snake":
+                return FakeResp(200, {'data':{'interview_status':{'is_interview_submitted':True,
+                    'is_report_available':True,'submitted_at':'2026-10-28 16:35:28.341038'}}})
             if mode == "submitted":
                 return FakeResp(200, {"data": {"interviewStatus": {
                     "isInterviewSubmitted": True, "isReportAvailable": True,
@@ -140,9 +153,9 @@ async def _drain(mock_db, limit=50):
 
 def _make_shortlisted(client, key="A-JOB", email="cand.a@example.com", assessment="UP-A-1"):
     job = client.post("/api/jobs", json={
-        **job_payload(key, "Backend", ensure_user(client, _sa())),
+        **job_payload(key, "Backend", ensure_hr_owner(client, _sa()), lifecycleStatus="OPEN"),
         "mustHaveSkills": ["Python"],
-        "assessmentJobId": assessment}, headers=_hr()).json()
+        "assessmentJobId": assessment}, headers=auth_headers(role="super_admin")).json()
     applicant = client.post("/api/applicants", json={"email": email, "name": "Cand A"},
                             headers=_hr()).json()
     app_res = client.post("/api/applications", json={
@@ -276,8 +289,8 @@ async def test_bulk_per_item_results(client, mock_db):
                                    headers=_hr()).json()["applicantId"],
         "initialStage": "TALENT_POOL"}, headers=_hr()).json()
     no_assess_job = client.post("/api/jobs", json=job_payload("B-NA", "No Assess",
-                                ensure_user(client, _sa())),
-                                headers=_hr()).json()
+                                ensure_hr_owner(client, _sa()), lifecycleStatus="OPEN"),
+                                headers=auth_headers(role="super_admin")).json()
     no_assess_app = client.post("/api/applications", json={
         "jobId": no_assess_job["jobId"],
         "applicantId": client.post("/api/applicants", json={"email": "b3@example.com", "name": "B3"},
@@ -316,7 +329,7 @@ async def test_sync_moves_to_completed_with_score(client, mock_db, monkeypatch):
             "questionWiseResult": [],
         },
     }
-    sweep = client.post("/api/admin/sync-sweep", headers=_hr()).json()
+    sweep = client.post("/api/admin/sync-sweep", headers=_sa()).json()
     assert sweep["enqueued"] >= 1
     await _drain(mock_db)
     prof = client.get(f"/api/applications/{app_id}", headers=_hr()).json()
@@ -329,7 +342,7 @@ async def test_sync_moves_to_completed_with_score(client, mock_db, monkeypatch):
 async def test_sync_waits_when_not_submitted(client, mock_db, monkeypatch):
     app_id = await _send_and_stage(client, mock_db, monkeypatch, "sync.b@example.com")
     FakeAsyncClient.scenario["status"] = "pending"
-    client.post("/api/admin/sync-sweep", headers=_hr())
+    client.post("/api/admin/sync-sweep", headers=_sa())
     await _drain(mock_db)
     prof = client.get(f"/api/applications/{app_id}", headers=_hr()).json()
     assert prof["currentStage"] == "ASSESSMENT_SENT"
@@ -381,9 +394,9 @@ async def test_autosend_default_off_opt_in_sends(client, mock_db, monkeypatch):
 
     assert await seed_default_org(mock_db) is True
     monkeypatch.setattr(settings, "email_dry_run", True)
-    client.post("/api/jobs", json={**job_payload("AS-JOB", "Auto", ensure_user(client, _sa())),
+    client.post("/api/jobs", json={**job_payload("AS-JOB", "Auto", ensure_hr_owner(client, _sa()), lifecycleStatus="OPEN"),
                                    "mustHaveSkills": ["Python"],
-                                   "assessmentJobId": "UP-AS-1"}, headers=_hr())
+                                   "assessmentJobId": "UP-AS-1"}, headers=auth_headers(role="super_admin"))
     lines = ["Auto Cand", "auto.cand@example.com", "+919444444444",
              "Python dev with 5 years of experience", "Skills: Python, SQL", "B.Tech"]
     ct = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -425,3 +438,92 @@ def test_validate_settings_guards():
         assert "ALLOWLIST" in str(exc).upper() or "allowlist" in str(exc)
     else:
         raise AssertionError("dev real-send without allowlist must fail validation")
+
+
+async def test_generate_only_then_send_reuses_link_without_early_email(client, mock_db):
+    _, _, application = _make_shortlisted(client)
+    key = application['applicationId']
+    response = client.post('/api/applications/send-assessments', json={'applicationIds':[key], 'generateOnly':True}, headers=_hr())
+    assert response.json()['accepted'] == 1
+    assert response.json()['items'][0]['linkStatus']=='generated'
+    immediate=await mock_db['applications'].find_one({'applicationId':key})
+    assert immediate['assessment']['link']  # Available before any separate worker drain.
+    await _drain(mock_db)
+    row = await mock_db['applications'].find_one({'applicationId':key})
+    assert row['assessment']['state'] == 'link_created'
+    assert row['assessment']['providerCandidateId'] != application['applicantId']
+    provider_id = row['assessment']['providerCandidateId']
+    assert row['assessment']['link'].startswith('https://')
+    assert await mock_db['email_outbox'].count_documents({'kind':'assessment_invite'}) == 0
+    assert CALLS['interview'] == 1
+    response = client.post('/api/applications/send-assessments', json={'applicationIds':[key]}, headers=_hr())
+    assert response.json()['accepted'] == 1
+    await _drain(mock_db)
+    assert CALLS['interview'] == 1
+    final = await mock_db['applications'].find_one({'applicationId':key})
+    assert final['assessment']['providerCandidateId'] == provider_id
+    messages = [m for m in await _outbox(mock_db)() if m.get('kind') == 'assessment_invite']
+    assert len(messages) == 1
+    # The saved access code remains encrypted between generation and delivery.
+    assert CANARY not in str(row['assessment'])
+
+
+async def test_sync_started_assessment_shows_in_progress_without_claiming_submission(client,mock_db):
+    _,_,application=_make_shortlisted(client)
+    key=application['applicationId']
+    response=client.post('/api/applications/send-assessments',json={'applicationIds':[key],'generateOnly':True},headers=_hr())
+    assert response.json()['items'][0]['linkStatus']=='generated'
+    FakeAsyncClient.scenario['status']='started_snake'
+    from app.services.assessment_flow import handle_assessment_sync
+    await handle_assessment_sync(mock_db,{'orgId':'default','payload':{'applicationId':key}})
+    saved=await mock_db['applications'].find_one({'applicationId':key})
+    assert saved['assessment']['state']=='in_progress'
+    assert saved['assessment']['status']=='In progress'
+    assert saved['assessment'].get('score') is None
+    assert saved['currentStage']=='SHORTLISTED'
+    assert not saved['assessment'].get('submittedAt')
+
+
+async def test_generate_from_batch_response_and_retry_finished_failure(client, mock_db):
+    _, _, application = _make_shortlisted(client)
+    key=application['applicationId']
+    await mock_db['applications'].update_one({'applicationId':key},{'$set':{'assessment':{'state':'failed','error':'Upstream answered without an interview link.'}}})
+    from app.models.jobs import BackgroundJobRepository
+    queued=await BackgroundJobRepository(mock_db).enqueue(org_id='default',kind='assessment_send',entity_type='application',entity_key=key,
+        payload={'applicationId':key,'generateOnly':True},dedupe_key=f'assessment_generate:application:{key}')
+    await mock_db['background_jobs'].update_one({'jobId':queued['jobId']},{'$set':{'status':'dead'}})
+    FakeAsyncClient.scenario['interview']='batch'
+    response=client.post('/api/applications/send-assessments',json={'applicationIds':[key],'generateOnly':True},headers=_hr())
+    assert response.json()['accepted']==1
+    await _drain(mock_db)
+    row=await mock_db['applications'].find_one({'applicationId':key})
+    assert row['assessment']['state']=='link_created'
+    assert row['assessment']['interviewId']=='batch-int'
+    assert row['assessment']['link']=='https://upstream.test/batch-int'
+    assert await mock_db['email_outbox'].count_documents({'kind':'assessment_invite'})==0
+
+
+async def test_manual_link_sync_repeats_until_report_ready_and_preserves_zero(client, mock_db):
+    _, _, application=_make_shortlisted(client)
+    key=application['applicationId']
+    response=client.post('/api/applications/send-assessments',json={'applicationIds':[key],'generateOnly':True},headers=_hr())
+    await _drain(mock_db)
+    assert response.json()['accepted']==1
+    from app.services.assessment_flow import enqueue_sync_sweep
+    assert await enqueue_sync_sweep(mock_db) == 1
+    await _drain(mock_db)
+    FakeAsyncClient.scenario['status']='submitted_snake'
+    assert await enqueue_sync_sweep(mock_db) == 1
+    await _drain(mock_db)
+    row=await mock_db['applications'].find_one({'applicationId':key})
+    assert row['currentStage']=='ASSESSMENT_COMPLETED'
+    assert row['assessment']['reportPending'] is True
+    FakeAsyncClient.scenario['report']={'report':{'overall_result':{'technical_analysis':{'overall_score':0}}}}
+    assert await enqueue_sync_sweep(mock_db) == 1
+    await _drain(mock_db)
+    row=await mock_db['applications'].find_one({'applicationId':key})
+    assert row['assessment']['score']==0
+    assert row['assessment']['status']=='Completed'
+    assert row['assessment']['reportPending'] is False
+    assert await enqueue_sync_sweep(mock_db) == 0
+    assert CALLS['zepto']==0

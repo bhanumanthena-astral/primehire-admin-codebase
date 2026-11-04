@@ -14,6 +14,8 @@ def utcnow() -> datetime:
 def to_public_user(doc: dict[str, Any]) -> dict[str, Any]:
     """Strip sensitive fields before returning user document to client."""
     out = dict(doc)
+    if "passwordSetupRequired" not in out or "passwordHash" in doc:
+        out["passwordSetupRequired"] = not bool(doc.get("passwordHash"))
     out.pop("_id", None)
     out.pop("passwordHash", None)
     mfa = out.get("mfa") or {}
@@ -256,6 +258,12 @@ class InvitationRepository:
             {"$set": {"usedAt": utcnow()}},
         )
         return res.modified_count > 0
+
+    async def consume(self, token_hash: str, kind: str):
+        return await self.coll.find_one_and_update(
+            {"tokenHash": token_hash, "kind":kind, "usedAt":None, "expiresAt":{"$gt":utcnow()}},
+            {"$set":{"usedAt":utcnow()}},
+        )
 
 
 async def seed_default_super_admin(

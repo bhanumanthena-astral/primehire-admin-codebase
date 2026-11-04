@@ -93,7 +93,7 @@ def test_close_reopen_archive_autoclose_audited(client):
 
     # Automatic closure on a second job (past closesAt).
     past = post_job(client, headers, headers, "AUD-AUTO", lifecycleStatus="OPEN",
-                     closesAt="2020-01-01T00:00:00Z")
+                     openedAt="2019-01-01T00:00:00Z", closesAt="2020-01-01T00:00:00Z")
     swept = client.post("/api/admin/jobs/auto-close", headers=headers)
     assert swept.status_code == 200
 

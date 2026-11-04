@@ -20,6 +20,11 @@ npm ci; npm run typecheck; npm run lint; npm test -- --run; npm run build
 
 ## Folder conventions (new code only)
 
+- UI source is now `frontend/src/`, with shared UI in `frontend/components/`
+  and `frontend/lib/`. The standalone package builds to `frontend/dist/` for
+  Cloudflare Pages. Translate historical `src/` UI references accordingly.
+  Root scripts install/delegate to this package; backend stays in `backend/`.
+
 - Backend: `schemas/` (Pydantic, `extra="forbid"`) → `models/` (Motor repos; indexes in
   `db/mongodb.py`) → `services/` → `api/` (routers) → mount in `app/main.py` (prefix `/api`).
   Config in `app/config.py`; startup fail-fast via `validate_settings()`.

@@ -143,7 +143,15 @@ def _extract_docx(data: bytes) -> str:
     doc = docx.Document(io.BytesIO(data))
     if len(doc.paragraphs) > 2000:
         raise ValueError("Resume is too long.")
-    return "\n".join(p.text for p in doc.paragraphs).strip()
+    parts = []
+    for block in doc.iter_inner_content():
+        if hasattr(block, "rows"):
+            for row in block.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                parts.append(": ".join(cells) if len(cells) == 2 else " | ".join(cells))
+        else:
+            parts.append(block.text)
+    return "\n".join(parts).strip()
 
 
 def _extract_doc_strings(data: bytes) -> str:

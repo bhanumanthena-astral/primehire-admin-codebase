@@ -25,10 +25,43 @@ Trust boundary:
 from __future__ import annotations
 
 import re
+from html import escape
+from html.parser import HTMLParser
 from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+def sanitize_jd_html(value: str) -> str:
+    """Allowlisted rich text; executable elements/attributes never survive."""
+    class Cleaner(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts = []
+            self.blocked = 0
+
+        def handle_starttag(self, tag, attrs):
+            if tag in {"script", "style", "iframe", "object"}:
+                self.blocked += 1
+            elif not self.blocked and tag in {"p", "h1", "h2", "h3", "ul", "ol", "li", "blockquote", "b", "i", "strong", "em", "br", "a"}:
+                href = next((v for k, v in attrs if k == "href"), "") or ""
+                extra = f' href="{escape(href, quote=True)}"' if tag == "a" and re.match(r"^https?://", href, re.I) else ""
+                self.parts.append(f"<{tag}{extra}>")
+
+        def handle_endtag(self, tag):
+            if tag in {"script", "style", "iframe", "object"}:
+                self.blocked = max(0, self.blocked - 1)
+            elif not self.blocked and tag in {"p", "h1", "h2", "h3", "ul", "ol", "li", "blockquote", "b", "i", "strong", "em", "a"}:
+                self.parts.append(f"</{tag}>")
+
+        def handle_data(self, data):
+            if not self.blocked:
+                self.parts.append(escape(data))
+
+    parser = Cleaner()
+    parser.feed(value)
+    return "".join(parser.parts)
 
 #: Placeholder so the real JobCreate validators run; stripped from output.
 _AI_CHECK_JOB_KEY = "AI-CHECK"
@@ -171,7 +204,7 @@ def _to_jd_html(value: Any) -> str | None:
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     lines = [ln.strip() for ln in str(value).splitlines() if ln.strip()]
-    paras = "".join(f"<p>{p}</p>" for p in lines)
+    paras = "".join(f"<p>{escape(p)}</p>" for p in lines)
     return paras or None
 
 
@@ -319,6 +352,10 @@ async def validate_jd_extraction(
             needs_review.append({"field": key, "reason": str(exc)})
             continue
         if moment is not None:
+            from .job_timezone import org_timezone, local_to_utc
+            original = str(raw.get(key) or "")
+            if not re.search(r"(?:Z|[+-]\d{2}:?\d{2})$", original.strip()):
+                moment = local_to_utc(moment.replace(tzinfo=None), await org_timezone(db, org_id))
             candidate[key] = moment
 
     try:

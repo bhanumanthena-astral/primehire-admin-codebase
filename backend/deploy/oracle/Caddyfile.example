@@ -1,0 +1,28 @@
+# Enable only after API_HOST has real public DNS pointing to this Oracle VM.
+{$API_HOST} {
+    request_body {
+        max_size 130MB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        -Server
+    }
+    # Route preserves order: private paths must be rejected before proxying.
+    route {
+        @private path /docs /redoc /openapi.json /api/migration /api/migration/*
+        respond @private 404
+        handle /api/* {
+            reverse_proxy 127.0.0.1:8002 {
+                header_up X-Forwarded-For {remote_host}
+                transport http {
+                    response_header_timeout 120s
+                }
+            }
+        }
+        handle {
+            respond 404
+        }
+    }
+}

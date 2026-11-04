@@ -223,7 +223,7 @@ def test_mapped_output_creates_job(client):
     assert res.status_code == 200
     mapped = dict(res.json()["mapped"])
     mapped["jobKey"] = "JD-SAVE-1"
-    created = client.post("/api/jobs", json=mapped, headers=_hr())
+    created = client.post("/api/jobs", json=mapped, headers=auth_headers(role='hr', user_id=assignee))
     assert created.status_code == 201, created.text
     assert created.json()["title"] == "Senior Backend Engineer"
     assert created.json()["jdTemplateVersion"] == "v1"

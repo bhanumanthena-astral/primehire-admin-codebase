@@ -1,5 +1,131 @@
 # DECISIONS.md — Phase 1 Plan
 
+## 2026-11-04: authorized E2E PostgreSQL migration
+
+The user explicitly replaces Oracle with their dedicated Ubuntu 24.04 x86_64
+E2E VM (4 vCPUs, approximately 8 GB RAM/100 GB disk), requests PostgreSQL and
+deployment, and selects migration of existing V2 data. Preserve the source V2
+database, V1, uploaded files, IDs and encryption keys. PostgreSQL is private to
+loopback. Use native indexed JSONB tables per domain and parameterized SQL for
+the existing repository dialect, not a MongoDB daemon or compatibility service.
+This preserves flexible resume/report payloads rather than claiming a normalized
+relational schema rewrite. Atomic conditional writes use short PostgreSQL
+transaction locks; run real-database concurrency and workflow checks before
+cutover. Unsupported operators fail closed. Oracle-specific quotas and egress
+limits do not apply. DNS/HTTPS and Google callback configuration remain separate
+from private server preparation. See E2E_POSTGRESQL_DEPLOYMENT.md for status.
+
+## 2026-11-02: authorized Google sign-in and Calendar scheduling
+
+The user requests direct Google login and Calendar reminders without paid services,
+and explicitly selects overlapping meetings only and the assigned interviewer’s
+calendar. Implement server-side authorization code OAuth with PKCE, verified OIDC,
+existing-member identity linking, existing MFA, encrypted offline Calendar grants
+and explicit incremental consent. Five Google-specific collections hold identities,
+connections, TTL authorization/completion tickets, bounded project usage and a
+revision-validated Calendar outbox. Migration 006 creates seven indexes in V2 only.
+Check the primary calendar before saving and deliver private events with reminders
+idempotently; retain visible pending/conflict states, retries, reassignment cleanup
+and cancellation. No Google billing, paid identity provider or auto-upgrade is enabled.
+Google credentials and production consent verification remain operator configuration.
+Google cannot atomically check availability and create an event; recheck on delivery
+and surface conflicts instead of claiming a reminder was created. See
+`docs/GOOGLE_SIGN_IN_CALENDAR.md` for setup, security and provider pricing limits.
+
+16 October booking/review correction: the user reported a disabled review button
+and missing booking details on administrator candidate cards. Read-only V2 timing
+diagnosis found a technical interview scheduled for 17 October at noon IST;
+submission before that start remains disallowed. Add an explicit server-aligned
+opening time and live boundary update, preserve draft feedback, attach bounded
+scoped active-booking summaries to application pages, replace duplicate scheduling
+with rescheduling, and expose its mandatory reason and before/after audit history.
+No V1 write, resume/ATS change, assessment change, migration or backfill is needed;
+new audit details use the existing flexible details field. Cover time boundaries,
+card visibility after interview end, cross-role scope, rescheduling and cancellation.
+
+16 October acceptance implementation: document-based resume status filters,
+version pagination and extraction refresh repaired; Drive explicitly excluded.
+Recruitment now reconciles tracker milestones and exposes manual scheduling
+exceptions up front. Added versioned V2 talent recommendation runs/results,
+consent/retention and stale-context checks, stripped advisory LLM matching and
+human-only candidate reuse. New jobs queue advice through the recruitment worker
+without changing Jobs CRUD. The user supplied a single live test recipient;
+the provider accepted one synthetic invitation. Recruitment uses private mail
+overrides and preserves assessment mail settings. See RESUME_ACCEPTANCE.md,
+RECRUITMENT_ACCEPTANCE.md and TALENT_POOL.md for the acceptance boundaries.
+
+## 16 October 2026 — document acceptance and complete recruitment journey
+
+The user explicitly authorized completing the Resume Module first, excluding
+Drive integration, then trackers, manual interviews/calendar, technical and
+managerial portals, HR decisions/compensation and intelligent talent-pool matching.
+Proceed across those phases without another go checkpoint. Replace percentage
+claims with requirement-level evidence. Existing V2 intake/assessment behavior
+must remain compatible; V1 is never a write target. Resume corrections remain
+local and LLM scoring remains advisory. Talent recommendations require an
+authorized human to associate a candidate, with no automatic hiring or outreach.
+Use bounded tenant/job-scoped searches, stripped LLM inputs, revision checks and
+versioned additive V2 indexes. Main external dependencies: actual mail credentials
+and production deployment capacity; never label dry-run delivery as real email.
+
+## 15 October 2026 — recruitment portals, explicitly authorized to start
+
+The user requested completion within two hours, authorizing work across the tracker,
+scheduling and portal phases without another "go" checkpoint. Resume intake/ATS and
+assessment creation/management are frozen. Reuse invitation/password/role and Jobs
+foundations; introduce a V2-only recruitment flag and additive collections for
+interviews, locked reviews, notifications, access profiles, question sets and
+workflow leases. New indexes are gated and migration-versioned; V1 stays untouched.
+All views are tenant/assignment scoped and centrally projected. UTC scheduling,
+calendar conflicts, revision checks, audited human stage transitions, encrypted
+outbox emails, reminder cancellation and bounded background work are required.
+HR questions alone may use the existing LLM provider on stripped structured data;
+fallback questions are visibly labelled. Manual meeting links; no calendar service,
+new paid integration, ATS change or assessment mutation. Risks: free-model quotas,
+delivery dependencies, deployment capacity and interrupted cross-document writes;
+test recovery and prevent contradictory or duplicate decisions.
+
+16 October verification: the requested portals, trackers, manual scheduling,
+calendar, review handoffs and HR questions/compensation/offer workflow are built
+and enabled through the V2 launchers. Final backend verification passed 1,347
+tests at 81.65% coverage; frontend unit tests passed 119 and browser acceptance
+passed nine. The two-hour target was exceeded. The backend mail configuration
+remains dry-run without provider credentials, so real delivery is pending.
+Recruitment has its own private outbox encryption key; assessment mail settings
+were preserved. See docs/RECRUITMENT_PORTALS.md for operation and remaining
+deployment limits.
+
+## Module 2 — user-authorized 14 October 2026
+
+15 October completion authorization: finish Single/ZIP/Excel and ATS within the
+requested one-hour work window. Extraction remains entirely local. Add LLM use
+only at the ATS boundary using the existing configured provider, stripped
+confirmed candidate/JD data, strict output validation and visible deterministic
+fallback. Scores remain advisory, with no automatic stage or email actions.
+No new external service, V1 writes, or database replacement is authorized.
+
+The user requested the full supplied Resume Upload module and a design targeting
+1,000 accounts plus 1,000 concurrent users. Proceed with the V2-only architecture
+in [MODULE2_DESIGN.md](MODULE2_DESIGN.md): durable intake, human review, atomic
+identity/application claims, bounded ZIP/XLSX imports, local application-specific
+ATS and fail-closed scanning/OCR states. Keep V1 untouched. Development and
+verification use in-memory data; production capacity must be measured on the
+provisioned deployment rather than inferred from unit tests.
+
+## Jobs completion — user-authorized 13 October 2026
+
+The user explicitly requested implementation of all missing Jobs requirements,
+including LLM-free JD import, followed by verification before the next module.
+This authorizes the implementation without another phase "go" checkpoint.
+The complete supplied spec is docs/JOBS_SPEC.md; scope, assumptions, baseline
+and requirement-to-code/test mapping are in docs/JOBS_COMPLETION.md.
+New roles: recruiter (Jobs management) and viewer (Jobs read-only). No new paid
+service, Redis, storage provider or container is introduced. Migration 004
+normalizes legacy dates to equivalent UTC instants and fills owner-name snapshots. New records use UTC
+instants; edits use atomic timestamp comparison, and creation uses an optional
+hashed idempotency key with a partial unique index. JD imports are stateless,
+local and reviewable. Resume scoring continues to use the existing LLM layer.
+
 > Step 0 deliverable. Auth, orgs, RBAC, hiring data model.
 > Read alongside `CLAUDE.md`, `docs/ENGINEERING_STANDARDS.md`, `docs/DIAGNOSIS.md`.
 
@@ -1748,3 +1874,254 @@ DST-sensitive, per-org isolation, invalid/missing tz → UTC fallback).
   ● LLM Resilience — L1 Tier 1 dispatch — DONE (see entry below)
   ○ L2 Tier 2 groundwork
 - L1 built and verified; STOPPED per plan. Phase 7 and L2 both awaiting "go".
+
+### 2026-10-13: user-authorized invitation onboarding and assigned Jobs
+Kept existing Argon2id/JWT authentication. Added one-use invitation password setup, replacement invitations, staff ownership checks for Jobs and related resume/application actions, and role landing pages. Interviewer workflows remain future scope. See docs/AUTH_ONBOARDING.md for usage and boundaries.
+
+### 2026-10-13: user-authorized V2 Jobs cards and access control
+Replaced the wide Jobs table with responsive cards. Added an explicit admin status selector, admin-only lifecycle/assignment/deletion controls, optional user and assignment access, and permission/state checks for resume intake. Kept existing role defaults for records without the new fields. Migration 005 is additive metadata only, without backfill/index changes. Activation uses only primehire_admin_v2; V1 is not restarted or written. See docs/JOBS_ACCESS_AND_CARDS.md.
+
+### 2026-10-15: isolated V2 runtime and alternate free ATS model
+The user authorized another free model on the existing provider after quota failures.
+V2 ATS now uses `RESUME_ATS_MODEL=liquid/lfm-2.5-2.6b:free`, with a bounded
+1,600-token response allowance. The provider's required internal reasoning had
+consumed the previous 400-token allowance before returning JSON. A synthetic live
+request now returns a validated advisory score; parsing/importing still never
+calls an LLM. Legacy model configuration and response allowance stay unchanged.
+Free-provider availability remains external; local-score fallback is visible.
+
+Windows prevented an in-place dependency upgrade because V1 held a native driver
+DLL. Restored the exact original driver files, preserving loaded binaries, and
+installed patched dependencies in the separate ignored `backend/.venv-v2`.
+Only V2 launchers were restarted. V1 collection counts match the read-only
+pre-activation snapshot. See docs/MODULE2_RUNBOOK.md for startup and evidence.
+
+### 2026-10-16: user-authorized candidate roadmap button repair
+Superseded on 2026-11-03 by the full-page roadmap and profile view below.
+The tracker card now opens a viewport-level candidate roadmap dialog instead of
+appending history below the candidate grid. Fetch only the selected application’s
+authorized tracker, with loading, empty, retryable error and refresh states.
+Abort requests on close or candidate change and ignore late responses. Verify
+candidate isolation, keyboard dismissal, focus return and mobile centering.
+This is a frontend repair: no collections, indexes, environment variables, auth
+surface, assessment/resume flows or V1 data changes are required.
+
+### 2026-10-16: user-authorized reviewer dashboard and handoff clarity
+Technical, managerial and HR reviewers get a personal Overview instead of the
+administrator’s application-wide stage grid: assigned interview statistics,
+next-interview preparation, a short upcoming queue and dedicated completed,
+pending-review, today and upcoming filters. Add bounded aggregate statistics to
+the existing authorized tracker response, scoped to organization, visible
+applications, selected job and the signed-in interviewer. Interview outcome
+aggregates also use the interviewer scope for these roles.
+
+Present the managerial review journal’s adjacent review/handoff records as one
+completed managerial review with HR assignment as its next step. Preserve all
+stored history and stage transitions. Distinguish the application’s current
+stage from the round of an older completed interview. No collection, index,
+migration, environment variable, dependency, new auth endpoint or live-data
+write is needed. Resume intake, ATS and assessment management stay unchanged.
+
+### 2026-10-19: user-authorized Module 3 additions
+Implement the attached Assessment Management document while retaining the current
+question form and preview/confirmation/publication structure. The user explicitly
+approved editable drafts and immutable published questions in response to the
+missing verified upstream edit contract. Add V2-only draft persistence, grouped
+CSV validation/import, scoped paginated listing/details and optimistic edit
+conflicts. Publication keeps the existing PrimeHire POST contract and never
+sends invitations automatically. Add only V2 metadata/indexes; do not backfill or
+write V1 records, change ATS/resume flows, or invent upstream update endpoints.
+See docs/ASSESSMENT_MANAGEMENT.md for rules and acceptance evidence.
+
+### 2026-10-22: user-authorized Module 4 Candidate Management
+Implement only the supplied Candidate Management document in the Candidates tab:
+person listing/details/editing, separate assessment assignments, explicit date
+configuration and manual-share invite links. The user confirmed the Edit section
+limits (headline 250 / summary 5,000) and the link policy: existing provider login,
+one reusable link per assignment, expiry at End Date, no automatic email.
+Use the existing canonical applicants/person profiles and their job applications;
+do not confuse a legacy per-assessment candidate record with a person. Preserve
+all resume/ATS, assessment creation, review and interview flows. V2-only migration
+010 adds indexes and a candidate_assignments collection; no V1 backfill or CRUD
+changes. Existing role/job scope, contact reveal audits and duplicate matching
+apply. Lock dates after link generation where no provider edit contract exists.
+Unknown provider POST outcomes require reconciliation rather than blind retry.
+
+
+## 2026-10-22: ATS range before candidate creation
+
+The user requested a two-handle range after parsing, including 50% minimums and
+retaining below-threshold resumes for reconsideration. This updates the earlier
+confirmation-before-ATS sequence: local extraction, explicit range selection,
+queued ATS preview, then human confirmation of eligible candidates. No assessment
+flow changes. See [RESUME_ATS_RANGE.md](RESUME_ATS_RANGE.md).
+## 2026-10-26: user-authorized Oracle backend preparation
+
+The user explicitly requested backend-first deployment, keeping V2 backend,
+MongoDB and private storage on Oracle and the frontend on Cloudflare. The user
+has no Oracle account or domain yet and asked us to prepare the deployment.
+Retain the monorepo with independent backend releases; no Docker files or paid
+services. Add native Ubuntu/systemd tooling, local authenticated V2-only MongoDB,
+ClamAV/OCR, encrypted maintenance backups and guarded release updates. No new
+collections/indexes/endpoints; no data migration or live email in preparation.
+Leave delivery workers disabled. Public HTTPS, controlled V2 migration, actual
+ARM validation, restore/capacity tests and frontend proxy/auth cutover remain
+explicit launch requirements. See ORACLE_BACKEND_DEPLOYMENT.md.
+## 2026-10-26: user-authorized frontend-first Cloudflare separation
+
+The user asked to separate the frontend and deploy it on Cloudflare first, then
+confirmed there is no public backend yet. Move UI source/config into frontend/
+with an independent package, lockfile and Pages advanced-mode API gateway.
+Preserve root development/build/test commands as compatibility wrappers. Keep
+backend code/data/providers on Oracle. The gateway forwards same-origin API
+requests, auth cookies, multipart and downloads to one configured HTTPS backend;
+it does not hold provider/JWT/DB secrets or execute business logic. Missing backend
+returns a clear 503; no fallback to V1 or fabricated app data. Native V2 flows
+remain unchanged. Legacy provider-only routes must be accounted for before
+backend cutover; do not enable the old permissive Pages Functions by accident.
+No schema/index changes or live deployment/data writes are part of preparation.
+
+Integration follow-up: the assessment library's assignment action reached a
+legacy provider-only screen. Use the existing native assignment-status component
+and Candidates workspace instead. Production capability failures in candidate,
+resume and assessment workspaces must show an error/retry rather than entering
+legacy provider flows. Preserve assessment questions/preview/publication and
+all backend/ATS behavior. Test the assignment handoff and production failures.
+
+## 2026-10-28: HR questions based on the JD and resume
+
+The user reports technical questions in the HR portal and requests HR questions
+based on the JD and resume. Strengthen the HR-only prompt and output validation,
+and make deterministic fallback questions behavioral and role/profile-aware.
+Previous reviews may inform behavioral follow-ups, never technical quizzes.
+Allow an explicit refresh of unused question sets with revision checks; preserve
+sets with saved edits, answers or asked markers. Keep existing authorization,
+field projection, PII stripping, provider limits and human decisions unchanged.
+No new endpoints, indexes, migrations, live data writes or configuration keys:
+the optional generation-policy metadata is backward compatible with old sets.
+
+## 2026-10-30: assessment invitations and candidate reports in job workspace
+
+The user requests a dropdown-only published-assessment linker, with the existing
+job candidate/invitation table opened by View table in assessment Actions. Replace
+the fourth stage with Candidate reports (name, ATS, stage, assessment score, report
+and candidate-specific scheduling). Preserve creation/preview/publication and
+invitation confirmation/dry-run behavior. Reuse the existing scheduling dialog
+inside Interview scheduling, carrying the selected application and active booking.
+Use an authenticated job/application-scoped read endpoint for actual assessment
+reports; never use synthetic report fallback. No new collections, indexes, schema
+migrations, provider configuration or live candidate writes are needed. Test scope,
+read permissions, pending/error reports, table relocation and scheduling handoff.
+
+## 2026-10-30: search assessment invitation candidates by name/email
+
+Add one debounced search input above the existing assessment invitation table.
+Reuse the scoped recruitment applications query so search spans all pages, resets
+pagination/selection and remains applied to refresh/polling. Extend that query to
+match literal email substrings only for callers with contact-field access; names
+remain searchable under existing permissions. No endpoint, index, DB migration,
+provider configuration or candidate mutation is introduced.
+
+## 2026-11-02: user-authorized Apple-inspired application redesign
+
+The user explicitly requests applying dickwu/apple-design-skill across the full
+application now. Read its SKILL.md and relevant HIG/cross-platform references.
+Implement a web adaptation, not native AppKit or Apple branding: semantic light
+and dark tokens, system typography, shared controls, navigation, opaque content
+surfaces, focused dialogs, and accessible motion/contrast/transparency behavior.
+The product is a hiring workspace; the existing job journey and candidate timelines
+are its distinguishing structure. Preserve functional labels, workflows, role gates,
+IDs, ATS/assessment logic, and database behavior. No dependencies, backend changes,
+new endpoints, schemas or migrations are needed for this visual redesign.
+
+
+### 2026-11-03 — Google Calendar is optional for interviewer scheduling
+
+The user explicitly requests that admin/super-admin scheduling work before the
+interviewer connects Google. Missing, sign-in-only or reconnect-required calendar
+grants permit manual scheduling; `available: null` never claims external freedom.
+Only connected interviewers show the availability action, with their name and a
+connection badge. The existing scoped staff route returns only a connection
+boolean in addition to its public name/ID/role fields, plus the selected member
+outside the current page. Genuine connected-calendar conflicts and local candidate/
+interviewer overlap checks remain enforced. No auth grants, OAuth behavior, database
+schema, data migration or environment setting changes. No live V1 data is touched.
+
+
+### 2026-11-03 — Full-page interviewer reviews with prominent ratings
+
+User requests View candidate & review to open as a full page in the technical,
+managerial and HR portals. Replace the list with the existing review content in an
+inline workspace, preserving portal context and Back navigation rather than merely
+stretching a modal. Make saved and editable criterion scores prominent before
+written feedback. Keep all existing server projections, APIs, review locking,
+managerial drafts, HR questions and compensation behavior. No backend/schema/auth
+surface changes; no database operation or environment variable added.
+
+
+### 2026-11-03 — Saved-review thank-you confirmation and return to interviews
+
+User requests a clear success message, congratulations, appreciation for the
+interviewer's time, a professional 3D illustration, and return to the interview
+screen after any round is submitted. A successful existing review POST now returns
+to My interviews → Completed reviews with a persistent, focused thank-you card.
+The returned saved record is authoritative; an extra GET must not turn a committed
+review into a failed-save message. Failed submissions retain feedback and allow
+retry, with an in-flight guard against duplicate POSTs. The card offers Continue
+to interviews and direct access to the locked submitted review. No timed dismissal,
+backend/schema/auth/CRUD change, production image-generation call, or new setting.
+The generated RGBA asset and exact prompt are documented in
+`docs/REVIEW_SUBMISSION_SUCCESS.md`.
+
+### 2026-11-03 — Keep candidates visible between interview rounds
+
+Correct the existing workflow rather than changing completed decisions: an
+application advanced to `HR_ROUND` is waiting for scheduling until a booking is
+created. Add technical, managerial and HR scheduling-pending filters and counts
+using the same server-side readiness and booking rules before pagination. Keep
+candidate details and saved reviews reachable from those queues. Preserve org,
+assigned-job and interviewer restrictions; no new settings, collections or stage
+values. See `docs/RECRUITMENT_SCHEDULING_QUEUES.md` for behavior and regression scope.
+
+### 2026-11-03 — Connect Recruitment candidate discovery to the app search
+
+The header search was not passed into Recruitment, and its default interview
+bucket excluded applications waiting for a booking. Add an explicit Candidates
+tab and connect the header to paginated, authorized application search across
+stages. Global searches clear stale global filters; a job-scoped workspace keeps
+its explicit job boundary. Candidate lookup does not fetch an unrelated interview
+list. Preserve scheduler-only controls and interviewer assignment restrictions.
+The reported candidate was verified in the actual running app with its HR form
+open; the verification blocks mutations and does not create an appointment.
+
+### 2026-11-03 — HR candidate profile and roadmap use a full page
+
+User requests the HR candidate review experience to match the other portals.
+The interview review already uses the shared page; replace the remaining roadmap
+dialog with a full-page profile and history, across all recruitment portals.
+Link to the existing full-page interview review. Preserve Back navigation, list
+filters, scroll/focus restoration, cancellation of stale requests and server field
+projections. No backend, stage, data, dependency or environment changes.
+
+
+### 2026-11-04 — Remove the desktop width cap from HR interview reviews
+
+A fresh HR session against the running localhost:3000 frontend showed an inline
+review page constrained to 1280 pixels on a 1920-pixel viewport. Remove the shared
+review page width cap and align its standalone toolbar with the page edges.
+The parent explicitly renders InterviewReviewPage for every interviewer role;
+the legacy export remains compatible with existing callers. Strengthen the HR
+browser journey at 1920 pixels so a capped page cannot pass as full width.
+No auth surface, endpoint, backend, schema, dependency or runtime setting changed.
+
+
+### 2026-11-04 — Prepare independent frontend and backend repository snapshots
+
+The user prefers two repos. Keep the live working tree intact and export clean
+source snapshots with separate checks and deployment instructions. Retain the
+backend/ layout in the backend repo to preserve existing script/migration paths.
+Frontend builds independently for Cloudflare Pages; backend source and secrets
+remain on Oracle. Include public illustration assets omitted by the older source
+export. Use allowlists, checksums and existing secret scanning; copy no runtime
+data or private environments. Two repos are optional for production. No auth
+surface, API, backend data behavior, migration or runtime setting changes.

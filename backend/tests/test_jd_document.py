@@ -11,7 +11,6 @@ import mongomock_motor
 import pytest
 from fastapi.testclient import TestClient
 
-from app import config as config_module
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
@@ -126,7 +125,7 @@ def test_document_mode_extracts_docx_prose(client):
     assert "Product Manager - SaaS" in body["text"]
     assert "Elite HR Technologies" in body["text"]
     assert body["mapped"] == {}
-    assert JD_DOCUMENT_AI_PENDING_WARNING in body["warnings"]
+    assert body["review"] is not None
 
 
 def test_document_mode_extracts_pdf(client):
@@ -234,11 +233,21 @@ def test_document_unextractable_pdf_is_422(client):
     assert "extract" in res.text.lower() or "readable" in res.text.lower()
 
 
-def test_document_oversized_is_400(client, monkeypatch):
-    monkeypatch.setattr(config_module.settings, "upload_max_mb", 0)
-    res = _upload(client, make_docx_bytes(JD_PROSE_LINES), "big.docx", _hr(), mode="document")
+@pytest.mark.parametrize("mode", ["template", "document"])
+def test_jd_oversized_is_400(client, mode):
+    res = _upload(client, bytes(15 * 1024 * 1024 + 1), "big.docx", _hr(), mode=mode)
     assert res.status_code == 400
-    assert "exceeds" in res.json()["detail"].lower()
+    assert "15 MB" in res.json()["detail"]
+
+
+def test_document_at_size_limit_extracts(client):
+    pdf = make_pdf_bytes(JD_PROSE_LINES)
+    # A comment before startxref preserves all object and xref offsets.
+    offset = pdf.rindex(b"startxref")
+    padding = b"%" + b" " * (15 * 1024 * 1024 - len(pdf) - 2) + b"\n"
+    data = pdf[:offset] + padding + pdf[offset:]
+    res = _upload(client, data, "large.pdf", _hr(), mode="document")
+    assert res.status_code == 200, res.text
 
 
 def test_document_quarantined_is_422(client, monkeypatch):

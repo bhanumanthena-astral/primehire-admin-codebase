@@ -1,0 +1,33 @@
+[Unit]
+Description=Elite HR V2 %i
+After=network-online.target mongod.service clamav-daemon.service
+Wants=network-online.target
+Requires=mongod.service clamav-daemon.service
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=elitehr
+Group=elitehr
+WorkingDirectory=/opt/elitehr/current
+EnvironmentFile=/etc/elitehr/backend.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/elitehr/current/.venv/bin/python -m deploy.runtime %i
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=90
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/elitehr
+RestrictSUIDSGID=true
+LockPersonality=true
+LimitNOFILE=8192
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

@@ -87,7 +87,7 @@ class BackgroundJobRepository:
         record.pop("_id", None)
         return record
 
-    async def claim_next(self, kinds: list[str] | None = None, lease_s: int = 300) -> dict[str, Any] | None:
+    async def claim_next(self, kinds: list[str] | None = None, lease_s: int = 300, *, job_id: str | None = None) -> dict[str, Any] | None:
         """Atomically claim one due job (pending/deferred, or running with expired lease)."""
         now = _utcnow()
         query: dict[str, Any] = {
@@ -99,6 +99,13 @@ class BackgroundJobRepository:
         }
         if kinds:
             query["kind"] = {"$in": kinds}
+        from ..config import settings
+        if job_id is not None:
+            query['jobId'] = job_id
+        elif settings.resume_kafka_enabled:
+            # Only Kafka consumers claim parse jobs; legacy worker entry points
+            # must not quietly bypass dispatch when Kafka is enabled.
+            query['$and'] = [{'kind': {'$ne': 'resume_intake_parse'}}]
         # mongomock-motor supports find_one_and_update; fall back if needed.
         try:
             doc = await self.coll.find_one_and_update(

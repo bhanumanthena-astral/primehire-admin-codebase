@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Elite HR V2 PostgreSQL backup at 02:15 IST
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 Asia/Kolkata
+Persistent=true
+Unit=elitehr-postgres-backup.service
+
+[Install]
+WantedBy=timers.target

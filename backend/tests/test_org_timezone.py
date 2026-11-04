@@ -63,11 +63,13 @@ async def test_auto_close_uses_org_tz_boundary(client, mock_db, monkeypatch):
     # Stored wall-clock: today 13:00. UTC org: boundary 13:00Z > now → open.
     job = post_job(client, sa, sa, "TZ-1", "OrgTz", lifecycleStatus="OPEN",
                    openedAt="2026-06-01T00:00:00+00:00", closesAt="2026-06-01T13:00:00+00:00")
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r.json()["closed"] == 0
     # Now Asia/Kolkata: boundary = 13:00+05:30 wall → instant 07:30Z ≤ now → CLOSED.
     upd = client.put("/api/org/settings", json={"timezone": "Asia/Kolkata"}, headers=sa)
     assert upd.status_code == 200, upd.text
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r2 = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r2.json()["closed"] == 1
     assert r2.json()["jobIds"] == [job["jobId"]]
@@ -83,6 +85,7 @@ async def test_auto_close_utc_fallback_when_tz_missing(client, mock_db, monkeypa
     monkeypatch.setattr(ac, "_utcnow", lambda: now)
     job = post_job(client, sa, sa, "TZ-2", "UtcFallback", lifecycleStatus="OPEN",
                    openedAt="2026-06-01T00:00:00+00:00", closesAt="2026-06-01T11:00:00+00:00")
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r.json()["closed"] == 1  # UTC interpretation closes it
 
@@ -101,6 +104,7 @@ async def test_auto_close_invalid_stored_tz_falls_back_to_utc(client, mock_db, m
     )
     post_job(client, sa, sa, "TZ-3", "BadTz", lifecycleStatus="OPEN",
              openedAt="2026-06-01T00:00:00+00:00", closesAt="2026-06-01T11:00:00+00:00")
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r.json()["closed"] == 1
 
@@ -115,6 +119,7 @@ async def test_auto_close_boundary_exactly_at_threshold(client, mock_db, monkeyp
     monkeypatch.setattr(ac, "_utcnow", lambda: now)
     post_job(client, sa, sa, "TZ-4", "AtThreshold", lifecycleStatus="OPEN",
              openedAt="2026-06-01T00:00:00+00:00", closesAt="2026-06-01T12:00:00+00:00")
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r.json()["closed"] == 1
 
@@ -129,6 +134,7 @@ async def test_auto_close_boundary_just_after_threshold(client, mock_db, monkeyp
     monkeypatch.setattr(ac, "_utcnow", lambda: now)
     post_job(client, sa, sa, "TZ-4b", "JustFuture", lifecycleStatus="OPEN",
              openedAt="2026-06-01T00:00:00+00:00", closesAt="2026-06-01T12:00:01+00:00")
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r.json()["closed"] == 0
 
@@ -144,18 +150,22 @@ async def test_auto_close_dst_boundary_new_york(client, mock_db, monkeypatch):
     post_job(client, sa, sa, "TZ-5a", "WinterJd", lifecycleStatus="OPEN",
              openedAt="2026-01-01T00:00:00+00:00", closesAt="2026-01-15T12:00:00+00:00")
     monkeypatch.setattr(ac, "_utcnow", lambda: datetime(2026, 1, 15, 16, 59, 59, tzinfo=timezone.utc))
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r1 = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r1.json()["closed"] == 0
     monkeypatch.setattr(ac, "_utcnow", lambda: datetime(2026, 1, 15, 17, 0, 0, tzinfo=timezone.utc))
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r2 = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r2.json()["closed"] == 1  # EST boundary = 17:00Z
 
     post_job(client, sa, sa, "TZ-5b", "SummerJd", lifecycleStatus="OPEN",
              openedAt="2026-07-01T00:00:00+00:00", closesAt="2026-07-15T12:00:00+00:00")
     monkeypatch.setattr(ac, "_utcnow", lambda: datetime(2026, 7, 15, 15, 59, 59, tzinfo=timezone.utc))
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r3 = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r3.json()["closed"] == 0
     monkeypatch.setattr(ac, "_utcnow", lambda: datetime(2026, 7, 15, 16, 0, 0, tzinfo=timezone.utc))
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r4 = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r4.json()["closed"] == 1  # EDT boundary = 16:00Z
 
@@ -175,8 +185,10 @@ async def test_auto_close_idempotent_and_state_filters(client, mock_db, monkeypa
     archived = post_job(client, sa, sa, "TZ-6c", "Archived", lifecycleStatus="OPEN",
                         openedAt="2026-06-01T00:00:00+00:00", closesAt="2026-06-01T11:00:00+00:00")
     client.post(f"/api/jobs/{archived['jobId']}/archive", headers=sa)
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r1 = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r1.json()["closed"] == 1 and r1.json()["jobIds"] == [closed_job["jobId"]]
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     r2 = client.post("/api/admin/jobs/auto-close", headers=sa)
     assert r2.json()["closed"] == 0  # idempotent
     final = client.get(f"/api/jobs/{future_job['jobId']}", headers=sa).json()
@@ -202,8 +214,10 @@ async def test_auto_close_multi_org_isolation(client, mock_db, monkeypatch):
              openedAt="2026-01-01T00:00:00+00:00", closesAt="2026-01-15T12:00:00+00:00")
     jobB = post_job(client, saB, saB, "TZ-7b", "OrgB", lifecycleStatus="OPEN",
                     openedAt="2026-01-01T00:00:00+00:00", closesAt="2026-01-15T12:00:00+00:00")
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     ra = client.post("/api/admin/jobs/auto-close", headers=saA)
     assert ra.json()["closed"] == 1
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     rb = client.post("/api/admin/jobs/auto-close", headers=saB)
     assert rb.json()["closed"] == 0
     assert client.get(f"/api/jobs/{jobB['jobId']}", headers=saB).json()["lifecycleStatus"] == "OPEN"
@@ -219,6 +233,7 @@ async def test_auto_close_audit_and_application_block(client, mock_db, monkeypat
     monkeypatch.setattr(ac, "_utcnow", lambda: now)
     job = post_job(client, sa, sa, "TZ-8", "Audit", lifecycleStatus="OPEN",
                    openedAt="2026-06-01T00:00:00+00:00", closesAt="2026-06-01T11:00:00+00:00")
+    await mock_db["jobs"].update_many({}, {"$set": {"datesVersion": "legacy-wall"}})  # Explicit legacy timestamp fixtures
     client.post("/api/admin/jobs/auto-close", headers=sa)
     audits = client.get("/api/audit-log?resource_type=job", headers=sa).json()
     ac = next(a for a in audits if a["action"] == "job.close" and a["actorUserId"] == "system:auto-close")

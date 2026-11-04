@@ -53,28 +53,39 @@ def _pick_first(*values: Any) -> Any:
     return None
 
 
-def parse_interview_record(data: dict[str, Any]) -> dict[str, Any] | None:
-    """Tolerant single-interview parser (mirrors the browser extractor)."""
-    if not isinstance(data, dict):
+def parse_interview_record(data: Any, candidate_id: str | None = None) -> dict[str, Any] | None:
+    """Read single or batched provider envelopes without mixing candidate links."""
+    def records(value, inherited_candidate=None, depth=0):
+        if depth > 8:
+            return []
+        if isinstance(value, list):
+            return [record for entry in value for record in records(entry, inherited_candidate, depth+1)]
+        if not isinstance(value, dict):
+            return []
+        owner = value.get('candidate_id') or value.get('candidateId') or inherited_candidate
+        if candidate_id and owner and str(owner) != candidate_id:
+            return []
+        nested = []
+        for field in ('data', 'interviews', 'candidates', 'results', 'interview', 'candidate', 'result'):
+            if isinstance(value.get(field), (dict, list)):
+                nested.extend(records(value[field], owner, depth+1))
+        if nested:
+            return nested
+        link = _pick_first(value.get('url'), value.get('link'), value.get('interviewUrl'),
+            value.get('interview_url'), value.get('interviewLink'), value.get('interview_link'))
+        interview_id = _pick_first(value.get('interviewId'), value.get('interview_id'), value.get('id'))
+        if not link and not interview_id:
+            return []
+        return [{'interviewId': str(interview_id or ''), 'link': str(link or ''),
+            'password': _pick_first(value.get('password'), value.get('accessCode'), value.get('access_code')) or None,
+            'responseId': _pick_first(value.get('responseId'), value.get('response_id')) or None,
+            '_candidate': str(owner) if owner else None}]
+    found = records(data)
+    exact = [row for row in found if row['_candidate'] == candidate_id] if candidate_id else []
+    selected = exact or found
+    if len(selected) != 1:
         return None
-    for key in ("interview", "candidate", "result"):
-        inner = data.get(key)
-        if isinstance(inner, dict) and (_pick_first(inner.get("id"), inner.get("interviewId"),
-                                                    inner.get("url"), inner.get("link"))):
-            data = inner
-            break
-    interview_id = _pick_first(data.get("id"), data.get("interviewId"), data.get("interview_id"))
-    link = _pick_first(data.get("url"), data.get("link"), data.get("interviewUrl"),
-                       data.get("interview_url"))
-    if not interview_id and not link:
-        return None
-    return {
-        "interviewId": str(interview_id or ""),
-        "link": str(link or ""),
-        "password": _pick_first(data.get("password"), data.get("accessCode"),
-                                data.get("access_code")) or None,
-        "responseId": _pick_first(data.get("responseId"), data.get("response_id")) or None,
-    }
+    return {key: value for key, value in selected[0].items() if key != '_candidate'}
 
 
 def _is_duplicate(status: int, body: Any) -> bool:
@@ -94,7 +105,8 @@ async def create_interview(
     timeout_s: int = 30,
 ) -> dict[str, Any]:
     """POST /interview. Returns parsed record or raises (never fabricates)."""
-    base, headers = _base_and_headers()
+    from .assessment_management import provider_connection
+    base, headers = provider_connection()
     payload = {"job_id": job_id, "round_type": round_type,
                "candidates": [{"candidate_id": candidate_id,
                                "start_time": start_time, "end_time": end_time}]}
@@ -114,13 +126,13 @@ async def create_interview(
             body = None
         logger.info("Upstream POST /interview attempt %d status=%s", attempt + 1, resp.status_code)
         if 200 <= resp.status_code < 300:
-            record = parse_interview_record((body or {}).get("data", body or {}))
-            if record and (record["interviewId"] or record["link"]):
+            record = parse_interview_record(body, candidate_id)
+            if record and record["link"]:
                 return record
             raise UpstreamError("Upstream answered without an interview link.")
         if _is_duplicate(resp.status_code, body):
             data = (body or {}).get("data", body or {}) if isinstance(body, dict) else {}
-            adopted = parse_interview_record(data if isinstance(data, dict) else {})
+            adopted = parse_interview_record(body, candidate_id)
             raise UpstreamDuplicate("Upstream reports an existing interview for this candidate.",
                                     adopted)
         if resp.status_code in (401, 403):
@@ -133,8 +145,10 @@ async def create_interview(
 
 
 async def get_interview_status(*, interview_id: str, timeout_s: int = 30) -> dict[str, Any]:
+    from .report_normalize import deep_camel
     """GET /interview/:id/status → normalized submission flags."""
-    base, headers = _base_and_headers()
+    from .assessment_management import provider_connection
+    base, headers = provider_connection()
     last_error = "status failed"
     for attempt in range(3):
         try:
@@ -151,11 +165,13 @@ async def get_interview_status(*, interview_id: str, timeout_s: int = 30) -> dic
             await _sleep(attempt)
             continue
         try:
-            data = (resp.json() or {}).get("data", {})
+            data = deep_camel((resp.json() or {}).get("data", {}))
         except ValueError:
             data = {}
         flags = data.get("interviewStatus", data) if isinstance(data, dict) else {}
         return {
+            "started": flags.get('isInterviewStarted') is True,
+            "startedAt": flags.get('startedAt'),
             "submitted": bool(flags.get("isInterviewSubmitted", False)),
             "reportAvailable": bool(flags.get("isReportAvailable", False)),
             "submittedAt": flags.get("submittedAt"),
@@ -165,7 +181,8 @@ async def get_interview_status(*, interview_id: str, timeout_s: int = 30) -> dic
 
 async def get_report_envelope(*, interview_id: str, timeout_s: int = 60) -> dict[str, Any] | None:
     """GET /interview/:id/report → unwrapped data dict or None when not ready."""
-    base, headers = _base_and_headers()
+    from .assessment_management import provider_connection
+    base, headers = provider_connection()
     for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=timeout_s) as client:

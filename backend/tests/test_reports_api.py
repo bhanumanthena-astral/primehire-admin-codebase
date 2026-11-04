@@ -8,6 +8,7 @@ from app.main import app
 from tests.conftest import auth_headers
 
 STORED = {
+    "orgId": "default",
     "interviewId": "real-iv-1",
     "candidateId": "cand-mongo-id",
     "assessmentId": "JOB-1",

@@ -1,0 +1,10 @@
+[Unit]
+Description=Elite HR V2 daily maintenance backup
+
+[Timer]
+OnCalendar=*-*-* 01:30:00 UTC
+Persistent=true
+Unit=elitehr-backup.service
+
+[Install]
+WantedBy=timers.target

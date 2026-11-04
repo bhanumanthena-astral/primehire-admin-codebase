@@ -30,7 +30,7 @@ interface ProxyContext {
 
 const DEFAULT_BACKEND_URL = 'https://api.placement.vils.ai/primehire/api/v1';
 const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD';
-const ALLOWED_HEADERS = 'Content-Type, Authorization, X-Requested-With, Accept';
+const ALLOWED_HEADERS = 'Content-Type, Authorization, X-Requested-With, Accept, Idempotency-Key';
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**
@@ -178,6 +178,8 @@ export async function onRequest(context: ProxyContext): Promise<Response> {
   if (accept) outgoing.set('Accept', accept);
   const authorization = request.headers.get('authorization');
   if (authorization) outgoing.set('Authorization', authorization);
+  const idempotencyKey = request.headers.get('Idempotency-Key');
+  if (idempotencyKey) outgoing.set('Idempotency-Key', idempotencyKey);
   const cookie = request.headers.get('cookie');
   if (cookie) outgoing.set('Cookie', cookie);
   const userAgent = request.headers.get('user-agent');
@@ -199,12 +201,16 @@ export async function onRequest(context: ProxyContext): Promise<Response> {
 
   // ---- Forward and relay the backend response verbatim ----
   try {
-    const upstream = await fetch(targetUrl, init);
+    const upstream = await fetch(targetUrl, {...init, redirect: 'manual'});
     const body = await upstream.arrayBuffer();
     const headers = corsHeaders(corsOrigin);
     headers.set('Cache-Control', 'no-store');
     const upstreamContentType = upstream.headers.get('content-type');
     if (upstreamContentType) headers.set('Content-Type', upstreamContentType);
+    for (const name of ['location', 'referrer-policy']) {
+      const value = upstream.headers.get(name);
+      if (value) headers.set(name, value);
+    }
     // Preserve download metadata (e.g. Content-Disposition for exports).
     const contentDisposition = upstream.headers.get('content-disposition');
     if (contentDisposition) headers.set('Content-Disposition', contentDisposition);

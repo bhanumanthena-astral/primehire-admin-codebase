@@ -2,7 +2,7 @@
 
 Rules: lists never include bodies; the single-message view decrypts the
 body ONLY for dry-run records (real sends are wiped on success). The
-allowlist is reported as configured/not — never its values.
+allowlist is reported as configured/not â€” never its values.
 """
 
 from __future__ import annotations
@@ -46,6 +46,9 @@ async def get_diagnostics(
     failed_outbox = await outbox.list_meta(current_user.org_id, status="failed", limit=20)
     dead_jobs = await jobs.list_by_org(current_user.org_id, status="dead", limit=20)
     return {
+        "capacity": await db['deployment_health'].find_one({'_id': 'local-capacity'}, {'_id': 0}) if current_user.role == 'super_admin' else None,
+        "capacityAlerts": [{k: row[k] for k in ['state', 'checkedAt', 'reasons'] if k in row}
+            async for row in db['deployment_alerts'].find({}).sort('checkedAt', -1).limit(10)] if current_user.role == 'super_admin' else [],
         "dryRun": bool(settings.email_dry_run),
         "allowlistConfigured": bool(settings.test_recipient_allowlist),
         "outbox": await outbox.counts_by_status(current_user.org_id),
@@ -148,3 +151,14 @@ async def retry_failed_llm_jobs(
         details={"retried": retried, "cap": LLM_RETRY_CAP},
     )
     return {"retried": retried, "cap": LLM_RETRY_CAP}
+
+
+@router.get("/diagnostics/capacity")
+async def get_capacity(current_user: CurrentUser = Depends(require_permission("audit.view")),
+    db: Any = Depends(get_db)):
+    if current_user.role != 'super_admin':
+        raise HTTPException(403, 'Only Super Admin can view deployment capacity.')
+    if db is None:
+        raise HTTPException(503, 'Database unavailable')
+    return {'enabled': settings.free_tier_guard_enabled,
+        'capacity': await db['deployment_health'].find_one({'_id': 'local-capacity'}, {'_id': 0})}

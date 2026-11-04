@@ -7,6 +7,7 @@ import uuid
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from ..config import settings
 from ..db.mongodb import get_database, ping
@@ -30,6 +31,7 @@ async def health() -> dict[str, object]:
         "status": "ok",
         "app": settings.app_name,
         "mongo": mongo,
+        **({"database": "postgresql", "postgres": mongo, "mongo": "not_configured"} if settings.database_backend == "postgresql" else {}),
         "appVersion": APP_VERSION,
         "gitSha": GIT_SHA,
         "routeCount": route_count(),
@@ -61,9 +63,14 @@ async def ready() -> JSONResponse:
             mongo_ok = False
     storage_ok = _storage_writable()
     checks = {
-        "mongo": "ok" if mongo_ok else "unavailable",
+        ("postgres" if settings.database_backend == "postgresql" else "mongo"): "ok" if mongo_ok else "unavailable",
         "storage": "ok" if storage_ok else "unavailable",
     }
-    if mongo_ok and storage_ok:
+    scanner_ok = True
+    if settings.clamav_enabled:
+        from ..services import clamav
+        scanner_ok = await run_in_threadpool(clamav.scan_bytes, b"Elite HR readiness check") == clamav.CLEAN
+        checks["scanner"] = "ok" if scanner_ok else "unavailable"
+    if mongo_ok and storage_ok and scanner_ok:
         return JSONResponse(status_code=200, content={"status": "ready", "checks": checks})
     return JSONResponse(status_code=503, content={"status": "not_ready", "checks": checks})

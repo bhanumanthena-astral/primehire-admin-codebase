@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from ..security.roles import Role
@@ -13,6 +14,8 @@ class UserRole(str, Enum):
     SUPER_ADMIN = Role.SUPER_ADMIN.value
     ADMIN = Role.ADMIN.value
     HR = Role.HR.value
+    RECRUITER = Role.RECRUITER.value
+    VIEWER = Role.VIEWER.value
     TECHNICAL_INTERVIEWER = Role.TECHNICAL_INTERVIEWER.value
     MANAGERIAL_INTERVIEWER = Role.MANAGERIAL_INTERVIEWER.value
 
@@ -25,6 +28,7 @@ class UserCreate(BaseModel):
     role: UserRole
     orgId: str | None = None
     password: str | None = None
+    jobAccess: list[Literal['view','edit','create','upload']] | None = None
 
 
 class UserUpdate(BaseModel):
@@ -33,6 +37,7 @@ class UserUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     role: UserRole | None = None
     isActive: bool | None = None
+    jobAccess: list[Literal['view','edit','create','upload']] | None = None
 
 
 class UserPublic(BaseModel):
@@ -45,6 +50,8 @@ class UserPublic(BaseModel):
     role: str
     isActive: bool
     mfaEnabled: bool
+    passwordSetupRequired: bool = False
+    jobAccess: list[str] | None = None
     lastLoginAt: datetime | None = None
     createdAt: datetime | None = None
     updatedAt: datetime | None = None
@@ -129,6 +136,12 @@ class ResetPasswordConfirm(BaseModel):
 
     token: str
     newPassword: str
+
+
+class AcceptInviteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=20, max_length=256)
+    newPassword: str = Field(min_length=12, max_length=128)
 
 
 class ViewAsRequest(BaseModel):

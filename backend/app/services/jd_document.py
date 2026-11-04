@@ -12,7 +12,7 @@ from __future__ import annotations
 
 #: Version marker for the document-ingestion path (distinct from the
 #: prescribed-template `JD_TEMPLATE_VERSION = "v1"`).
-JD_DOCUMENT_VERSION = "doc-v1"
+JD_DOCUMENT_VERSION = "local-v1"
 
 #: Shown when document mode returns text without structured fields (LLM
 #: unconfigured, unavailable, or failed). States the runtime truth — never a

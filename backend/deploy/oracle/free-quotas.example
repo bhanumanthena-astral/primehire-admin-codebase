@@ -1,0 +1,11 @@
+# OCI quota policy template. Review the existing tenancy first. Apply these
+# statements as ONE policy, in order, after replacing the compartment and AD.
+# This intentionally prevents new compute/storage allocations elsewhere.
+# It does not remove already running resources, prevent every paid service,
+# control volume performance charges, or replace a tenancy-wide cost review.
+zero compute-core quotas in tenancy
+zero compute-memory quotas in tenancy
+zero block-storage quota total-storage-gb in tenancy
+set compute-core quota standard-a1-core-count to 1 in compartment PrimeHire where request.ad = '__HOME_AVAILABILITY_DOMAIN__'
+set compute-memory quota standard-a1-memory-count to 8 in compartment PrimeHire where request.ad = '__HOME_AVAILABILITY_DOMAIN__'
+set block-storage quota total-storage-gb to 100 in compartment PrimeHire where request.ad = '__HOME_AVAILABILITY_DOMAIN__'

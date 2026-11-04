@@ -1,0 +1,13 @@
+[Unit]
+Description=Fixed outbound traffic ceiling for the single Oracle host
+After=network-online.target
+Wants=network-online.target
+Before=elitehr@api.service elitehr@resume.service elitehr-kafka.service caddy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /opt/elitehr/current/deploy/oracle/limit_egress.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

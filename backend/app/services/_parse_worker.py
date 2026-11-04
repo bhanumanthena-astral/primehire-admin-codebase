@@ -43,8 +43,11 @@ def main() -> int:
         from app.services.resume_extract import deterministic_parse, extract_text
 
         raw_text = extract_text(data, kind)
+        if not raw_text.strip():
+            print(json.dumps({"ok": False, "error": "No readable text found. Upload a text-based PDF or Word document."}))
+            return 1
         parsed = deterministic_parse(raw_text)
-        print(json.dumps({"ok": True, "rawText": raw_text[:20000], "parsed": parsed}))
+        print(json.dumps({"ok": True, "rawText": raw_text, "parsed": parsed}))
         return 0
     except Exception as exc:  # noqa: BLE001 - child reports, parent records
         print(json.dumps({"ok": False, "error": f"{type(exc).__name__}"}))

@@ -10,6 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 logger = logging.getLogger(__name__)
 
 _client: AsyncIOMotorClient | None = None
+_postgres_databases: dict = {}
 
 
 def get_client(mongo_uri: str) -> Any:
@@ -21,7 +22,10 @@ def get_client(mongo_uri: str) -> Any:
             _client = mongomock_motor.AsyncMongoMockClient()
         else:
             # serverSelectionTimeoutMS keeps startup/health fast-failing instead of hanging.
-            _client = AsyncIOMotorClient(mongo_uri, serverSelectionTimeoutMS=5000)
+            from ..config import settings
+            limits = {"maxPoolSize": 100, "waitQueueTimeoutMS": 5000, "socketTimeoutMS": 60000,
+                "connectTimeoutMS": 5000, "maxIdleTimeMS": 60000} if settings.resume_module_v2_enabled else {}
+            _client = AsyncIOMotorClient(mongo_uri, serverSelectionTimeoutMS=5000, **limits)
     return _client
 
 
@@ -41,6 +45,15 @@ def reset_client() -> None:
 
 
 def get_database(mongo_uri: str, db_name: str) -> AsyncIOMotorDatabase:
+    from ..config import settings
+    if settings.database_backend == "postgresql":
+        from .postgres import PostgresDatabase
+        if not settings.postgres_url:
+            raise RuntimeError("POSTGRES_URL is required; database fallback is disabled")
+        key = (settings.postgres_url, settings.postgres_schema, db_name)
+        if key not in _postgres_databases:
+            _postgres_databases[key] = PostgresDatabase(settings.postgres_url, db_name, settings.postgres_schema)
+        return _postgres_databases[key]
     return get_client(mongo_uri)[db_name]
 
 
@@ -126,6 +139,7 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
         ([(  "expiresAt", 1)], {"expireAfterSeconds": 0, "name": "ttl_expiresAt"}),
     ],
     "jobs": [
+        ([("orgId", 1), ("requestKey", 1)], {"unique": True, "name": "uniq_org_job_request", "partialFilterExpression": {"requestKey": {"$type": "string"}}}),
         ([("orgId", 1), ("jobKey", 1)], {"unique": True, "name": "uniq_org_jobKey"}),
         ([("orgId", 1), ("lifecycleStatus", 1)], {"name": "by_org_lifecycle"}),
         ([("orgId", 1), ("assigneeUserId", 1)], {"name": "by_org_assignee"}),
@@ -200,6 +214,12 @@ INDEXES: dict[str, list[tuple[list[tuple[str, int]], dict[str, Any]]]] = {
 }
 
 # Old indexes that must be retired — best-effort drop on startup.
+from ..models.recruitment import INDEXES as RECRUITMENT_INDEXES
+from ..models.talent import INDEXES as TALENT_INDEXES
+from ..models.assessment_management import INDEXES as ASSESSMENT_MANAGEMENT_INDEXES
+from ..models.candidate_management import INDEXES as CANDIDATE_MANAGEMENT_INDEXES
+# Recruitment indexes are registered centrally but applied only by gated V2
+# migration 007. They must never be added to the shared V1 startup INDEXES map.
 LEGACY_INDEXES: dict[str, tuple[str, ...]] = {
     "candidates": ("uniq_interviewId", "uniq_responseId"),
     # Pre-lifecycle job status index (replaced by by_org_lifecycle):

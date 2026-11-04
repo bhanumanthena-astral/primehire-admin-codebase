@@ -38,8 +38,15 @@ async def list_assessments(
 ) -> dict[str, Any]:
     limit, skip = _page(limit, skip)
     try:
-        items = await AssessmentRepository(db).list(limit=limit, skip=skip)
-        total = await db["assessments"].count_documents({})
+        if settings.mongodb_database == 'primehire_admin_v2':
+            # Drafts never enter the legacy published-assessment assignment flow.
+            from ..models.assessment import to_public
+            query = {'publicationState': {'$nin': ['draft', 'publishing', 'uncertain']}}
+            items = [to_public(row) async for row in db['assessments'].find(query).skip(skip).limit(limit)]
+            total = await db['assessments'].count_documents(query)
+        else:
+            items = await AssessmentRepository(db).list(limit=limit, skip=skip)
+            total = await db["assessments"].count_documents({})
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="Assessment lookup failed.") from None
     return {"items": items, "total": total, "limit": limit, "skip": skip}

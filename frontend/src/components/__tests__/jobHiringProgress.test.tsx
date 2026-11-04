@@ -1,0 +1,43 @@
+import {fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {beforeEach, expect, it, vi} from 'vitest';
+import {JobHiringProgress} from '../JobHiringProgress';
+import {authFetch} from '../../lib/authFetch';
+vi.mock('../../lib/authFetch',()=>({authFetch:vi.fn()}));
+const pipeline={resumesUploaded:34,atsTotal:34,atsScored:30,atsProcessing:4,linksGenerated:7,linksSent:4,assessmentsCompleted:4,technical:2,managerial:0,hr:0};
+const row={id:'a1',name:'Asha',source:'resume.pdf',status:'ROUND1_SCHEDULED',atsScore:0,atsState:'done',assessment:{score:0,label:'0'}};
+const respond=(body:unknown,ok=true)=>({ok,json:async()=>body}) as Response;
+beforeEach(()=>vi.clearAllMocks());
+it('opens stage-specific records and keeps a zero assessment score visible',async()=>{
+  vi.mocked(authFetch).mockResolvedValue(respond({items:[row],total:1}));
+  render(<JobHiringProgress jobId="job-1" pipeline={pipeline} onRefresh={()=>{}}/>);
+  expect(authFetch).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Assessments completed: 4. Show details'}));
+  expect(await screen.findByText('Asha')).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Assessments completed: 4. Show details'})).toHaveAttribute('aria-pressed','true');
+  expect(screen.getAllByRole('cell',{name:'0'})).toHaveLength(2);
+  expect(vi.mocked(authFetch).mock.calls[0][0]).toContain('stage=assessmentsCompleted');
+  fireEvent.click(screen.getByRole('button',{name:'Close stage details'}));
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+});
+it('paginates the selected stage, resets on a stage change and handles empty results',async()=>{
+  vi.mocked(authFetch).mockResolvedValueOnce(respond({items:[row],total:26})).mockResolvedValueOnce(respond({items:[{...row,name:'Last record'}],total:26})).mockResolvedValueOnce(respond({items:[],total:0}));
+  render(<JobHiringProgress jobId="job-1" pipeline={pipeline} onRefresh={()=>{}}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Resumes uploaded: 34. Show details'}));
+  await screen.findByText('Asha');
+  fireEvent.click(screen.getByRole('button',{name:'Next records'}));
+  await screen.findByText('Last record');
+  expect(vi.mocked(authFetch).mock.calls[1][0]).toContain('skip=25');
+  fireEvent.click(screen.getByRole('button',{name:'Managerial round: 0. Show details'}));
+  await screen.findByText('No records in this stage yet.');
+  expect(vi.mocked(authFetch).mock.calls[2][0]).toContain('stage=managerial&skip=0');
+  expect(screen.queryByText('Last record')).not.toBeInTheDocument();
+});
+it('shows a retryable details error without losing the funnel counts',async()=>{
+  vi.mocked(authFetch).mockResolvedValueOnce(respond({detail:'Temporary error'},false)).mockResolvedValueOnce(respond({items:[row],total:1}));
+  render(<JobHiringProgress jobId="job-1" pipeline={pipeline} onRefresh={()=>{}}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Technical round: 2. Show details'}));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Temporary error');
+  fireEvent.click(screen.getByRole('button',{name:'Retry stage details'}));
+  await screen.findByText('Asha');
+  await waitFor(()=>expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+});

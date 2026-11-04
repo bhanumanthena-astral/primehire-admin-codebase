@@ -1,0 +1,4 @@
+/* Sign-in shares the application's semantic Apple-inspired surface system. */
+.elite-page { background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
+.elite-card { background: var(--card); border: 1px solid var(--border); border-radius: 1.375rem; box-shadow: var(--shadow-card); }
+@media (max-width: 480px) { .elite-card { border-radius: 1.125rem; } }

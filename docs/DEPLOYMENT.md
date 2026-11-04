@@ -1,5 +1,9 @@
 # Deployment — tool-agnostic checklist (PrimeHire)
 
+The authorized E2E PostgreSQL V2 deployment and localhost test copy are documented
+in [E2E_POSTGRESQL_DEPLOYMENT.md](E2E_POSTGRESQL_DEPLOYMENT.md). That runbook
+supersedes the historical MongoDB-only hosting instructions below for V2 on E2E.
+
 > No container files in this repo (see `CLAUDE.md`). Pick any host/VM/PaaS that
 > satisfies the checklist below. Tested versions: Node v24.11.1, Python 3.11.9.
 

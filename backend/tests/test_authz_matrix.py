@@ -46,11 +46,33 @@ def client(mock_db):
 _SAMPLE_UUID = "00000000-0000-0000-0000-000000000000"
 
 AUTHZ_MATRIX = [
+    ('GET','/api/auth/google/config',None,[]),
+    ('POST','/api/auth/google/start',None,[]),
+    ('GET','/api/auth/google/callback',None,[]),
+    ('POST','/api/auth/google/complete',None,[]),
+    ('GET','/api/google/calendar','ANY_AUTHED',[]),
+    ('POST','/api/google/calendar/connect','ANY_AUTHED',[]),
+    ('DELETE','/api/google/calendar','ANY_AUTHED',[]),
+    *[(method,path,['super_admin','admin','recruiter'],['hr','viewer','technical_interviewer','managerial_interviewer']) for method,path in [
+        ('POST','/api/google/calendar/availability'),('POST','/api/google/calendar/interviews/missing/retry')]],
+    ('POST','/api/candidate-access',None,[]), # Purpose-scoped signed assignment token, not an HR session.
+    *[(method,path,['super_admin','admin','hr','recruiter','viewer'],['technical_interviewer','managerial_interviewer']) for method,path in [
+        ('GET','/api/candidate-management/capabilities'),('GET','/api/candidate-management'),('GET','/api/candidate-management/jobs'),
+        ('GET','/api/candidate-management/person'),('GET','/api/candidate-management/person/applications'),('GET','/api/candidate-management/person/assignments'),
+        ('GET','/api/candidate-management/assessment-assignments/assessment')]],
+    *[(method,path,['super_admin','admin','hr','recruiter'],['viewer','technical_interviewer','managerial_interviewer']) for method,path in [
+        ('GET','/api/candidate-management/assessments'),('POST','/api/candidate-management/person/reveal'),
+        ('PUT','/api/candidate-management/person'),('POST','/api/candidate-management/person/assignments'),
+        ('PUT','/api/candidate-management/person/assignments/assignment/dates'),('GET','/api/candidate-management/person/resume'),
+        ('POST','/api/candidate-management/person/assignments/assignment/generate-link')]],
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/lifecycle", ["super_admin", "admin"], ["hr", "recruiter", "viewer", "technical_interviewer", "managerial_interviewer"]),
+    ("GET", "/api/jobs", ["viewer", "recruiter"], []),
     # --- Health (no auth required) ---
     ("GET", "/api/health", None, []),  # None means no auth required
 
     # --- Auth endpoints (no auth required for login, reset) ---
     ("POST", "/api/auth/login", None, []),
+    ("POST", "/api/auth/accept-invite", None, []),
     ("POST", "/api/auth/reset-password-request", None, []),
     ("POST", "/api/auth/reset-password", None, []),
 
@@ -69,6 +91,8 @@ AUTHZ_MATRIX = [
     # Admin has users.manage, so admin CAN create users (except assigning super_admin role, enforced separately).
     ("POST", "/api/users", ["super_admin", "admin"], ["hr", "technical_interviewer", "managerial_interviewer"]),
 
+    ("POST", f"/api/users/{_SAMPLE_UUID}/invite", ["super_admin", "admin"], ["hr", "technical_interviewer", "managerial_interviewer"]),
+
     # --- Jobs ---
     # Until the Phase 3 field projection exists, interviewers get 403 on
     # every hiring read (deny by default; masking alone is not a boundary).
@@ -79,16 +103,16 @@ AUTHZ_MATRIX = [
     ("GET", f"/api/jobs/{_SAMPLE_UUID}/detail", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("GET", f"/api/jobs/{_SAMPLE_UUID}/activity", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("GET", f"/api/jobs/{_SAMPLE_UUID}/notifications", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
-    ("POST", f"/api/jobs/{_SAMPLE_UUID}/close", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
-    ("POST", f"/api/jobs/{_SAMPLE_UUID}/reopen", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
-    ("POST", f"/api/jobs/{_SAMPLE_UUID}/archive", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
-    ("DELETE", f"/api/jobs/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/close", ["super_admin", "admin"], ["hr", "recruiter", "viewer", "technical_interviewer", "managerial_interviewer"]),
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/reopen", ["super_admin", "admin"], ["hr", "recruiter", "viewer", "technical_interviewer", "managerial_interviewer"]),
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/archive", ["super_admin", "admin"], ["hr", "recruiter", "viewer", "technical_interviewer", "managerial_interviewer"]),
+    ("DELETE", f"/api/jobs/{_SAMPLE_UUID}", ["super_admin", "admin"], ["hr", "recruiter", "viewer", "technical_interviewer", "managerial_interviewer"]),
     ("PUT", f"/api/jobs/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("POST", "/api/jobs/check-duplicate", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
-    ("POST", "/api/admin/jobs/auto-close", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", "/api/admin/jobs/auto-close", ["super_admin", "admin"], ["hr", "recruiter", "viewer", "technical_interviewer", "managerial_interviewer"]),
     # --- Job listing extras (same role split as the job reads/writes) ---
     ("GET", "/api/jobs/application-counts", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
-    ("POST", f"/api/jobs/{_SAMPLE_UUID}/assign", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", f"/api/jobs/{_SAMPLE_UUID}/assign", ["super_admin", "admin"], ["hr", "recruiter", "viewer", "technical_interviewer", "managerial_interviewer"]),
     # --- JD template + parse (PRD Jobs §9-§11; job-creation flow) ---
     ("GET", "/api/jobs/jd-template", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("POST", "/api/jobs/parse-jd", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
@@ -113,7 +137,7 @@ AUTHZ_MATRIX = [
     ("POST", f"/api/applications/{_SAMPLE_UUID}/request-assessment", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("GET", "/api/org/settings", ["super_admin"], ["admin", "hr", "technical_interviewer", "managerial_interviewer"]),
     ("PUT", "/api/org/settings", ["super_admin"], ["admin", "hr", "technical_interviewer", "managerial_interviewer"]),
-    ("POST", "/api/admin/sync-sweep", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
+    ("POST", "/api/admin/sync-sweep", ["super_admin", "admin"], ["hr", "technical_interviewer", "managerial_interviewer"]),
 
     # --- Diagnostics (admin visibility; email-mode is any-authed) ---
     ("GET", "/api/email-mode", "ANY_AUTHED", []),
@@ -174,10 +198,67 @@ def _minimal_body(method: str, path: str) -> dict | None:
 
 # ---- Test: unauthenticated access is denied ----
 
+# Module 2 routes remain guarded even while the V2 feature is disabled.
+_INTAKE_READERS = ["super_admin", "admin", "hr", "recruiter", "viewer"]
+_INTAKE_WRITERS = ["super_admin", "admin", "hr", "recruiter"]
+_INTAKE_INTERVIEWERS = ["technical_interviewer", "managerial_interviewer"]
+for method, suffix in [
+    ("GET", "/capabilities"), ("GET", "/batches"), ("GET", "/batches/missing"),
+    ("GET", "/candidates?jobId=missing"), ("GET", "/items/missing"),
+    ("GET", "/items/missing/download"), ("GET", "/items/missing/versions"),
+]:
+    AUTHZ_MATRIX.append((method, "/api/resume-intake" + suffix, _INTAKE_READERS, _INTAKE_INTERVIEWERS))
+for method, suffix in [
+    ("GET", "/template"), ("POST", "/upload"), ("POST", "/batches/missing/confirm"),
+    ("POST", "/items/missing/associate"), ("POST", "/items/missing/reveal"),
+    ("PUT", "/items/missing/review"), ("POST", "/items/missing/confirm"),
+    ("POST", "/items/missing/retry"), ("POST", "/items/missing/notes"),
+    ("GET", "/batches/missing/export"), ("GET", "/items/missing/profile.pdf"),
+    ("POST", "/items/missing/recalculate"), ("PUT", "/items/missing/profile"),
+    ("GET", "/batches/missing/report"),
+]:
+    AUTHZ_MATRIX.append((method, "/api/resume-intake" + suffix, _INTAKE_WRITERS, ["viewer", *_INTAKE_INTERVIEWERS]))
+for method, suffix in [("PUT", "/settings"), ("DELETE", "/items/missing")]:
+    AUTHZ_MATRIX.append((method, "/api/resume-intake" + suffix, ["super_admin", "admin"], ["hr", "recruiter", "viewer", *_INTAKE_INTERVIEWERS]))
+for method, suffix in [("GET", "/assignees"), ("POST", "/items/missing/assign")]:
+    AUTHZ_MATRIX.append((method, "/api/resume-intake" + suffix, ["super_admin", "admin", "hr"], ["recruiter", "viewer", *_INTAKE_INTERVIEWERS]))
+
+_RECRUIT_READERS=['super_admin','admin','recruiter','hr','technical_interviewer','managerial_interviewer']
+for method,suffix in [('POST','/runs'),('GET','/runs'),('GET','/runs/missing'),('GET','/matches'),('GET','/matches/missing'),('POST','/matches/missing/reuse')]:
+    AUTHZ_MATRIX.append((method,'/api/recruitment/talent'+suffix,['super_admin','admin','recruiter'],['viewer','hr','technical_interviewer','managerial_interviewer']))
+for method,suffix in [('GET','/capabilities'),('GET','/jobs'),('GET','/applications'),('GET','/tracker'),('GET','/interviews'),
+    ('GET','/interviews/missing'),('GET','/interviews/missing/resume'),('GET','/interviews/missing/invitation.pdf'),
+    ('POST','/interviews/missing/reveal'),('GET','/notifications'),('POST','/notifications/missing/read'),
+    ('PUT','/interviews/missing/compensation'),('POST','/interviews/missing/offer'),('POST','/interviews/missing/questions'),('PUT','/interviews/missing/questions')]:
+    AUTHZ_MATRIX.append((method,'/api/recruitment'+suffix,_RECRUIT_READERS,['viewer']))
+for method,suffix in [('GET','/staff'),('POST','/interviews'),('PUT','/interviews/missing'),('POST','/interviews/missing/cancel'),
+    ('POST','/interviews/missing/send-invitation'),('POST','/interviews/missing/confirm-rejection')]:
+    AUTHZ_MATRIX.append((method,'/api/recruitment'+suffix,['super_admin','admin','recruiter'],['viewer','hr','technical_interviewer','managerial_interviewer']))
+AUTHZ_MATRIX.append(('POST','/api/recruitment/interviews/missing/review',['super_admin','admin','hr','technical_interviewer','managerial_interviewer'],['viewer','recruiter']))
+for method in ['GET','PUT']:
+    AUTHZ_MATRIX.append((method,'/api/recruitment/access/missing',['super_admin','admin'],['viewer','recruiter','hr','technical_interviewer','managerial_interviewer']))
+
+for _method, _suffix in [('GET',''),('GET','/capabilities'),('GET','/missing')]:
+    AUTHZ_MATRIX.append((_method,'/api/assessment-management'+_suffix,
+        ['super_admin','admin','hr','recruiter','viewer'],['technical_interviewer','managerial_interviewer']))
+for _method, _suffix in [('POST',''),('POST','/csv/validate'),('POST','/csv/import'),('PUT','/missing'),('POST','/missing/publish')]:
+    AUTHZ_MATRIX.append((_method,'/api/assessment-management'+_suffix,
+        ['super_admin','admin','hr','recruiter'],['viewer','technical_interviewer','managerial_interviewer']))
+
+AUTHZ_MATRIX.append(('GET', '/api/job-assessments/missing/applications/missing/report',
+    ['super_admin','admin','hr','recruiter'], ['viewer','technical_interviewer','managerial_interviewer']))
+
 _AUTH_REQUIRED_ROWS = [
     (m, p) for m, p, allowed, _ in AUTHZ_MATRIX if allowed is not None
 ]
 
+
+
+# ATS band policy and preview remain resume-writer operations.
+AUTHZ_MATRIX.extend([
+    ("PUT", "/api/resume-intake/batches/fixture/ats-range", _INTAKE_WRITERS, ["viewer", *_INTAKE_INTERVIEWERS]),
+    ("POST", "/api/resume-intake/items/fixture/score", _INTAKE_WRITERS, ["viewer", *_INTAKE_INTERVIEWERS]),
+])
 
 @pytest.mark.parametrize("method,path", _AUTH_REQUIRED_ROWS, ids=[f"{m} {p}" for m, p in _AUTH_REQUIRED_ROWS])
 def test_unauthenticated_request_rejected(client, method, path):
@@ -222,9 +303,15 @@ _ALLOWED_ROWS = [
 
 
 @pytest.mark.parametrize("method,path,role", _ALLOWED_ROWS, ids=[f"{m} {p} [{r}]" for m, p, r in _ALLOWED_ROWS])
-def test_allowed_role_passes_guard(client, method, path, role):
+def test_allowed_role_passes_guard(client, mock_db, method, path, role):
     """Allowed roles must NOT get 401/403 (may get 404/409/422 due to missing data, but not auth failures)."""
     body = _minimal_body(method, path)
+    if path.startswith('/api/candidate-management'):
+        # Module 4 verifies the current account role as well as JWT permissions.
+        async def seed_current_account():
+            await mock_db['users'].update_one({'orgId':'default','userId':'test-user'},
+                {'$set':{'role':role,'isActive':True}},upsert=True)
+        client.portal.call(seed_current_account)
     kwargs = {"json": body} if body else {}
     headers = auth_headers(role=role)
     res = getattr(client, method.lower())(path, headers=headers, **kwargs)
@@ -287,7 +374,7 @@ def _job_payload(uid):
         "jobKey": f"T-{_uuid.uuid4().hex[:6]}",
         "title": "RBAC Review", "companyName": "Elite HR", "jobRole": "Backend Engineer", "department": "Engineering",
         "minExperienceYears": 1, "maxExperienceYears": 3, "positionsTotal": 1,
-        "closesAt": "2027-12-31T00:00:00Z", "assigneeUserId": uid,
+        "closesAt": "2027-12-31T00:00:00Z", "assigneeUserId": uid, "lifecycleStatus": "OPEN",
         "jdHtml": "<p>" + "x"*60 + "</p>",
     }
 

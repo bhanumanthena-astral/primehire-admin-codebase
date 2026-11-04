@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import mongomock_motor
 import pytest
+pytestmark = pytest.mark.usefixtures('legacy_matching_intent')
 from fastapi.testclient import TestClient
 
 from app.config import settings, validate_settings
@@ -28,7 +29,7 @@ from app.services.llm.resilience import (
     parse_retry_after,
     sanitized_message,
 )
-from tests.conftest import auth_headers, ensure_user, job_payload
+from tests.conftest import auth_headers, ensure_hr_owner, job_payload
 from tests.test_resumes_api import make_docx_bytes, make_pdf_bytes
 
 CT_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -74,9 +75,9 @@ def _iv():
 
 
 def _make_job(client, key="L1-JOB", **overrides):
-    uid = ensure_user(client, _sa())
-    res = client.post("/api/jobs", json=job_payload(key, "L1 Role", uid, **overrides),
-                      headers=_hr())
+    uid = ensure_hr_owner(client, _sa())
+    res = client.post("/api/jobs", json=job_payload(key, "L1 Role", uid, **overrides, lifecycleStatus="OPEN"),
+                      headers=auth_headers(role="super_admin"))
     assert res.status_code == 201, res.text
     return res.json()
 
@@ -409,7 +410,9 @@ async def test_blank_resume_skips_llm(client, mock_db, monkeypatch):
     assert res.status_code == 201, res.text
     await _drain_all(mock_db)
     files = await mock_db["resume_files"].find({}).to_list(length=5)
-    assert len(files) == 1 and files[0]["llmStatus"] == "skipped"
+    assert len(files) == 1 and files[0]['status'] == 'failed'
+    assert 'No readable text' in files[0]['error']
+    assert await mock_db['llm_runs'].count_documents({}) == 0
 
 
 async def test_provider_error_echo_canary_leaves_no_trace(client, mock_db, monkeypatch, caplog):
@@ -533,59 +536,8 @@ def _jd_docx():
     return buf.getvalue()
 
 
-async def test_sync_jd_fails_fast_on_open_breaker(client, mock_db, monkeypatch):
-    import httpx
-
-    monkeypatch.setattr(settings, "openrouter_api_key", "k")
-    monkeypatch.setattr(settings, "openrouter_model", "m")
-    now = datetime.now(timezone.utc)
-    await mock_db["llm_governance"].insert_one({
-        "_id": f"breaker:{res.governance_key()}", "kind": "breaker",
-        "key": res.governance_key(), "state": "open", "failures": 5,
-        "nextProbeAt": now + timedelta(seconds=300), "updatedAt": now,
-    })
-    calls: list = []
-
-    class NoCallClient:
-        def __init__(self, *a, **k):
-            pass
-
-        async def __aenter__(self):
-            calls.append(1)
-            raise AssertionError("no LLM call allowed on open breaker")
-
-        async def __aexit__(self, *a):
-            return False
-
-    monkeypatch.setattr(httpx, "AsyncClient", NoCallClient)
-    resp = client.post("/api/jobs/parse-jd",
-                       files={"file": ("pm.docx", _jd_docx())},
-                       data={"mode": "document"}, headers=_hr())
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["aiExtract"] is None and "Product Manager" in body["text"]
-    assert any("breaker" in w.lower() for w in body["warnings"])
-    assert calls == []
 
 
-async def test_sync_jd_fails_fast_on_empty_bucket(client, mock_db, monkeypatch):
-    import httpx
-
-    monkeypatch.setattr(settings, "openrouter_api_key", "k")
-    monkeypatch.setattr(settings, "openrouter_model", "m")
-    now = datetime.now(timezone.utc)
-    await mock_db["llm_governance"].insert_one({
-        "_id": f"bucket:{res.governance_key()}", "kind": "bucket",
-        "key": res.governance_key(), "tokens": 0.0, "capacity": 5,
-        "rpm": 30, "lastRefill": now, "version": 1, "updatedAt": now,
-    })
-    monkeypatch.setattr(httpx, "AsyncClient", None)
-    resp = client.post("/api/jobs/parse-jd",
-                       files={"file": ("pm.docx", _jd_docx())},
-                       data={"mode": "document"}, headers=_hr())
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["aiExtract"] is None
-    assert any("busy" in w.lower() for w in resp.json()["warnings"])
 
 
 # ---- 10. Config guards ----

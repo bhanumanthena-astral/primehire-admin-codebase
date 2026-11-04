@@ -57,6 +57,11 @@ async def transition_application(
         app_status = ApplicationStatus.ACTIVE.value
     updated = await repo.update_stage(application_id, target.value, app_status, org_id)
 
+    if target == Stage.HIRED or from_stage == Stage.HIRED:
+        job_id = app_doc.get("jobId")
+        filled = await db["applications"].count_documents({"orgId": org_id, "jobId": job_id, "currentStage": "HIRED"})
+        await db["jobs"].update_one({"orgId": org_id, "jobId": job_id}, {"$set": {"positionsFilled": filled}})
+
     history = StageHistoryRepository(db)
     await history.record_transition(
         application_id=application_id,

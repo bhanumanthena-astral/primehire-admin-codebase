@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 import re
 import uuid
@@ -25,7 +25,8 @@ LEGACY_STATUS_TO_LIFECYCLE = {
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    return now.replace(microsecond=(now.microsecond // 1000) * 1000)
 
 
 # Canonical state machine transition table (§6 DECISIONS.md)
@@ -94,8 +95,16 @@ def can_transition(from_stage: Stage, to_stage: Stage, is_override: bool = False
 
 
 class JobRepository:
-    def __init__(self, db: Any) -> None:
+    def __init__(self, db: Any, owner_id: str | None = None) -> None:
         self.coll = db["jobs"]
+        self.db = db
+        self.owner_id = owner_id
+
+    def scope(self, query):
+        if not self.owner_id:
+            return query
+        return {**query, 'assigneeUserId':self.owner_id, '$and':query.get('$and', []) + [
+            {'$or':[{'assigneeAccess':None},{'assigneeAccess':'view'}]}]}
 
     async def create(self, doc: dict[str, Any]) -> dict[str, Any]:
         record = dict(doc)
@@ -109,27 +118,40 @@ class JobRepository:
         return record
 
     async def get_by_id(self, job_id: str, org_id: str) -> dict[str, Any] | None:
-        doc = await self.coll.find_one({"jobId": job_id, "orgId": org_id})
+        doc = await self.coll.find_one(self.scope({"jobId": job_id, "orgId": org_id}))
         if doc and "_id" in doc:
             doc.pop("_id", None)
+        if doc and doc.get("assigneeUserId"):
+            owner = await self.db["users"].find_one({"orgId": org_id, "userId": doc["assigneeUserId"]})
+            if owner:
+                doc["assigneeEmail"] = owner.get("email", doc.get("assigneeEmail"))
+                doc["assigneeName"] = owner.get("name", doc.get("assigneeName"))
         return doc
 
     async def get_by_key(self, job_key: str, org_id: str) -> dict[str, Any] | None:
-        doc = await self.coll.find_one({"jobKey": job_key, "orgId": org_id})
+        doc = await self.coll.find_one(self.scope({"jobKey": job_key, "orgId": org_id}))
         if doc and "_id" in doc:
             doc.pop("_id", None)
         return doc
 
-    async def update(self, job_id: str, updates: dict[str, Any], org_id: str) -> dict[str, Any] | None:
+    async def update(self, job_id: str, updates: dict[str, Any], org_id: str, *, expected_updated_at: datetime | None = None) -> dict[str, Any] | None:
         upd = dict(updates)
         upd["updatedAt"] = utcnow()
-        await self.coll.update_one({"jobId": job_id, "orgId": org_id}, {"$set": upd})
+        if expected_updated_at is not None:
+            previous = expected_updated_at.replace(tzinfo=timezone.utc) if expected_updated_at.tzinfo is None else expected_updated_at
+            upd["updatedAt"] = max(upd["updatedAt"], previous + timedelta(milliseconds=1))
+        query = self.scope({"jobId": job_id, "orgId": org_id})
+        if expected_updated_at is not None:
+            query["updatedAt"] = expected_updated_at
+        result = await self.coll.update_one(query, {"$set": upd})
+        if result.matched_count == 0:
+            return None
         return await self.get_by_id(job_id, org_id)
 
     async def list_by_org(
         self, org_id: str, status: str | None = None, skip: int = 0, limit: int = 50
     ) -> list[dict[str, Any]]:
-        query: dict[str, Any] = {"orgId": org_id}
+        query: dict[str, Any] = self.scope({"orgId": org_id})
         if status:
             mapped = LEGACY_STATUS_TO_LIFECYCLE.get(status, status)
             query["$or"] = [{"lifecycleStatus": mapped}, {"lifecycleStatus": {"$exists": False}, "status": status}]
@@ -141,7 +163,7 @@ class JobRepository:
         return docs
 
     async def count_by_org(self, org_id: str, status: str | None = None) -> int:
-        query: dict[str, Any] = {"orgId": org_id}
+        query: dict[str, Any] = self.scope({"orgId": org_id})
         if status:
             mapped = LEGACY_STATUS_TO_LIFECYCLE.get(status, status)
             query["$or"] = [{"lifecycleStatus": mapped}, {"lifecycleStatus": {"$exists": False}, "status": status}]
@@ -156,6 +178,7 @@ class JobRepository:
         *,
         status: str | None = None,
         q: str | None = None,
+        search_mode: str = "contains",
         company: str | None = None,
         department: str | None = None,
         assignee: str | None = None,
@@ -172,16 +195,21 @@ class JobRepository:
         starts-with and contains). `experience` keeps jobs whose band covers
         the given years; docs without a band are excluded when it is set.
         """
-        query: dict[str, Any] = {"orgId": org_id}
+        query: dict[str, Any] = self.scope({"orgId": org_id})
         if status:
             mapped = LEGACY_STATUS_TO_LIFECYCLE.get(status, status)
             query["$or"] = [{"lifecycleStatus": mapped}, {"lifecycleStatus": {"$exists": False}, "status": status}]
         if q and q.strip():
-            rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+            pattern = re.escape(q.strip())
+            if search_mode in {"exact", "starts_with"}:
+                pattern = "^" + pattern
+            if search_mode == "exact":
+                pattern += "$"
+            rx = {"$regex": pattern, "$options": "i"}
             query["$and"] = query.get("$and", [])
             query["$and"].append({"$or": [
                 {"jobKey": rx}, {"jobId": rx}, {"title": rx}, {"jobRole": rx},
-                {"companyName": rx}, {"assigneeEmail": rx}, {"assigneeUserId": rx},
+                {"companyName": rx}, {"assigneeEmail": rx}, {"assigneeUserId": rx}, {"assigneeName": rx},
             ]})
         if company and company.strip():
             query["companyName"] = {"$regex": re.escape(company.strip()), "$options": "i"}
@@ -190,7 +218,7 @@ class JobRepository:
         if assignee and assignee.strip():
             rx = {"$regex": re.escape(assignee.strip()), "$options": "i"}
             query["$and"] = query.get("$and", [])
-            query["$and"].append({"$or": [{"assigneeUserId": rx}, {"assigneeEmail": rx}]})
+            query["$and"].append({"$or": [{"assigneeUserId": rx}, {"assigneeEmail": rx}, {"assigneeName": rx}]})
         if experience is not None:
             query["minExperienceYears"] = {"$lte": experience}
             query["maxExperienceYears"] = {"$gte": experience}
@@ -218,6 +246,7 @@ class JobRepository:
         *,
         status: str | None = None,
         q: str | None = None,
+        search_mode: str = "contains",
         company: str | None = None,
         department: str | None = None,
         assignee: str | None = None,
@@ -233,7 +262,7 @@ class JobRepository:
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         query = self._search_query(
-            org_id, status=status, q=q, company=company, department=department,
+            org_id, status=status, q=q, search_mode=search_mode, company=company, department=department,
             assignee=assignee, experience=experience, work_mode=work_mode,
             opened_from=opened_from, opened_to=opened_to,
             closes_from=closes_from, closes_to=closes_to,
@@ -244,13 +273,19 @@ class JobRepository:
         async for d in cursor:
             d.pop("_id", None)
             docs.append(d)
+        # Live owner email follows the user record; deleted owners retain snapshot.
+        for doc in docs:
+            owner = await self.db["users"].find_one({"orgId": org_id, "userId": doc.get("assigneeUserId")})
+            if owner:
+                doc["assigneeEmail"] = owner.get("email", doc.get("assigneeEmail"))
+                doc["assigneeName"] = owner.get("name", doc.get("assigneeName"))
         return docs
 
     async def count_search(self, org_id: str, **filters: Any) -> int:
         return await self.coll.count_documents(self._search_query(org_id, **filters))
 
     async def list_ids(self, org_id: str, limit: int = 1000) -> list[str]:
-        cursor = self.coll.find({"orgId": org_id}, {"jobId": 1}).limit(limit)
+        cursor = self.coll.find(self.scope({"orgId": org_id}), {"jobId": 1}).limit(limit)
         return [str(d.get("jobId")) async for d in cursor if d.get("jobId")]
 
 
@@ -431,7 +466,7 @@ class ApplicationRepository:
         query: dict[str, Any] = {"jobId": job_id, "orgId": org_id}
         if stage:
             query["currentStage"] = stage
-        cursor = self.coll.find(query).sort("createdAt", -1).skip(skip).limit(limit)
+        cursor = self.coll.find(query).sort([("createdAt", -1), ("applicationId", 1)]).skip(skip).limit(limit)
         docs = []
         async for d in cursor:
             d.pop("_id", None)
@@ -531,7 +566,7 @@ class AuditLogRepository:
             query["resourceType"] = resource_type
         if resource_id:
             query["resourceId"] = resource_id
-        cursor = self.coll.find(query).sort("createdAt", -1).skip(skip).limit(limit)
+        cursor = self.coll.find(query).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(limit)
         docs = []
         async for d in cursor:
             d.pop("_id", None)

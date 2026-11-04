@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
-from tests.conftest import auth_headers, job_payload, ensure_user
+from tests.conftest import auth_headers, job_payload, ensure_hr_owner
 
 
 @pytest.fixture(autouse=True)
@@ -102,8 +102,8 @@ RESUME_LINES = [
 
 def _make_job(client, key="JOB-A"):
     res = client.post("/api/jobs", json=job_payload(
-        key, "Backend Dev", ensure_user(client, auth_headers(role="super_admin")),
-        mustHaveSkills=["Python", "SQL"]), headers=_hr())
+        key, "Backend Dev", ensure_hr_owner(client, auth_headers(role="super_admin")),
+        mustHaveSkills=["Python", "SQL"], lifecycleStatus="OPEN"), headers=auth_headers(role="super_admin"))
     assert res.status_code == 201
     return res.json()
 
@@ -184,6 +184,24 @@ async def test_happy_path_docx_and_pdf(client, mock_db):
     assert len(body["files"]) == 2
     # storageKey must not leak anywhere in any response body.
     assert "storageKey" not in detail.text
+    for public_file in body["files"]:
+        saved = await mock_db["resume_files"].find_one({"fileId": public_file["fileId"]})
+        assert saved["processingMode"] == "parse_only"
+        assert "aarav.synthetic@example.com" in saved["rawText"]
+        assert saved["rawTextChars"] == len(saved["rawText"])
+        assert saved["llmStatus"] == "skipped"
+    assert await mock_db["applications"].count_documents({}) == 0
+    assert await mock_db["applicants"].count_documents({}) == 0
+
+
+def test_parser_preserves_full_text_and_rejects_empty_document():
+    from app.services.resume_parse import ParseFailed, parse_bytes_isolated
+
+    text = "Resume text " * 2200
+    result = parse_bytes_isolated(make_docx_bytes([text]), "docx")
+    assert result["rawText"] == text.strip()
+    with pytest.raises(ParseFailed, match="No readable text"):
+        parse_bytes_isolated(make_docx_bytes([]), "docx")
 
 
 def test_download_attachment_and_nosniff(client):
@@ -285,6 +303,8 @@ def test_zip_bomb_cap(client, monkeypatch):
 def test_quarantine_blocks_parse_and_download(client, monkeypatch):
     _make_job(client, "JOB-Q")
     monkeypatch.setattr(settings, "clamav_enabled", True)
+    from app.services import clamav
+    monkeypatch.setattr(clamav, "_clamd_scan", lambda data: clamav.QUARANTINED)
     docx = make_docx_bytes(RESUME_LINES)
     res = _upload(client, "JOB-Q", [("files", ("q.docx", docx,
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))])

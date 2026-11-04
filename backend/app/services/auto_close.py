@@ -42,7 +42,7 @@ def _coerce_dt(value: Any) -> datetime | None:
 
 
 async def auto_close_due_jobs(
-    db: Any, *, org_id: str | None = None, now: datetime | None = None
+    db: Any, *, org_id: str | None = None, now: datetime | None = None, owner_id: str | None = None
 ) -> dict[str, Any]:
     from ..models.hiring import AuditLogRepository
     from ..models.organization import OrganizationRepository, default_settings
@@ -73,18 +73,22 @@ async def auto_close_due_jobs(
             "orgId": org["orgId"],
             "lifecycleStatus": "OPEN",
             "closesAt": {"$ne": None},
+            **({"assigneeUserId":owner_id} if owner_id else {}),
         })
         async for doc in cursor:
             closes_at = _coerce_dt(doc.get("closesAt"))
             if closes_at is None:
                 continue
-            wall = closes_at.astimezone(timezone.utc).replace(tzinfo=None)
-            boundary = wall.replace(tzinfo=org_tz)
+            if doc.get("datesVersion") == "utc-v1":
+                boundary = closes_at
+            else:
+                wall = closes_at.astimezone(timezone.utc).replace(tzinfo=None)
+                boundary = wall.replace(tzinfo=org_tz)
             if boundary > now:
                 continue
             # Atomic claim: only the worker that flips OPEN→CLOSED audits.
             claim = await db["jobs"].update_one(
-                {"_id": doc["_id"], "lifecycleStatus": "OPEN"},
+                {"_id": doc["_id"], "lifecycleStatus": "OPEN", **({"assigneeUserId":owner_id} if owner_id else {})},
                 {"$set": {"lifecycleStatus": "CLOSED", "closedAt": now, "updatedAt": now}},
             )
             if claim.matched_count != 1:

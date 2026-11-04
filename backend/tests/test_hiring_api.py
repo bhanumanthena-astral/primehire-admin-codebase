@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
-from tests.conftest import auth_headers, job_payload, ensure_user, post_job
+from tests.conftest import auth_headers, job_payload, ensure_user, post_job, ensure_hr_owner
 
 
 @pytest.fixture(autouse=True)
@@ -169,7 +169,7 @@ def test_get_nonexistent_job(client):
 
 def test_hr_can_create_job(client):
     """HR role has jobs.manage permission."""
-    uid = ensure_user(client, _sa_headers())
+    uid = ensure_hr_owner(client)
     res = client.post("/api/jobs", json=job_payload("HR-J", "HR Job", uid), headers=_hr_headers())
     assert res.status_code == 201
 
@@ -287,8 +287,8 @@ def test_create_applicant_duplicate_email(client):
 def _create_full_application(client, headers, job_key="APP-J", applicant_email="app@test.com"):
     """Helper: creates a job, applicant, and application, returning all IDs."""
     sa = _sa_headers()
-    uid = ensure_user(client, sa)
-    job_res = client.post("/api/jobs", json=job_payload(job_key, "App Job", uid), headers=headers)
+    uid = ensure_hr_owner(client)
+    job_res = client.post("/api/jobs", json=job_payload(job_key, "App Job", uid, lifecycleStatus="OPEN"), headers=sa)
     job_id = job_res.json()["jobId"]
 
     app_res = client.post("/api/applicants", json={"email": applicant_email, "name": "Test Applicant"}, headers=headers)
@@ -756,3 +756,21 @@ def test_assign_archived_job_conflicts(client):
     assert res.status_code == 409
     assert client.post(f"/api/jobs/{job['jobId']}/assign",
                        json={"email": "arc-new@test.com"}, headers=headers).status_code == 409
+
+
+def test_pipeline_details_access_and_validation(client):
+    headers = _sa_headers()
+    uid = ensure_user(client, headers)
+    job = client.post('/api/jobs', json=job_payload('FUNNEL-1', 'Funnel role', uid), headers=headers).json()
+    url = f"/api/jobs/{job['jobId']}/pipeline-details"
+    response = client.get(url, params={'stage':'technical'}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()['items'] == []
+    assert response.json()['total'] == 0
+    assert client.get(url, params={'stage':'unsupported'}, headers=headers).status_code == 422
+    assert client.get(url, params={'stage':'technical','limit':101}, headers=headers).status_code == 422
+    assert client.get(url, params={'stage':'technical'}, headers=_sa_headers('unrelated')).status_code == 404
+    assert client.post(f"/api/jobs/{job['jobId']}/lifecycle", json={'status':'OPEN'}, headers=headers).status_code == 200
+    assert client.get(url, params={'stage':'technical'}, headers=auth_headers(role='viewer')).status_code == 404
+    viewer_headers = auth_headers(role='viewer', user_id=uid)
+    assert client.get(url, params={'stage':'technical'}, headers=viewer_headers).status_code == 403

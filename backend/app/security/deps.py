@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from pymongo.errors import ConnectionFailure
+
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -13,6 +17,8 @@ from ..config import settings
 from ..db.mongodb import get_database
 from .roles import Role, get_permissions_for_role
 from .tokens import decode_access_token
+
+logger = logging.getLogger(__name__)
 
 security_bearer = HTTPBearer(auto_error=False)
 
@@ -82,33 +88,54 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    user = None
     # If DB is reachable, verify user is not disabled and session is not revoked
     if db is not None:
-        try:
-            # Check user status if record exists
-            user = await db["users"].find_one({"userId": user_id})
-            if user is not None and not user.get("isActive", True):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User account is inactive or disabled",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-            # Check session if session record exists
-            if session_id:
-                session = await db["sessions"].find_one({"sessionId": session_id})
-                if session and session.get("revokedAt") is not None:
+        for attempt in range(2):
+            try:
+                # Check user status if record exists
+                user = await db["users"].find_one({"userId": user_id, "orgId":org_id})
+                if user is not None and not user.get("isActive", True):
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Session has been revoked",
+                        detail="User account is inactive or disabled",
                         headers={"WWW-Authenticate": "Bearer"},
                     )
-        except HTTPException:
-            raise
-        except Exception:
-            pass
+
+                # Check session if session record exists
+                if session_id:
+                    session = await db["sessions"].find_one({"sessionId": session_id})
+                    if session and session.get("revokedAt") is not None:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Session has been revoked",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+                break
+            except HTTPException:
+                raise
+            except ConnectionFailure as error:
+                if attempt == 0:
+                    await asyncio.sleep(0.15)
+                    continue
+                logger.warning('Authorization database read unavailable after retry: %s', type(error).__name__)
+                raise HTTPException(status_code=503, detail="Authorization service temporarily unavailable. Please retry shortly.", headers={"Retry-After": "1"}) from None
+            except Exception as error:
+                logger.error('Authorization check failed: %s', type(error).__name__)
+                raise HTTPException(status_code=503, detail="Authorization service temporarily unavailable. Please retry shortly.", headers={"Retry-After": "1"}) from None
 
     perms = get_permissions_for_role(role)
+    if user and user.get('jobAccess') is not None and role not in {'super_admin','admin'}:
+        from .job_permissions import job_access
+        access = job_access(role, user['jobAccess'])
+        removed = set()
+        if 'view' not in access:
+            removed.update({'jobs.view','jobs.manage','resumes.upload'})
+        if not access.intersection({'edit','create'}):
+            removed.add('jobs.manage')
+        if 'upload' not in access:
+            removed.add('resumes.upload')
+        perms = perms.difference(removed)
     return CurrentUser(
         user_id=user_id,
         org_id=org_id,

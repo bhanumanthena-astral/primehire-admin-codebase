@@ -7,12 +7,13 @@ and a review flag naming injection. Synthetic data only.
 
 import mongomock_motor
 import pytest
+pytestmark = pytest.mark.usefixtures('legacy_matching_intent')
 from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import app
 from app.security.deps import get_db
-from tests.conftest import auth_headers, job_payload, ensure_user
+from tests.conftest import auth_headers, job_payload, ensure_hr_owner
 from tests.test_resumes_api import make_docx_bytes, _drain
 
 
@@ -79,8 +80,8 @@ VARIANTS = {
 @pytest.mark.parametrize("variant", sorted(VARIANTS))
 async def test_variant_stage_and_score_unaffected(client, mock_db, variant):
     res = client.post("/api/jobs", json=job_payload(
-        f"INJ-{variant}", "Backend", ensure_user(client, auth_headers(role="super_admin")),
-        mustHaveSkills=["Python", "SQL"]), headers=_hr())
+        f"INJ-{variant}", "Backend", ensure_hr_owner(client, auth_headers(role="super_admin")),
+        mustHaveSkills=["Python", "SQL"], lifecycleStatus="OPEN"), headers=auth_headers(role="super_admin"))
     assert res.status_code == 201
     evil = [l for l in BASE]
     display = variant.replace("_", " ").title().replace(" ", "")

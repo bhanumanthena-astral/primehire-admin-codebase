@@ -77,13 +77,15 @@ def check_docx_bomb(data: bytes) -> None:
         raise ValueError("Corrupt archive file.") from None
 
 
-def validate_upload(client_name: str, data: bytes) -> ValidatedUpload:
+def validate_upload(client_name: str, data: bytes, *, max_mb: int | None = None) -> ValidatedUpload:
     """Validate one uploaded file. Raises ValueError with a safe message."""
     if not data:
         raise ValueError("Empty file.")
-    max_bytes = settings.upload_max_mb * 1024 * 1024
+    if max_mb is None:
+        max_mb = settings.upload_max_mb
+    max_bytes = max_mb * 1024 * 1024
     if len(data) > max_bytes:
-        raise ValueError(f"File exceeds the {settings.upload_max_mb} MB limit.")
+        raise ValueError(f"File exceeds the {max_mb} MB limit.")
 
     lower = client_name.lower()
     dot = lower.rfind(".")

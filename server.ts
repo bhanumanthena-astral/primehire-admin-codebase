@@ -3,6 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 dotenv.config();
 
@@ -11,6 +13,7 @@ async function startServer() {
   const PORT = 3000;
 
   // Body parsing middleware
+  app.use('/api/resume-intake', express.json({limit: '512kb'}));
   app.use(express.json());
 
   // API routes
@@ -88,7 +91,9 @@ async function startServer() {
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (req.headers.authorization) headers["Authorization"] = req.headers.authorization as string;
+      if (req.headers['idempotency-key']) headers['Idempotency-Key'] = req.headers['idempotency-key'] as string;
       if (req.headers.cookie) headers["Cookie"] = req.headers.cookie as string;
+      if (req.headers.origin) headers["Origin"] = req.headers.origin as string;
       const options: RequestInit = { method: req.method, headers };
       if (["POST", "PUT", "PATCH"].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
         options.body = JSON.stringify(req.body);
@@ -157,6 +162,7 @@ async function startServer() {
     if (req.headers.authorization) {
       headers["Authorization"] = req.headers.authorization as string;
     }
+    if (req.headers['idempotency-key']) headers['Idempotency-Key'] = req.headers['idempotency-key'] as string;
     if (process.env.PROXY_ORIGIN) {
       headers["Origin"] = process.env.PROXY_ORIGIN;
     }
@@ -225,9 +231,12 @@ async function startServer() {
     const targetUrl = `${fastApiBase}${req.path}${queryString}`;
     try {
       const headers: Record<string, string> = {};
+      const controller = new AbortController();
+      res.on('close', () => { if (!res.writableEnded) controller.abort(); });
       if (req.headers.authorization) headers["Authorization"] = req.headers.authorization as string;
       if (req.headers.cookie) headers["Cookie"] = req.headers.cookie as string;
       const contentType = req.headers["content-type"] as string | undefined;
+      if (req.headers['idempotency-key']) headers['Idempotency-Key'] = req.headers['idempotency-key'] as string;
       if (contentType) headers["Content-Type"] = contentType;
 
       let body: string | undefined;
@@ -240,7 +249,7 @@ async function startServer() {
           streamBody = true;
         }
       }
-      const options: RequestInit & { duplex?: "half" } = { method: req.method, headers };
+      const options: RequestInit & { duplex?: "half" } = { method: req.method, headers, redirect: 'manual', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(600000)]) };
       if (body !== undefined) {
         options.body = body;
       } else if (streamBody) {
@@ -257,25 +266,32 @@ async function startServer() {
         if (singleCookie) res.setHeader("set-cookie", singleCookie);
       }
       const upstreamType = response.headers.get("content-type");
-      const buf = Buffer.from(await response.arrayBuffer());
       res.status(response.status);
       if (upstreamType) res.setHeader("content-type", upstreamType);
-      res.send(buf);
+      for (const name of ['content-disposition', 'cache-control', 'x-total-count', 'retry-after', 'location', 'referrer-policy']) {
+        const value = response.headers.get(name);
+        if (value) res.setHeader(name, value);
+      }
+      if (response.body && !['HEAD'].includes(req.method) && response.status !== 204) {
+        await pipeline(Readable.fromWeb(response.body as any), res);
+      } else res.end();
     } catch (error: any) {
       console.error("[API Proxy Error] FastAPI unreachable:", error.message);
-      res.status(502).json({ detail: "FastAPI backend unreachable. Start it on :8000." });
+      if (res.headersSent) res.destroy();
+      else res.status(502).json({ detail: "FastAPI backend unreachable. Start it on :8000." });
     }
   });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      configFile: path.join(process.cwd(), 'frontend', 'vite.config.ts'),
+      server: { middlewareMode: true, allowedHosts: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.join(process.cwd(), "frontend", "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));

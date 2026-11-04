@@ -2,7 +2,7 @@
 
 - POST /api/resumes/upload — validates, stores, and ENQUEUES one
   `resume_process` job per file, then returns immediately. The worker
-  (claim/lease/backoff, per-file isolation) runs parse → LLM → scoring.
+  (claim/lease/backoff, per-file isolation) extracts and stores resume data.
   The batch table polls GET batch until all files are terminal.
 - GET /api/resumes/batches — paginated batch list.
 - GET /api/resumes/batches/{batchId} — batch + per-file statuses (live).
@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse
 
 from ..config import settings
 from ..models.hiring import AuditLogRepository, JobRepository
+from ..security.job_permissions import require_job_access
 from ..models.jobs import BackgroundJobRepository
 from ..models.resume import ResumeBatchRepository, ResumeFileRepository
 from ..schemas.resume import BatchStatus, FileStatus, ResumeBatchPublic, ResumeFilePublic
@@ -59,6 +60,8 @@ async def upload_resumes(
 ) -> dict[str, Any]:
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
+    if settings.resume_module_v2_enabled:
+        raise HTTPException(status_code=409, detail="Use the V2 resume intake workflow for upload and human review.")
     if consent.strip().lower() not in ("true", "1", "yes", "on"):
         raise HTTPException(status_code=400, detail="Candidate consent is required to upload resumes.")
     if not files:
@@ -69,10 +72,16 @@ async def upload_resumes(
             detail=f"Batch exceeds the {settings.upload_batch_max}-file limit.",
         )
 
-    job_repo = JobRepository(db)
+    job_repo = JobRepository(db, owner_id=None if current_user.role in {"super_admin","admin"} else current_user.user_id)
     job = await job_repo.get_by_key(jobKey.strip(), current_user.org_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
+    await require_job_access(db, current_user, 'upload', job)
+
+    from ..services.job_intake import intake_error
+    error = intake_error(job)
+    if error:
+        raise HTTPException(status_code=409, detail=error)
 
     batch_repo = ResumeBatchRepository(db)
     file_repo = ResumeFileRepository(db)
@@ -104,6 +113,8 @@ async def upload_resumes(
                 raise ValueError("Batch exceeds the total size limit.")
             validated = validate_upload(safe_name, data)
             verdict = clamav.scan_bytes(data, safe_name)
+            if verdict == clamav.SCAN_UNAVAILABLE:
+                raise ValueError(clamav.UNAVAILABLE_MESSAGE)
             dest, storage_key = new_storage_key(current_user.org_id, validated.ext)
             write_bytes(dest, data)
             content_hash = hashlib.sha256(data).hexdigest()
@@ -117,6 +128,7 @@ async def upload_resumes(
                 "contentHash": content_hash,
                 "storageKey": storage_key,
                 "kind": validated.kind,
+                "processingMode": "parse_only",
                 "status": FileStatus.QUARANTINED.value if verdict == clamav.QUARANTINED else FileStatus.UPLOADED.value,
             })
             file_ids.append(record["fileId"])
@@ -124,7 +136,7 @@ async def upload_resumes(
                 quarantined += 1
                 logger.info("Resume file quarantined batch=%s file=%s", batch["batchId"], record["fileId"])
                 continue
-            # Enqueue for the worker; parsing/scoring happen off-request.
+            # Extract locally off-request; matching is a later operation.
             await jobs_queue.enqueue(
                 org_id=current_user.org_id,
                 kind="resume_process",
@@ -145,7 +157,7 @@ async def upload_resumes(
 
     updated = await batch_repo.update(batch["batchId"], current_user.org_id, {
         "fileIds": file_ids,
-        "status": BatchStatus.PROCESSING.value,
+        "status": BatchStatus.PARTIAL.value if len(file_ids) == quarantined else BatchStatus.PROCESSING.value,
         "counts": {"total": len(files), "parsed": 0, "failed": failed, "quarantined": quarantined},
         "failures": failures,
     })
@@ -178,8 +190,11 @@ async def list_batches(
 ) -> list[ResumeBatchPublic]:
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    repo = ResumeBatchRepository(db)
-    docs = await repo.list_by_org(current_user.org_id, skip=skip, limit=limit)
+    query = {"orgId":current_user.org_id}
+    if current_user.role not in {"super_admin", "admin"}:
+        owned_ids = [d['jobId'] async for d in db['jobs'].find({'orgId':current_user.org_id, 'assigneeUserId':current_user.user_id}, {'jobId':1})]
+        query['jobId'] = {'$in':owned_ids}
+    docs = [d async for d in db['resume_batches'].find(query).sort('createdAt', -1).skip(skip).limit(limit)]
     return [ResumeBatchPublic(**_public_batch(d)) for d in docs]
 
 
@@ -194,6 +209,8 @@ async def get_batch(
     batch_repo = ResumeBatchRepository(db)
     batch = await batch_repo.get(batch_id, current_user.org_id)
     if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+    if current_user.role not in {"super_admin", "admin"} and not await JobRepository(db, owner_id=current_user.user_id).get_by_key(batch.get("jobKey", ""), current_user.org_id):
         raise HTTPException(status_code=404, detail="Batch not found.")
     file_repo = ResumeFileRepository(db)
     files_docs = await file_repo.list_for_batch(batch_id, current_user.org_id)
@@ -214,6 +231,8 @@ async def download_file(
     file_repo = ResumeFileRepository(db)
     doc = await file_repo.get(file_id, current_user.org_id)
     if not doc:
+        raise HTTPException(status_code=404, detail="File not found.")
+    if current_user.role not in {"super_admin", "admin"} and not await JobRepository(db, owner_id=current_user.user_id).get_by_id(doc.get("jobId", ""), current_user.org_id):
         raise HTTPException(status_code=404, detail="File not found.")
     if doc.get("status") == FileStatus.QUARANTINED.value:
         raise HTTPException(status_code=403, detail="File is quarantined and cannot be downloaded.")

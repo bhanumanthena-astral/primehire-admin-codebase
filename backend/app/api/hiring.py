@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
+import hashlib
+import json
+from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timezone
 from typing import Any
 
@@ -20,6 +25,7 @@ from ..models.hiring import (
 from ..models.user import UserRepository
 from ..schemas.hiring import (
     JobCreate,
+    JobLifecycleIn,
     JobUpdate,
     JobPublic,
     JobCloseIn,
@@ -42,6 +48,8 @@ from ..schemas.hiring import (
 )
 from ..jobs.rules import validate_positions
 from ..security.deps import CurrentUser, get_current_user, require_permission, get_db
+from ..security.job_access import job_repository, owner_scope, visible_applications, can_access_application
+from ..security.job_permissions import require_job_access, require_job_admin
 from ..services.pii import mask_email, mask_phone, phone_digits_variants
 from ..services.transitions import TransitionError, transition_application
 from ..services.email_send import queue_job_assignment
@@ -60,7 +68,6 @@ from ..services.jd_document import (
     is_extractable,
     normalize_jd_text,
 )
-from ..services.llm.jd_extract import extract_jd_fields
 from ..services.jd_validate import validate_jd_extraction
 from ..services.outbox_crypto import OutboxCryptoError
 from ..services.resume_parse import ParseFailed, ParseTimeout, parse_bytes_isolated
@@ -77,10 +84,20 @@ ALLOWED_REVEAL_FIELDS = frozenset({"email", "phone"})
 
 def _masked_applicant(doc: dict[str, Any]) -> dict[str, Any]:
     """Mask contact PII by default; full values only via the audited reveal."""
-    out = dict(doc)
+    # Persisted candidates carry additive intake/profile metadata that is not
+    # part of this legacy public contract. Project it before strict validation.
+    out = {key: value for key, value in doc.items() if key in ApplicantPublic.model_fields}
+    if isinstance(out.get('retentionUntil'), datetime):
+        out['retentionUntil'] = out['retentionUntil'].isoformat()
     out["email"] = mask_email(str(doc.get("email") or ""))
     out["phone"] = mask_phone(str(doc.get("phone") or ""))
     return out
+
+
+def _public_application(doc: dict[str, Any]) -> ApplicationPublic:
+    """Keep internal intake, assignment and delivery fields out of responses."""
+    return ApplicationPublic.model_validate({key: value for key, value in doc.items()
+        if key in ApplicationPublic.model_fields})
 
 
 def _utcnow() -> datetime:
@@ -165,7 +182,12 @@ async def _notify_assignee(
 
 
 _JOB_MANAGE = require_permission("jobs.manage")
-_JOB_READ = require_permission("resumes.upload")
+_JOB_READ = require_permission("jobs.view")
+
+
+def _JOB_ADMIN(current_user: CurrentUser = Depends(_JOB_MANAGE)):
+    require_job_admin(current_user)
+    return current_user
 
 
 # --- Jobs Routes ---
@@ -180,7 +202,30 @@ async def create_job(
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    repo = JobRepository(db)
+    await require_job_access(db, current_user, 'create')
+    if owner_scope(current_user) and payload.lifecycleStatus != 'DRAFT':
+        raise HTTPException(status_code=403,detail='Only an administrator can publish a job')
+    if payload.assigneeAccess is not None:
+        require_job_admin(current_user)
+    repo = job_repository(db, current_user)
+    request_key = request.headers.get("Idempotency-Key")
+    request_hash = None
+    request_payload_hash = None
+    if request_key:
+        if len(request_key) > 128:
+            raise HTTPException(status_code=422, detail="Idempotency-Key must be at most 128 characters")
+        request_hash = hashlib.sha256(request_key.encode()).hexdigest()
+        fingerprint = payload.model_dump(mode="json")
+        if "jobKey" not in payload.model_fields_set:
+            fingerprint.pop("jobKey", None)
+        request_payload_hash = hashlib.sha256(json.dumps(fingerprint, sort_keys=True).encode()).hexdigest()
+        previous = await db["jobs"].find_one(repo.scope({"orgId": current_user.org_id, "requestKey": request_hash}))
+        if previous:
+            if previous.get("requestPayloadHash") != request_payload_hash:
+                raise HTTPException(status_code=409, detail="This submission was already saved with different values. Reload before creating a new job.")
+            previous.pop("_id", None)
+            previous.pop("requestKey", None)
+            return JobPublic(**previous)
     existing = await repo.get_by_key(payload.jobKey, current_user.org_id)
     if existing:
         raise HTTPException(
@@ -188,20 +233,48 @@ async def create_job(
             detail=f"Job key '{payload.jobKey}' already exists in this organization",
         )
 
+    if owner_scope(current_user) and payload.assigneeUserId != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Only an administrator can assign jobs to another user")
     doc = payload.model_dump()
     doc["orgId"] = current_user.org_id
+    doc["datesVersion"] = "utc-v1"
+    if request_hash:
+        doc["requestKey"] = request_hash
+        doc["requestPayloadHash"] = request_payload_hash
     doc["createdBy"] = current_user.user_id
     doc["niceToHaveSkills"] = [s.model_dump() for s in payload.niceToHaveSkills]
     # Server defaults (PRD §1/§6): system-controlled opening timestamp,
     # zero filled positions, plain-text JD extracted from the rich text.
     if doc.get("openedAt") is None:
         doc["openedAt"] = _utcnow()
+    from ..services.job_timezone import org_timezone, local_to_utc
+    zone = await org_timezone(db, current_user.org_id)
+    doc["openedAt"] = local_to_utc(doc["openedAt"], zone)
+    doc["closesAt"] = local_to_utc(doc["closesAt"], zone)
+    if _as_utc(doc["closesAt"]) <= _as_utc(doc["openedAt"]):
+        raise HTTPException(status_code=422, detail="closesAt must be greater than openedAt")
+    from ..services.jd_validate import sanitize_jd_html
+    doc["jdHtml"] = sanitize_jd_html(payload.jdHtml)
     doc["positionsFilled"] = 0
     doc["jdText"] = jd_text_of(payload.jdHtml)
     # PRD §21: assignee must be an active org user; snapshot their email.
     assignee = await _resolve_assignee(db, current_user.org_id, payload.assigneeUserId)
     doc["assigneeEmail"] = assignee.get("email")
-    created = await repo.create(doc)
+    doc["assigneeName"] = assignee.get("name")
+    try:
+        created = await repo.create(doc)
+    except DuplicateKeyError:
+        if not request_hash:
+            raise HTTPException(status_code=409, detail="Job reference already exists") from None
+        previous = await db["jobs"].find_one(repo.scope({"orgId": current_user.org_id, "requestKey": request_hash}))
+        if not previous:
+            raise HTTPException(status_code=409, detail="Job reference already exists") from None
+        if previous.get("requestPayloadHash") != request_payload_hash:
+            raise HTTPException(status_code=409, detail="This submission was already saved with different values. Reload before creating a new job.")
+        previous.pop("_id", None)
+        previous.pop("requestKey", None)
+        return JobPublic(**previous)
+    created.pop("requestKey", None)
 
     audit = AuditLogRepository(db)
     await audit.log(
@@ -226,6 +299,7 @@ async def list_jobs(
     response: Response,
     status: str | None = Query(default=None),
     q: str | None = Query(default=None, max_length=100),
+    searchMode: str = Query(default="contains", pattern="^(contains|exact|starts_with)$"),
     company: str | None = Query(default=None, max_length=255),
     department: str | None = Query(default=None, max_length=255),
     assignee: str | None = Query(default=None, max_length=255),
@@ -239,7 +313,7 @@ async def list_jobs(
     order: str = Query(default="desc"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
-    current_user: CurrentUser = Depends(require_permission("resumes.upload")),
+    current_user: CurrentUser = Depends(require_permission("jobs.view")),
     db: Any = Depends(get_db),
 ) -> list[JobPublic]:
     """PRD §14-§16: search + filters + sort + pagination (default 20/page).
@@ -256,9 +330,9 @@ async def list_jobs(
     if workMode is not None and workMode not in ("ONSITE", "REMOTE", "HYBRID"):
         raise HTTPException(status_code=422, detail="workMode must be one of ONSITE, REMOTE, HYBRID")
 
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     filters: dict[str, Any] = {
-        "status": status, "q": q, "company": company, "department": department,
+        "status": status, "q": q, "search_mode": searchMode, "company": company, "department": department,
         "assignee": assignee, "experience": experience, "work_mode": workMode,
         "opened_from": _as_utc(openedFrom), "opened_to": _as_utc(openedTo),
         "closes_from": _as_utc(closesFrom), "closes_to": _as_utc(closesTo),
@@ -267,18 +341,25 @@ async def list_jobs(
         current_user.org_id, **filters, sort=sort, order=order, skip=skip, limit=limit,
     )
     response.headers["X-Total-Count"] = str(await repo.count_search(current_user.org_id, **filters))
-    return [JobPublic(**d) for d in docs]
+    from ..services.job_pipeline import pipeline_counts
+    totals = await pipeline_counts(db, current_user.org_id, [d['jobId'] for d in docs])
+    return [JobPublic(**{**d, 'pipeline': totals[d['jobId']]}) for d in docs]
 
 
 @router.get("/jobs/application-counts")
 async def job_application_counts(
-    current_user: CurrentUser = Depends(require_permission("resumes.upload")),
+    jobIds: list[str] | None = Query(default=None, max_length=100),
+    current_user: CurrentUser = Depends(require_permission("jobs.view")),
     db: Any = Depends(get_db),
 ) -> dict[str, dict[str, int]]:
     """Application counts per job for the listing's Applications column."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    job_ids = await JobRepository(db).list_ids(current_user.org_id)
+    if jobIds:
+        cursor = db["jobs"].find(job_repository(db,current_user).scope({"orgId":current_user.org_id, "jobId":{"$in":jobIds}}), {"jobId":1}).limit(100)
+        job_ids = [d["jobId"] async for d in cursor]
+    else:
+        job_ids = await job_repository(db, current_user).list_ids(current_user.org_id)
     counts: dict[str, int] = {}
     for job_id in job_ids:
         counts[job_id] = await db["applications"].count_documents(
@@ -309,12 +390,19 @@ async def download_jd_template(
 
 @router.get("/jobs/rules")
 async def jobs_rules(
+    db: Any = Depends(get_db),
     current_user: CurrentUser = Depends(_JOB_READ),
 ) -> dict[str, Any]:
     """Read-only Jobs validation matrix so the form never duplicates rules."""
     from ..jobs.rules import public_rules
 
-    return public_rules()
+    result = public_rules()
+    from ..services.job_timezone import org_timezone
+    result["timezone"] = await org_timezone(db, current_user.org_id) if db is not None else "Asia/Kolkata"
+    return result
+
+
+JD_UPLOAD_MAX_MB = 15
 
 
 @router.post("/jobs/parse-jd", response_model=JDParseOut)
@@ -349,14 +437,17 @@ async def parse_jd_upload(
         safe_name = validate_client_filename(client_name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    data = await file.read()
+    data = await file.read(JD_UPLOAD_MAX_MB * 1024 * 1024 + 1)
     if not data:
         raise HTTPException(status_code=400, detail="Empty file.")
     try:
-        validated = validate_upload(safe_name, data)
+        validated = validate_upload(safe_name, data, max_mb=JD_UPLOAD_MAX_MB)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    if clamav.scan_bytes(data, safe_name) == clamav.QUARANTINED:
+    scan_verdict = await asyncio.to_thread(clamav.scan_bytes, data, safe_name)
+    if scan_verdict == clamav.SCAN_UNAVAILABLE:
+        raise HTTPException(status_code=503, detail=clamav.UNAVAILABLE_MESSAGE)
+    if scan_verdict == clamav.QUARANTINED:
         raise HTTPException(
             status_code=422, detail="The uploaded file failed the security scan and cannot be processed."
         )
@@ -411,7 +502,7 @@ async def _parse_jd_document(
     current_user: CurrentUser,
     db: Any,
 ) -> JDParseOut:
-    """AI JD Ingestion Phase 1: secure validate → isolated extract → text.
+    """Local JD ingestion: secure validate → isolated extract → field review.
 
     Reuses the exact Slice 3 security chain (filename safety, magic bytes,
     size/zip-bomb caps, ClamAV hook, isolated 30 s parser). No LLM call, no
@@ -426,14 +517,17 @@ async def _parse_jd_document(
         safe_name = validate_client_filename(client_name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    data = await file.read()
+    data = await file.read(JD_UPLOAD_MAX_MB * 1024 * 1024 + 1)
     if not data:
         raise HTTPException(status_code=400, detail="Empty file.")
     try:
-        validated = validate_upload(safe_name, data)
+        validated = validate_upload(safe_name, data, max_mb=JD_UPLOAD_MAX_MB)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    if clamav.scan_bytes(data, safe_name) == clamav.QUARANTINED:
+    scan_verdict = await asyncio.to_thread(clamav.scan_bytes, data, safe_name)
+    if scan_verdict == clamav.SCAN_UNAVAILABLE:
+        raise HTTPException(status_code=503, detail=clamav.UNAVAILABLE_MESSAGE)
+    if scan_verdict == clamav.QUARANTINED:
         raise HTTPException(
             status_code=422, detail="The uploaded file failed the security scan and cannot be processed."
         )
@@ -449,65 +543,13 @@ async def _parse_jd_document(
             "message": "Could not extract text from the uploaded file.",
             "errors": [{"field": "file", "message": "No readable text found"}],
         })
-    # L1 resilience: a user is waiting on this request, so the sync path
-    # NEVER queues behind bulk work. If the breaker is open or no interactive
-    # token is available, fail fast to the text-only fallback with a visible
-    # flag (the take-or-fallback is instant — no waiting in line).
-    from ..services.llm.resilience import llm_guard, llm_record
-
-    allowed, guard_reason, _guard_info = await llm_guard(db, kind="interactive")
-    if not allowed:
-        busy_note = ("AI extraction paused by the circuit breaker — text extraction only."
-                     if guard_reason == "breaker-open"
-                     else "AI is busy — text extraction only. You can re-upload shortly.")
-        return JDParseOut(
-            filename=safe_name,
-            kind=validated.kind,
-            templateVersion=JD_DOCUMENT_VERSION,
-            text=text,
-            mapped={},
-            warnings=[busy_note, JD_DOCUMENT_AI_PENDING_WARNING],
-        )
-    # Phase 2 (jd-extract-v1): structure the normalized text for review.
-    # Advisory only — `mapped` stays empty until Phase 3 validates the
-    # extraction against JobCreate. LLM failure degrades to the Phase 1
-    # text-only result so manual entry always stays possible.
-    outcome = await extract_jd_fields(
-        db, current_user.org_id, text=text, output_ref=f"jd-document:{safe_name}"
-    )
-    await llm_record(db, outcome=outcome)
-    if outcome.payload is None:
-        warnings = list(outcome.reasons)
-        if JD_DOCUMENT_AI_PENDING_WARNING not in warnings:
-            warnings.append(JD_DOCUMENT_AI_PENDING_WARNING)
-        return JDParseOut(
-            filename=safe_name,
-            kind=validated.kind,
-            templateVersion=JD_DOCUMENT_VERSION,
-            text=text,
-            mapped={},
-            warnings=warnings,
-        )
-    payload = outcome.payload
-    warnings = list(payload.warnings)
-    if outcome.injection_suspected:
-        warnings.append("Possible prompt-injection content detected; verify every field.")
-    # Phase 3: validate against the JobCreate truth (read-only; HR reviews
-    # in Phase 4 and saves through the existing POST /api/jobs endpoint).
-    review = await validate_jd_extraction(
-        payload, db, current_user.org_id,
-        original_text=text, injection_suspected=outcome.injection_suspected,
-    )
+    from ..services.jd_local import extract_local_fields
+    payload = extract_local_fields(text)
+    review = await validate_jd_extraction(payload, db, current_user.org_id, original_text=text)
     return JDParseOut(
-        filename=safe_name,
-        kind=validated.kind,
-        templateVersion=JD_DOCUMENT_VERSION,
-        text=text,
-        mapped={},
-        warnings=warnings,
-        aiExtract=payload.model_dump(mode="json"),
-        missingFields=list(payload.missingFields),
-        evidence=dict(payload.evidence),
+        filename=safe_name, kind=validated.kind, templateVersion="local-v1",
+        text=text, mapped={}, warnings=list(review.warnings),
+        missingFields=list(review.missingFields), evidence=dict(review.evidence),
         review=review.model_dump(mode="json"),
     )
 
@@ -515,17 +557,19 @@ async def _parse_jd_document(
 @router.get("/jobs/{job_id}", response_model=JobPublic)
 async def get_job(
     job_id: str,
-    current_user: CurrentUser = Depends(require_permission("resumes.upload")),
+    current_user: CurrentUser = Depends(require_permission("jobs.view")),
     db: Any = Depends(get_db),
 ) -> JobPublic:
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     doc = await repo.get_by_id(job_id, current_user.org_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Job not found")
-    return JobPublic(**doc)
+    from ..services.job_pipeline import pipeline_counts
+    totals = await pipeline_counts(db, current_user.org_id, [job_id])
+    return JobPublic(**{**doc, 'pipeline': totals[job_id]})
 
 
 @router.put("/jobs/{job_id}", response_model=JobPublic)
@@ -539,10 +583,13 @@ async def update_job(
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
+    await require_job_access(db, current_user, 'edit', existing)
+    if "assigneeAccess" in payload.model_fields_set:
+        require_job_admin(current_user)
 
     # PRD §7/§19: ARCHIVED jobs accept no edits; CLOSED jobs accept only a
     # limited subset (closing date, assignee, keywords, description).
@@ -553,13 +600,19 @@ async def update_job(
         )
 
     upd = payload.model_dump(exclude_unset=True)
+    if isinstance(upd.get("closesAt"), datetime):
+        from ..services.job_timezone import org_timezone, local_to_utc
+        upd["closesAt"] = local_to_utc(upd["closesAt"], await org_timezone(db, current_user.org_id))
+    expected = upd.pop("expectedUpdatedAt", None)
+    if expected is not None and int(_as_utc(expected).timestamp() * 1000) != int(_as_utc(existing.get("updatedAt")).timestamp() * 1000):
+        raise HTTPException(status_code=409, detail="This job was changed by another user. Reload before saving; your entered values are preserved.")
     if "niceToHaveSkills" in upd and upd["niceToHaveSkills"] is not None:
         upd["niceToHaveSkills"] = [
             s.model_dump() if hasattr(s, "model_dump") else s for s in upd["niceToHaveSkills"]
         ]
 
     if lifecycle == "CLOSED":
-        allowed_on_closed = {"closesAt", "assigneeUserId", "keywords", "jdHtml",
+        allowed_on_closed = {"assigneeAccess", "closesAt", "assigneeUserId", "keywords", "jdHtml",
                              "description", "matchThreshold"}
         rejected = sorted(set(upd) - allowed_on_closed)
         if rejected:
@@ -568,12 +621,15 @@ async def update_job(
                 detail=f"Closed jobs accept only limited edits; not allowed here: {', '.join(rejected)}",
             )
 
+    if owner_scope(current_user) and upd.get("assigneeUserId",current_user.user_id) != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Only an administrator can reassign jobs")
     new_assignee = None
     old_assignee_id = existing.get("assigneeUserId")
     if "assigneeUserId" in upd and upd["assigneeUserId"] is not None:
         # PRD §21/§22: validate + snapshot; history lives in the audit log.
         new_assignee = await _resolve_assignee(db, current_user.org_id, upd["assigneeUserId"])
         upd["assigneeEmail"] = new_assignee.get("email")
+        upd["assigneeName"] = new_assignee.get("name")
     elif old_assignee_id:
         # PRD §21: assignee email changes propagate to the snapshot.
         current_owner = await UserRepository(db).get_by_id(str(old_assignee_id), current_user.org_id)
@@ -581,6 +637,8 @@ async def update_job(
             upd["assigneeEmail"] = current_owner.get("email")
 
     if "jdHtml" in upd and upd["jdHtml"] is not None:
+        from ..services.jd_validate import sanitize_jd_html
+        upd["jdHtml"] = sanitize_jd_html(str(upd["jdHtml"]))
         upd["jdText"] = jd_text_of(str(upd["jdHtml"]))
 
     # PRD §19 edge case: invariants hold even when only one side of the
@@ -609,7 +667,9 @@ async def update_job(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from None
 
-    updated = await repo.update(job_id, upd, current_user.org_id)
+    updated = await repo.update(job_id, upd, current_user.org_id, expected_updated_at=existing.get("updatedAt"))
+    if updated is None:
+        raise HTTPException(status_code=409, detail="This job was changed by another user. Reload before saving; your entered values are preserved.")
 
     # PRD §20: the audit trail records old AND new values per changed field.
     # Slice 10: idempotent writes (nothing actually changed) log no event —
@@ -650,25 +710,111 @@ async def update_job(
 # (_JOB_MANAGE / _JOB_READ are defined once above, next to the helpers.)
 
 
+@router.post("/jobs/{job_id}/lifecycle", response_model=JobPublic)
+async def set_job_lifecycle(
+    job_id: str, payload: JobLifecycleIn, request: Request,
+    current_user: CurrentUser = Depends(_JOB_ADMIN), db: Any = Depends(get_db),
+) -> JobPublic:
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    repo = job_repository(db, current_user)
+    existing = await repo.get_by_id(job_id, current_user.org_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Job not found")
+    before = _lifecycle_of(existing)
+    target = payload.status
+    if (before, target) not in {("DRAFT", "OPEN"), ("OPEN", "ON_HOLD"), ("ON_HOLD", "OPEN")}:
+        raise HTTPException(status_code=409, detail="Invalid lifecycle transition")
+    if target == "OPEN" and (_as_utc(_coerce_dt(existing.get("closesAt"))) or _utcnow()) <= _utcnow():
+        raise HTTPException(status_code=422, detail="Opening a job requires a future closing date")
+    updated = await repo.update(job_id, {"lifecycleStatus": target}, current_user.org_id,
+                                expected_updated_at=existing.get("updatedAt"))
+    if updated is None:
+        raise HTTPException(status_code=409, detail="Job changed; reload and try again")
+    await AuditLogRepository(db).log(
+        org_id=current_user.org_id, actor_user_id=current_user.user_id,
+        action="job.publish" if before == "DRAFT" else "job.hold" if target == "ON_HOLD" else "job.resume",
+        resource_type="job", resource_id=job_id,
+        details={"changes": {"lifecycleStatus": {"from": before, "to": target}}},
+        ip_address=request.client.host if request.client else "",
+    )
+    return JobPublic(**updated)
+
+
+@router.get("/jobs/{job_id}/applications")
+async def job_applications(
+    job_id: str, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
+    current_user: CurrentUser = Depends(_JOB_READ), db: Any = Depends(get_db),
+):
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    job = await job_repository(db, current_user).get_by_id(job_id, current_user.org_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if current_user.role == 'viewer' or 'candidates.view' not in current_user.permissions:
+        raise HTTPException(403, "Candidate details require hiring access")
+    from ..services.job_applications import assessment_result, interview_round
+    query = {'orgId': current_user.org_id, 'jobId': job_id}
+    rows = await db['applications'].find(query).sort([('createdAt', -1), ('applicationId', 1)]).skip(skip).limit(limit).to_list(limit)
+    people = {p['applicantId']: p async for p in db['applicants'].find({'orgId': current_user.org_id,
+        'applicantId': {'$in': [row['applicantId'] for row in rows]}}, {'applicantId': 1, 'name': 1, 'email': 1, 'phone': 1, 'profile': 1})}
+    items = []
+    for row in rows:
+        person = people.get(row['applicantId'], {})
+        profile = person.get('profile') or {}
+        email = profile.get('email') or person.get('email') or ''
+        items.append({'applicationId': row['applicationId'], 'name': person.get('name') or profile.get('name') or 'Unknown applicant',
+            'email': '' if email.endswith('@placeholder.local') else email,
+            'phone': profile.get('phone') or person.get('phone') or '',
+            'status': str(row.get('status') or 'active').replace('_', ' ').title(),
+            'round': interview_round(row), 'assessment': assessment_result(row)})
+    return {'items': items, 'total': await db['applications'].count_documents(query), 'skip': skip, 'limit': limit}
+
+
+@router.get("/jobs/{job_id}/pipeline-details")
+async def job_pipeline_details(
+    job_id: str, stage: str = Query(..., pattern='^(resumesUploaded|atsTotal|linksSent|assessmentsCompleted|technical|managerial|hr)$'),
+    skip: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100),
+    current_user: CurrentUser = Depends(_JOB_READ), db: Any = Depends(get_db),
+):
+    if db is None:
+        raise HTTPException(503, 'Database unavailable')
+    job = await job_repository(db, current_user).get_by_id(job_id, current_user.org_id)
+    if not job:
+        raise HTTPException(404, 'Job not found')
+    if current_user.role == 'viewer' or 'candidates.view' not in current_user.permissions:
+        raise HTTPException(403, 'Candidate details require hiring access')
+    from ..services.job_pipeline import pipeline_details
+    return await pipeline_details(db, current_user.org_id, job_id, stage, skip, limit)
+
+
 @router.get("/jobs/{job_id}/detail", response_model=JobDetailPublic)
 async def get_job_detail(
     job_id: str,
+    applicationsSkip: int = Query(default=0, ge=0),
+    applicationsLimit: int = Query(default=20, ge=1, le=100),
     current_user: CurrentUser = Depends(_JOB_READ),
     db: Any = Depends(get_db),
 ) -> JobDetailPublic:
     """PRD §18: job + its applications + counts for the details page."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     doc = await repo.get_by_id(job_id, current_user.org_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Job not found")
-    apps = await ApplicationRepository(db).list_by_job(job_id, current_user.org_id, limit=200)
-    active = sum(1 for a in apps if str(a.get("status") or "active") == "active")
+    apps = await ApplicationRepository(db).list_by_job(job_id, current_user.org_id, skip=applicationsSkip, limit=applicationsLimit)
+    if current_user.role == "viewer":
+        apps = []
+    total = await db["applications"].count_documents({"orgId": current_user.org_id, "jobId": job_id})
+    active = await db["applications"].count_documents({"orgId": current_user.org_id, "jobId": job_id, "status": "active"})
+    from ..services.job_pipeline import pipeline_counts
+    totals = await pipeline_counts(db, current_user.org_id, [job_id])
     return JobDetailPublic(
-        job=JobPublic(**doc),
+        job=JobPublic(**{**doc, 'pipeline': totals[job_id]}),
         applications=apps,
-        counts={"total": len(apps), "active": active},
+        counts={"total": total, "active": active},
+        applicationPage={"skip":applicationsSkip,"limit":applicationsLimit,"total":total},
     )
 
 
@@ -677,13 +823,13 @@ async def close_job(
     job_id: str,
     payload: JobCloseIn,
     request: Request,
-    current_user: CurrentUser = Depends(_JOB_MANAGE),
+    current_user: CurrentUser = Depends(_JOB_ADMIN),
     db: Any = Depends(get_db),
 ) -> JobPublic:
     """PRD §24: manual closure. New applications stop; job leaves active lists."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -715,20 +861,20 @@ async def reopen_job(
     job_id: str,
     payload: JobReopenIn,
     request: Request,
-    current_user: CurrentUser = Depends(_JOB_MANAGE),
+    current_user: CurrentUser = Depends(_JOB_ADMIN),
     db: Any = Depends(get_db),
 ) -> JobPublic:
     """PRD §26: reopening a CLOSED job requires a valid FUTURE closing date."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
     closes_at = payload.closesAt
-    if closes_at.tzinfo is None:
-        closes_at = closes_at.replace(tzinfo=timezone.utc)
+    from ..services.job_timezone import org_timezone, local_to_utc
+    closes_at = local_to_utc(closes_at, await org_timezone(db, current_user.org_id))
     if closes_at <= _utcnow():
         raise HTTPException(
             status_code=422, detail="Reopening requires a valid future closing date"
         )
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -759,13 +905,13 @@ async def reopen_job(
 async def archive_job(
     job_id: str,
     request: Request,
-    current_user: CurrentUser = Depends(_JOB_MANAGE),
+    current_user: CurrentUser = Depends(_JOB_ADMIN),
     db: Any = Depends(get_db),
 ) -> JobPublic:
     """PRD §27: archiving preserves history (preferred over delete)."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -794,14 +940,14 @@ async def assign_job(
     job_id: str,
     payload: JobAssignIn,
     request: Request,
-    current_user: CurrentUser = Depends(_JOB_MANAGE),
+    current_user: CurrentUser = Depends(_JOB_ADMIN),
     db: Any = Depends(get_db),
 ) -> JobPublic:
     """PRD §21: (re)assign by email. Mirrors the PUT assignee path without
     touching it (Slice 2 flow stays byte-identical)."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -819,10 +965,12 @@ async def assign_job(
         raise HTTPException(
             status_code=422, detail="Assignee is deactivated; choose an active user"
         )
+    if owner_scope(current_user) and target.get("userId") != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Only an administrator can reassign jobs")
     old_assignee_id = existing.get("assigneeUserId")
     updated = await repo.update(
         job_id,
-        {"assigneeUserId": target.get("userId"), "assigneeEmail": target.get("email")},
+        {"assigneeUserId": target.get("userId"), "assigneeEmail": target.get("email"), "assigneeName":target.get('name')},
         current_user.org_id,
     )
     # Slice 10: re-assigning the SAME owner is idempotent — no audit event,
@@ -854,7 +1002,7 @@ async def job_activity(
     """
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -881,7 +1029,7 @@ async def job_notifications(
     """
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -901,13 +1049,13 @@ async def job_notifications(
 async def delete_job(
     job_id: str,
     request: Request,
-    current_user: CurrentUser = Depends(_JOB_MANAGE),
+    current_user: CurrentUser = Depends(_JOB_ADMIN),
     db: Any = Depends(get_db),
 ) -> dict[str, Any]:
     """PRD §27: hard-delete is refused when applications exist (archive instead)."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    repo = JobRepository(db)
+    repo = job_repository(db, current_user)
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -919,7 +1067,7 @@ async def delete_job(
             status_code=409,
             detail="Job has applications and cannot be hard-deleted; archive it instead",
         )
-    await db["jobs"].delete_one({"jobId": job_id, "orgId": current_user.org_id})
+    await db["jobs"].delete_one(repo.scope({"jobId": job_id, "orgId": current_user.org_id}))
     await AuditLogRepository(db).log(
         org_id=current_user.org_id,
         actor_user_id=current_user.user_id,
@@ -942,11 +1090,11 @@ async def check_job_duplicate(
     whether to show "A similar job already exists. Do you want to continue?"."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    query: dict[str, Any] = {"orgId": current_user.org_id, "lifecycleStatus": {"$ne": "ARCHIVED"}}
+    query: dict[str, Any] = job_repository(db,current_user).scope({"orgId": current_user.org_id, "lifecycleStatus": {"$ne": "ARCHIVED"}})
     for field in ("companyName", "jobRole", "department", "location"):
         value = getattr(payload, field)
         if value:
-            query[field] = {"$regex": f"^{value.strip()}$", "$options": "i"}
+            query[field] = {"$regex": f"^{re.escape(value.strip())}$", "$options": "i"}
     if payload.excludeJobId:
         query["jobId"] = {"$ne": payload.excludeJobId}
     cursor = db["jobs"].find(query).sort("createdAt", -1).limit(10)
@@ -960,7 +1108,7 @@ async def check_job_duplicate(
 
 @router.post("/admin/jobs/auto-close")
 async def auto_close_jobs(
-    current_user: CurrentUser = Depends(require_permission("applications.transition")),
+    current_user: CurrentUser = Depends(_JOB_ADMIN),
     db: Any = Depends(get_db),
 ) -> dict[str, Any]:
     """PRD §25: close OPEN jobs past their closing date.
@@ -977,7 +1125,7 @@ async def auto_close_jobs(
     # atomic claim, and assignee outbox notification).
     from ..services.auto_close import auto_close_due_jobs
 
-    return await auto_close_due_jobs(db, org_id=current_user.org_id)
+    return await auto_close_due_jobs(db, org_id=current_user.org_id, owner_id=owner_scope(current_user))
 
 
 # --- Applicants Routes ---
@@ -1041,6 +1189,7 @@ async def list_applicants(
     out: list[ApplicantPublic] = []
     for d in docs:
         apps = await applications.list_by_applicant(d["applicantId"], current_user.org_id)
+        apps = await visible_applications(db, current_user, apps)
         latest = None
         if apps:
             a0 = apps[0]
@@ -1076,6 +1225,7 @@ async def get_applicant_profile(
 
     applications = ApplicationRepository(db)
     apps = await applications.list_by_applicant(applicant_id, current_user.org_id)
+    apps = await visible_applications(db, current_user, apps)
     history_repo = StageHistoryRepository(db)
     timeline: list[dict[str, Any]] = []
     for app_doc in apps:
@@ -1084,7 +1234,7 @@ async def get_applicant_profile(
     timeline.sort(key=lambda e: str(e.get("transitionAt", "")))
     return {
         "applicant": ApplicantPublic(**_masked_applicant(doc)).model_dump(),
-        "applications": [ApplicationPublic(**a).model_dump() for a in apps],
+        "applications": [_public_application(a).model_dump() for a in apps],
         "timeline": timeline,
     }
 
@@ -1133,17 +1283,16 @@ async def create_application(
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    job_repo = JobRepository(db)
+    job_repo = job_repository(db, current_user)
     job = await job_repo.get_by_id(payload.jobId, current_user.org_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    await require_job_access(db, current_user, 'upload', job)
 
-    lifecycle = str(job.get("lifecycleStatus") or "DRAFT").upper()
-    if lifecycle in ("CLOSED", "ARCHIVED"):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Job is {lifecycle.lower()}; new applications are not accepted",
-        )
+    from ..services.job_intake import intake_error
+    error = intake_error(job)
+    if error:
+        raise HTTPException(status_code=409, detail=error)
 
     app_repo = ApplicantRepository(db)
     applicant = await app_repo.get_by_id(payload.applicantId, current_user.org_id)
@@ -1193,7 +1342,7 @@ async def create_application(
         ip_address=request.client.host if request.client else "",
     )
 
-    return ApplicationPublic(**created)
+    return _public_application(created)
 
 
 @router.get("/applications", response_model=list[ApplicationPublic])
@@ -1208,12 +1357,18 @@ async def list_applications(
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    repo = ApplicationRepository(db)
+    query = {'orgId':current_user.org_id}
     if job_id:
-        docs = await repo.list_by_job(job_id, current_user.org_id, stage=stage, skip=skip, limit=limit)
-    else:
-        docs = await repo.list_by_org(current_user.org_id, stage=stage, skip=skip, limit=limit)
-    return [ApplicationPublic(**d) for d in docs]
+        if not await job_repository(db, current_user).get_by_id(job_id, current_user.org_id):
+            raise HTTPException(status_code=404, detail='Job not found')
+        query['jobId'] = job_id
+    elif owner_scope(current_user):
+        owned_ids = [j['jobId'] async for j in db['jobs'].find({'orgId':current_user.org_id, 'assigneeUserId':current_user.user_id}, {'jobId':1})]
+        query['jobId'] = {'$in':owned_ids}
+    if stage:
+        query['currentStage'] = stage
+    docs = [d async for d in db['applications'].find(query).sort('createdAt', -1).skip(skip).limit(limit)]
+    return [_public_application(d) for d in docs]
 
 
 @router.get("/applications/{application_id}", response_model=ApplicationPublic)
@@ -1227,9 +1382,9 @@ async def get_application(
 
     repo = ApplicationRepository(db)
     doc = await repo.get_by_id(application_id, current_user.org_id)
-    if not doc:
+    if not doc or not await can_access_application(db, current_user, application_id):
         raise HTTPException(status_code=404, detail="Application not found")
-    return ApplicationPublic(**doc)
+    return _public_application(doc)
 
 
 @router.post("/applications/{application_id}/transition", response_model=ApplicationPublic)
@@ -1256,6 +1411,8 @@ async def transition_application_stage(
             detail="Forbidden: requires 'applications.transition' permission",
         )
 
+    if not await can_access_application(db, current_user, application_id):
+        raise HTTPException(status_code=404, detail="Application not found")
     try:
         updated = await transition_application(
             db,
@@ -1272,7 +1429,7 @@ async def transition_application_stage(
         code = status.HTTP_404_NOT_FOUND if str(exc) == "Application not found." else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=code, detail=str(exc)) from None
 
-    return ApplicationPublic(**updated)
+    return _public_application(updated)
 
 
 @router.get("/applications/{application_id}/history", response_model=list[StageHistoryPublic])
@@ -1286,7 +1443,7 @@ async def get_application_history(
 
     repo = ApplicationRepository(db)
     app_doc = await repo.get_by_id(application_id, current_user.org_id)
-    if not app_doc:
+    if not app_doc or not await can_access_application(db, current_user, application_id):
         raise HTTPException(status_code=404, detail="Application not found")
 
     history = StageHistoryRepository(db)

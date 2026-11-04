@@ -216,26 +216,6 @@ async def test_each_adversarial_doc_skips_llm(mock_db, monkeypatch):
     assert "perfect score" not in blob and "API key" not in blob
 
 
-async def test_injection_doc_endpoint_returns_honest_manual_state(client, mock_db, monkeypatch):
-    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
-    monkeypatch.setattr(settings, "openrouter_model", "test-model")
-    calls: list = []
-    _install_fake(monkeypatch, [_ok(PM_JSON)], calls)
-    jobs0 = await mock_db["jobs"].count_documents({})
-    users0 = await mock_db["users"].count_documents({})
-    res = client.post(
-        "/api/jobs/parse-jd",
-        files={"file": ("evil.docx", _docx([EVIL_DOCS["tool_call"], LONG_JD]))},
-        data={"mode": "document"},
-        headers=_hr(),
-    )
-    assert res.status_code == 200, res.text
-    body = res.json()
-    assert body["aiExtract"] is None and body["review"] is None
-    assert calls == []  # no model request was ever made
-    assert "phase" not in " ".join(body["warnings"]).lower()
-    assert await mock_db["jobs"].count_documents({}) == jobs0
-    assert await mock_db["users"].count_documents({}) == users0
 
 
 # ---- 3. PII verification ----

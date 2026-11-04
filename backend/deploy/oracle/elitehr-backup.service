@@ -1,0 +1,12 @@
+[Unit]
+Description=Encrypted Elite HR V2 backup (maintenance window)
+After=mongod.service
+Requires=mongod.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/elitehr/current
+ExecStart=/opt/elitehr/current/.venv/bin/python -m deploy.oracle.backup
+UMask=0077
+TimeoutStartSec=4000

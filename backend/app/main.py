@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pymongo.errors import ConnectionFailure
 
 from .api.health import router as health_router
 from .api.migration import router as migration_router
@@ -17,12 +19,21 @@ from .api.auth import router as auth_router
 from .api.users import router as users_router
 from .api.hiring import router as hiring_router
 from .api.resumes import router as resumes_router
+from .api.resume_intake import router as resume_intake_router
 from .api.assessments import router as assessments_router
 from .api.diagnostics import router as diagnostics_router
+from .api.recruitment import router as recruitment_router
+from .api.talent import router as talent_router
+from .api.assessment_management import router as assessment_management_router
+from .api.candidate_management import router as candidate_management_router
+from .api.candidate_access import router as candidate_access_router
 from .config import settings, validate_settings
+from .security.assessment_management_admission import AssessmentBodyLimitMiddleware
 from .db.mongodb import ensure_indexes, get_database
 
 logger = logging.getLogger(__name__)
+from .security.google_logging import install as install_google_log_redaction
+install_google_log_redaction()
 
 APP_VERSION = "1.0.0"
 
@@ -62,7 +73,7 @@ async def lifespan(_app: FastAPI):
     if not (settings.openrouter_api_key or "").strip() or not (settings.openrouter_model or "").strip():
         logger.warning(
             "OPENROUTER_API_KEY/OPENROUTER_MODEL not set — "
-            "AI extraction will fall back to text-only."
+            "Resume AI scoring will use deterministic fallback; JD import is always local."
         )
     # Degraded boot: a bad/unreachable URI must not prevent the app (and
     # /api/health, which reports the mongo state) from serving.
@@ -90,12 +101,31 @@ async def lifespan(_app: FastAPI):
             from migrations.runner import run_migrations
 
             results = await run_migrations(db)
+            if settings.mongodb_database == 'primehire_admin_v2':
+                from migrations.assessment_management_v2 import upgrade as upgrade_assessments
+                await upgrade_assessments(db)
+                from migrations.candidate_management_v2 import upgrade as upgrade_candidates
+                await upgrade_candidates(db)
+                from migrations.reporting_v2 import upgrade as upgrade_reports
+                await upgrade_reports(db)
+            if settings.resume_module_v2_enabled:
+                from migrations.resume_intake_v2 import upgrade
+                await upgrade(db)
+                from migrations.resume_ats_range_v2 import upgrade as upgrade_ats_range
+                await upgrade_ats_range(db)
+            if settings.recruitment_portals_enabled:
+                from migrations.recruitment_v2 import upgrade as upgrade_recruitment
+                await upgrade_recruitment(db)
+                from migrations.talent_v2 import upgrade as upgrade_talent
+                await upgrade_talent(db)
             if results:
                 for r in results:
                     logger.info(
                         "Migration %s: %s", r["version"], r["status"]
                     )
         except Exception as exc:  # noqa: BLE001 — boot degraded, health reports it
+            if settings.resume_module_v2_enabled or settings.recruitment_portals_enabled:
+                raise RuntimeError("V2 database initialization failed; refusing an in-memory fallback.") from exc
             logger.warning("MongoDB unavailable at startup: %s", type(exc).__name__)
             if not settings.is_production:
                 logger.info("Local/dev mode: activating in-memory database so login and admin operate.")
@@ -120,24 +150,50 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+
+@app.exception_handler(ConnectionFailure)
+async def database_connection_unavailable(_request, error):
+    # Report availability honestly without exposing hosts, connection strings or
+    # treating a database outage as an incorrect password.
+    logger.warning('Database connection unavailable: %s', type(error).__name__)
+    return JSONResponse(status_code=503, headers={'Retry-After': '5'}, content={
+        'detail': 'The database is temporarily unavailable. Please try again shortly.'})
+
+
+from .security.resume_intake_admission import IntakeAdmissionMiddleware
+app.add_middleware(IntakeAdmissionMiddleware)
+
 if settings.extra_origins:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.extra_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Idempotency-Key"],
         max_age=86400,
     )
 
 app.include_router(health_router, prefix="/api")
 app.include_router(migration_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
+from .api.reporting import router as reporting_router
+app.include_router(reporting_router)
 app.include_router(directory_router, prefix="/api")
 app.include_router(candidates_router, prefix="/api")
 app.include_router(auth_router)
+from .api.google import router as google_router
+app.include_router(google_router)
 app.include_router(users_router)
 app.include_router(hiring_router)
+from .api.job_assessments import router as job_assessments_router
+app.include_router(job_assessments_router)
 app.include_router(resumes_router)
+app.include_router(resume_intake_router)
 app.include_router(assessments_router)
 app.include_router(diagnostics_router)
+app.include_router(recruitment_router)
+app.include_router(talent_router)
+app.include_router(assessment_management_router)
+app.include_router(candidate_management_router)
+app.include_router(candidate_access_router)
+app.add_middleware(AssessmentBodyLimitMiddleware)

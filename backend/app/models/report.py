@@ -27,6 +27,7 @@ def upstream_hash(raw: Any) -> str:
 def to_document(
     *,
     interview_id: str,
+    org_id: str | None = None,
     raw: Any,
     candidate_id: str | None = None,
     assessment_id: str | None = None,
@@ -42,6 +43,7 @@ def to_document(
     now = utcnow()
     return {
         "interviewId": interview_id,
+        "orgId": org_id,
         "candidateId": candidate_id,
         "assessmentId": assessment_id,
         "responseId": response_id,

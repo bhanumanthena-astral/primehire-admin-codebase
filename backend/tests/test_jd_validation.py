@@ -273,7 +273,7 @@ async def test_review_valid_dates(mock_db):
     payload = {**FULL, "assigneeText": "owner@test.com"}
     review = await validate_jd_extraction(payload, mock_db, "default")
     assert review.fieldErrors == []
-    assert review.values["closesAt"].startswith("2027-12-31")
+    assert review.values["closesAt"] == "2027-12-30T18:30:00+00:00"
 
 
 async def test_review_ambiguous_date_needs_review(mock_db):
@@ -389,39 +389,8 @@ async def test_malformed_dict_is_review_state(mock_db):
 
 # ---- Endpoint wiring ----
 
-async def test_endpoint_review_present_on_success(client, mock_db, monkeypatch):
-    _configured(monkeypatch)
-    calls: list = []
-    _install_fake(monkeypatch, [_ok({**FULL, "assigneeText": "owner@test.com"})], calls)
-    await mock_db["users"].insert_one({
-        "userId": uuid.uuid4().hex, "orgId": "default",
-        "email": "owner@test.com", "name": "Owner One",
-        "role": "hr", "isActive": True,
-        "createdAt": datetime.now(timezone.utc),
-    })
-    res = client.post("/api/jobs/parse-jd",
-                      files={"file": ("pm.docx", _docx(["Product Manager role", LONG_JD]))},
-                      data={"mode": "document"}, headers=_hr())
-    assert res.status_code == 200, res.text
-    body = res.json()
-    review = body["review"]
-    assert review["values"]["companyName"] == "Elite HR Technologies"
-    assert review["resolvedAssignee"]["email"] == "owner@test.com"
-    assert review["missingFields"] == []
-    assert review["fieldErrors"] == []
-    assert body["aiExtract"]["companyName"] == "Elite HR Technologies"
 
 
-def test_endpoint_review_none_without_llm(client, monkeypatch):
-    monkeypatch.setattr(settings, "openrouter_api_key", "")
-    monkeypatch.setattr(settings, "openrouter_model", "")
-    calls: list = []
-    _install_fake(monkeypatch, [_ok(FULL)], calls)
-    res = client.post("/api/jobs/parse-jd",
-                      files={"file": ("pm.docx", _docx(["Product Manager role"]))},
-                      data={"mode": "document"}, headers=_hr())
-    assert res.status_code == 200, res.text
-    assert res.json()["review"] is None and res.json()["aiExtract"] is None
 
 
 async def test_endpoint_no_persistence_or_user_creation(client, mock_db, monkeypatch):
@@ -447,35 +416,3 @@ def test_endpoint_unauthorized(client):
                       files={"file": ("pm.docx", _docx(["x"]))},
                       data={"mode": "document"}, headers=iv)
     assert res.status_code == 403
-
-
-async def test_endpoint_pm_jd_end_to_end(client, mock_db, monkeypatch):
-    _configured(monkeypatch)
-    calls: list = []
-
-    pm = {**FULL, "assigneeText": "pm-owner@test.com",
-          "missingFields": ["openedAt"],
-          "keywords": ["Product Management", "Product Strategy", "SaaS", "AI",
-                       "Generative AI", "Roadmap", "User Research",
-                       "Product Analytics", "Agile", "Scrum", "PRD", "JIRA",
-                       "SQL", "APIs", "UX", "Stakeholder Management"]}
-    _install_fake(monkeypatch, [_ok(pm)], calls)
-    await mock_db["users"].insert_one({
-        "userId": uuid.uuid4().hex, "orgId": "default",
-        "email": "pm-owner@test.com", "name": "PM Owner",
-        "role": "hr", "isActive": True,
-        "createdAt": datetime.now(timezone.utc),
-    })
-    res = client.post("/api/jobs/parse-jd",
-                      files={"file": ("pm.pdf.docx", _docx(
-                          ["Product Manager - SaaS & AI Products", LONG_JD]))},
-                      data={"mode": "document"}, headers=_hr())
-    assert res.status_code == 200, res.text
-    review = res.json()["review"]
-    assert review["values"]["jobRole"] == "Product Management"
-    assert review["values"]["minExperienceYears"] == 3.0
-    assert review["values"]["maxExperienceYears"] == 6.0
-    assert review["values"]["positionsTotal"] == 2
-    assert "Stakeholder Management" in review["values"]["keywords"]
-    assert review["resolvedAssignee"]["email"] == "pm-owner@test.com"
-    assert "openedAt" not in review["missingFields"]  # optional

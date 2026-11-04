@@ -76,6 +76,7 @@ async def create_user(
         "role": payload.role.value,
         "orgId": org_id,
         "isActive": True,
+        "jobAccess": payload.jobAccess,
     }
 
     if payload.password:
@@ -103,8 +104,30 @@ async def create_user(
 
     return {
         "user": to_public_user(user),
-        "inviteUrl": f"/accept-invite?token={invite_token}",
+        "inviteUrl": f"/accept-invite#token={invite_token}",
     }
+
+
+@router.post("/{user_id}/invite")
+async def reissue_invite(user_id: str, current_user: CurrentUser = Depends(require_permission("users.manage")), db: Any = Depends(get_db)):
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    user = await UserRepository(db).get_by_id(user_id, current_user.org_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("role") in {"admin", "super_admin"} and "roles.assign_admin" not in current_user.permissions:
+        raise HTTPException(status_code=403, detail="Forbidden: requires 'roles.assign_admin' to invite administrator users")
+    if not user.get("isActive") or user.get("passwordHash"):
+        raise HTTPException(status_code=409, detail="Invitations require an active account awaiting password setup")
+    await db["invitations"].update_many({"userId":user_id, "orgId":current_user.org_id, "kind":"invite", "usedAt":None}, {"$set":{"usedAt":utcnow()}})
+    token = generate_opaque_token()
+    await InvitationRepository(db).create_invitation(user_id=user_id, org_id=current_user.org_id,
+        token_hash=hash_token(token), kind="invite", created_by=current_user.user_id,
+        expires_at=utcnow()+INVITE_TOKEN_LIFETIME)
+    from ..models.hiring import AuditLogRepository
+    await AuditLogRepository(db).log(org_id=current_user.org_id, actor_user_id=current_user.user_id,
+        action="user.invite_reissued",resource_type="user",resource_id=user_id,details={})
+    return {"inviteUrl":f"/accept-invite#token={token}"}
 
 
 @router.get("/directory", response_model=list[UserPublic])
@@ -121,7 +144,11 @@ async def list_user_directory(
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     repo = UserRepository(db)
-    docs = await repo.list_by_org(current_user.org_id, skip=0, limit=500)
+    if current_user.role not in {"super_admin", "admin"}:
+        own = await repo.get_by_id(current_user.user_id, current_user.org_id)
+        docs = [own] if own else []
+    else:
+        docs = await repo.list_by_org(current_user.org_id, skip=0, limit=500)
     return [UserPublic(**to_public_user(d)) for d in docs if d.get("isActive", True)]
 
 
@@ -163,6 +190,10 @@ async def update_user(
     updates: dict[str, Any] = {}
     if payload.name is not None:
         updates["name"] = payload.name
+    if payload.jobAccess is not None:
+        if target.get('role') in {'admin','super_admin'} and not current_user.is_super_admin:
+            raise HTTPException(status_code=403,detail='Only a super administrator can change administrator access')
+        updates['jobAccess'] = payload.jobAccess
     if payload.isActive is not None:
         updates["isActive"] = payload.isActive
     if payload.role is not None:
@@ -175,6 +206,11 @@ async def update_user(
         updates["role"] = payload.role.value
 
     updated = await repo.update(user_id, updates)
+    if 'jobAccess' in updates:
+        from ..models.hiring import AuditLogRepository
+        await AuditLogRepository(db).log(org_id=target['orgId'],actor_user_id=current_user.user_id,
+            action='user.job_access_changed',resource_type='user',resource_id=user_id,
+            details={'from':target.get('jobAccess'),'to':updates['jobAccess']})
     return UserPublic(**to_public_user(updated))
 
 

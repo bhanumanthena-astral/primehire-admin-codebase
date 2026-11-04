@@ -1,5 +1,10 @@
 # Jobs Module — PRD Traceability
 
+> Current specification and completion map: [JOBS_SPEC.md](JOBS_SPEC.md) and
+> [JOBS_COMPLETION.md](JOBS_COMPLETION.md). The table below is historical;
+> the completion report includes local JD import, recruiter/viewer roles,
+> explicit publishing/hold actions, UTC normalization, timestamp CAS and retries.
+
 Authoritative status of every Jobs / Job Requisition Management requirement
 against the approved spec. Format: `Requirement → implementation → test`.
 Status legend: ✓ implemented/verified, ⚠ partial, ✗ gap, N/A.
@@ -24,7 +29,7 @@ Status legend: ✓ implemented/verified, ⚠ partial, ✗ gap, N/A.
 | 16 | RBAC — 5 roles × all Jobs endpoints; interviewers denied; cross-org isolation | `require_permission` on every route, matrix tests | test_authz_matrix.py | ✓ |
 | 17 | Edge cases — duplicates advisory, unsaved changes, idempotency keys, stale edit guard (server-authoritative response), JD upload failures | `CreateJobForm`, `hiringApi` error classification | test_job_edge_cases, createJob vitest | ✓ |
 | 18 | Error classification — network vs 401/403/404/409/422/500 | `hiringApi.hiringFetch` + `apiErrorMessage` | `hiringApi.test.ts` | ✓ |
-| 19 | Concurrent editing — server response authoritative (no silent overwrite of newer local state); no optimistic-locking protocol by design | `JobRepository.update`, JobsPage resync on server error | test_job_edge_cases | ✓ |
+| 19 | Concurrent editing — expectedUpdatedAt and atomic compare-and-set; conflicting edits preserve the form | `JobRepository.update`, `update_job`, EditJobModal | test_jobs_completion | ✓ |
 | 20 | Org data isolation — all queries orgId-scoped from token | every repo query | test_org_isolation | ✓ |
 | 21 | JD upload/parse — template, sanitization, magic-byte validation, 50–10,000 on plain text | `services/jd_template.py`, `services/jd_validate.py`, `jd_document.py` | test_jd_template, test_jd_validation, test_jd_document | ✓ |
 | 22 | Rules endpoint for frontend parity | `GET /api/jobs/rules` → `rules.public_rules()` | test_job_rules | ✓ |
@@ -49,4 +54,5 @@ Outstanding (not Jobs-PRD scope regressions):
 - L1 LLM 429 resilience (LLM Tier-1 hardening tests showed flakiness under
   full-suite ordering).
 - Org-level validation overrides (currently constants, not per-org settings).
-- Org timezone display conversion for `closesAt` on the UI.
+- Organization timezone display and date filters are completed by jobTimezone.ts;
+  legacy date conversion is migration 004. See the completion report.

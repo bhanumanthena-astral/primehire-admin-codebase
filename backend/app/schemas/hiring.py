@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from html import escape as html_escape
-from typing import Any
+from html import unescape
+import uuid
+from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic import StrictInt
 
@@ -95,7 +97,7 @@ def jd_text_of(html: str) -> str:
 
     text = re.sub(r"(?is)<(script|style).*?</\1>", " ", html)
     text = re.sub(r"(?s)<[^>]*>", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", unescape(text)).strip()
     return text
 
 
@@ -117,7 +119,7 @@ class WeightedSkill(BaseModel):
 class JobCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    jobKey: str = Field(..., min_length=2, max_length=100)
+    jobKey: str = Field(default_factory=lambda: "JOB-" + uuid.uuid4().hex, min_length=2, max_length=100)
     title: str = Field(..., min_length=2, max_length=255)
     # PRD §1: mandatory requisition fields.
     companyName: str = Field(..., min_length=1, max_length=255)
@@ -130,6 +132,7 @@ class JobCreate(BaseModel):
     openedAt: datetime | None = None
     closesAt: datetime
     assigneeUserId: str = Field(..., min_length=1, max_length=100)
+    assigneeAccess: list[Literal['view','edit','upload']] | None = None
     # Optional: supplied by the JD template (§10) or a later edit.
     workMode: WorkMode | None = None
     location: str | None = Field(default=None, max_length=255)
@@ -157,8 +160,10 @@ class JobCreate(BaseModel):
         validate_experience_years(self.maxExperienceYears)
         if self.maxExperienceYears < self.minExperienceYears:
             raise ValueError("maxExperienceYears must be >= minExperienceYears")
-        if self.openedAt is not None and self.closesAt <= self.openedAt:
+        if self.openedAt is not None and (self.closesAt.tzinfo is None) == (self.openedAt.tzinfo is None) and self.closesAt <= self.openedAt:
             raise ValueError("closesAt must be greater than openedAt")
+        from ..services.jd_validate import sanitize_jd_html
+        self.jdHtml = sanitize_jd_html(self.jdHtml)
         plain = jd_text_of(self.jdHtml)
         validate_jd_text(plain)
         return self
@@ -174,11 +179,13 @@ class JobUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    expectedUpdatedAt: datetime | None = None
     title: str | None = Field(default=None, min_length=2, max_length=255)
     description: str | None = None
     jdHtml: str | None = None
     keywords: list[str] | None = None
     assigneeUserId: str | None = Field(default=None, min_length=1, max_length=100)
+    assigneeAccess: list[Literal['view','edit','upload']] | None = None
     closesAt: datetime | None = None
     positionsTotal: StrictInt | None = Field(default=None, ge=1, le=1000)
     workMode: WorkMode | None = None
@@ -209,6 +216,8 @@ class JobUpdate(BaseModel):
         if self.positionsTotal is not None:
             validate_positions(self.positionsTotal)
         if self.jdHtml is not None:
+            from ..services.jd_validate import sanitize_jd_html
+            self.jdHtml = sanitize_jd_html(self.jdHtml)
             validate_jd_text(jd_text_of(self.jdHtml))
         return self
 
@@ -217,6 +226,8 @@ class JobPublic(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     jobId: str
+    datesVersion: str | None = None
+    assigneeName: str | None = None
     orgId: str
     jobKey: str
     companyName: str = ""
@@ -225,15 +236,18 @@ class JobPublic(BaseModel):
     department: str = ""
     minExperienceYears: float | None = None
     maxExperienceYears: float | None = None
+    pipeline: dict[str, int] | None = None
     positionsTotal: int = 1
     positionsFilled: int = 0
     positionsRemaining: int = 1
+    acceptingApplications: bool = False
     keywords: list[str] = Field(default_factory=list)
     workMode: WorkMode | None = None
     location: str | None = None
     openedAt: datetime | None = None
     closesAt: datetime | None = None
     assigneeUserId: str | None = None
+    assigneeAccess: list[Literal['view','edit','upload']] | None = None
     assigneeEmail: str | None = None
     jdHtml: str = ""
     jdText: str = ""
@@ -259,7 +273,11 @@ class JobPublic(BaseModel):
             total = data.get("positionsTotal", 1) or 0
             filled = data.get("positionsFilled", 0) or 0
             data = dict(data)
+            data.pop("requestKey", None)
+            data.pop("requestPayloadHash", None)
             data["positionsRemaining"] = max(0, total - filled)
+            from ..services.job_intake import intake_error
+            data["acceptingApplications"] = intake_error(data) is None
             if not data.get("jdText") and data.get("jdHtml"):
                 data["jdText"] = jd_text_of(str(data["jdHtml"]))
             elif not data.get("jdText") and data.get("description"):
@@ -303,6 +321,11 @@ class JobDuplicateOut(BaseModel):
     count: int = 0
 
 
+class JobLifecycleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: str = Field(pattern="^(OPEN|ON_HOLD)$")
+
+
 class JobAssignIn(BaseModel):
     """Reassign by email (PRD §21): resolved + active-checked server-side."""
 
@@ -319,6 +342,7 @@ class JobDetailPublic(BaseModel):
     job: JobPublic
     applications: list[Any] = Field(default_factory=list)
     counts: dict[str, int] = Field(default_factory=dict)
+    applicationPage: dict[str, int] = Field(default_factory=dict)
 
 
 class JDParseOut(BaseModel):

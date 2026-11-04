@@ -11,6 +11,10 @@
 
 ## 1. How to work in this repo
 
+Frontend deployment update (2026-10-26): UI paths below are historical relative
+paths inside `frontend/` now. Use its independent package/lockfile and Pages
+gateway. Backend remains in `backend/`; root commands are compatibility wrappers.
+
 ### 1.1 Folder conventions (do not move files to comply; follow for new code)
 
 ```text

@@ -18,6 +18,7 @@ import io
 import logging
 import re
 from datetime import datetime, timezone
+from html import escape
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ MANDATORY_LABELS = frozenset({
     "Closes At",
     "Assignee",
     "Job Description",
+    "Work Mode",
 })
 
 INVALID_TEMPLATE_MESSAGE = (
@@ -173,6 +175,8 @@ def parse_template_text(text: str) -> tuple[dict[str, str], list[str]]:
                 if last is not None:
                     found[last].append(line)
                 continue
+            if canonical in seen:
+                return {}, [f"Duplicate label: {canonical}"]
             seen.add(canonical)
             if canonical == "Job Description":
                 in_jd = True
@@ -281,6 +285,17 @@ async def map_template_values(
         if (values.get("Opened At") or "").strip() else None
     closes = _parse_date(values.get("Closes At", ""), "closesAt", errors) \
         if (values.get("Closes At") or "").strip() else None
+    from .job_timezone import org_timezone, local_to_utc
+    zone = await org_timezone(db, org_id)
+    # Existing date parser marks unzoned inputs UTC; preserve aware inputs,
+    # reinterpret only original strings with no offset as local org time.
+    def adjust(moment, raw):
+        if moment is None:
+            return None
+        explicit = bool(re.search(r"(?:Z|[+-]\d{2}:?\d{2})$", raw.strip()))
+        return moment if explicit else local_to_utc(moment.replace(tzinfo=None), zone)
+    opened = adjust(opened, values.get("Opened At", ""))
+    closes = adjust(closes, values.get("Closes At", ""))
     mapped["openedAt"] = opened or datetime.now(timezone.utc)
     if closes is not None:
         mapped["closesAt"] = closes
@@ -294,6 +309,10 @@ async def map_template_values(
         else:
             mapped["workMode"] = mode
 
+    if mapped.get("workMode") in {"ONSITE", "HYBRID"} and not mapped.get("location"):
+        errors.append({"field": "location", "message": "Location is required for Hybrid or On-site work"})
+    if not work_raw:
+        errors.append({"field": "workMode", "message": "Work Mode is required in the JD template"})
     assignee_raw = (values.get("Assignee") or "").strip()
     assignee_uid: str | None = None
     if assignee_raw:
@@ -315,8 +334,8 @@ async def map_template_values(
 
     jd_raw = (values.get("Job Description") or "").strip()
     if jd_raw:
-        paras = "".join(f"<p>{p.strip()}</p>" for p in jd_raw.splitlines() if p.strip())
-        mapped["jdHtml"] = paras or f"<p>{jd_raw}</p>"
+        paras = "".join(f"<p>{escape(p.strip())}</p>" for p in jd_raw.splitlines() if p.strip())
+        mapped["jdHtml"] = paras or f"<p>{escape(jd_raw)}</p>"
 
     # Mandatory presence AND value validation share one truth: JobCreate
     # requires every PRD-mandatory field, so construction below reports each
