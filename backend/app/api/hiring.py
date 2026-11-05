@@ -864,7 +864,7 @@ async def reopen_job(
     current_user: CurrentUser = Depends(_JOB_ADMIN),
     db: Any = Depends(get_db),
 ) -> JobPublic:
-    """PRD §26: reopening a CLOSED job requires a valid FUTURE closing date."""
+    """Reopen CLOSED jobs; Super Admin may also restore ARCHIVED jobs."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
     closes_at = payload.closesAt
@@ -878,23 +878,32 @@ async def reopen_job(
     existing = await repo.get_by_id(job_id, current_user.org_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Job not found")
-    if _lifecycle_of(existing) != "CLOSED":
+    lifecycle = _lifecycle_of(existing)
+    if lifecycle == "ARCHIVED" and current_user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="Only Super Admin can restore an archived job")
+    if lifecycle not in {"CLOSED", "ARCHIVED"}:
         raise HTTPException(
-            status_code=409, detail="Only CLOSED jobs can be reopened"
+            status_code=409, detail="Only closed or archived jobs can be reopened"
         )
+    changes = {"lifecycleStatus": "OPEN", "closesAt": closes_at, "closedAt": None}
+    if lifecycle == "ARCHIVED":
+        changes["archivedAt"] = None
     updated = await repo.update(
         job_id,
-        {"lifecycleStatus": "OPEN", "closesAt": closes_at, "closedAt": None},
+        changes,
         current_user.org_id,
+        expected_updated_at=existing.get("updatedAt"),
     )
+    if updated is None:
+        raise HTTPException(status_code=409, detail="Job changed; reload and try again")
     await AuditLogRepository(db).log(
         org_id=current_user.org_id,
         actor_user_id=current_user.user_id,
-        action="job.reopen",
+        action="job.restore" if lifecycle == "ARCHIVED" else "job.reopen",
         resource_type="job",
         resource_id=job_id,
         # Slice 10: the new closing date is part of the audited new value.
-        details={"from": "CLOSED", "to": "OPEN",
+        details={"from": lifecycle, "to": "OPEN",
                  "closesAt": closes_at.isoformat()},
         ip_address=request.client.host if request.client else "",
     )

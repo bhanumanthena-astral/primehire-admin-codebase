@@ -160,5 +160,5 @@ async def get_capacity(current_user: CurrentUser = Depends(require_permission("a
         raise HTTPException(403, 'Only Super Admin can view deployment capacity.')
     if db is None:
         raise HTTPException(503, 'Database unavailable')
-    return {'enabled': settings.free_tier_guard_enabled,
+    return {'enabled': settings.free_tier_guard_enabled or settings.resource_guard_enabled,
         'capacity': await db['deployment_health'].find_one({'_id': 'local-capacity'}, {'_id': 0})}

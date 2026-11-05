@@ -50,6 +50,14 @@ remain the next module.
 
 ## Data handling
 
+Super Admin can restore an archived job by choosing Open in its status control
+or Restore job in its workspace. A future closing date is required, and the
+API clears archival/closure timestamps with an optimistic concurrency check.
+The `job.restore` audit event records the previous state and new closing date.
+Regular admins and staff cannot restore archived jobs; existing closed-job
+reopening permissions remain unchanged. Candidates and interview history are
+preserved. No job is restored automatically by the code change.
+
 Only V2 is activated with these changes, through `scripts/run_v2_backend.py`
 and `primehire_admin_v2`. The V1 server/database is not restarted or written.
 New optional fields are `users.jobAccess` and `jobs.assigneeAccess`; existing
@@ -59,6 +67,15 @@ index changes. Permissions changes are audited. No existing job status, user
 access setting or assignment was changed automatically during development.
 
 ## Verification
+
+November 5, 2026 restore/local-development update: 1,084 focused backend and
+authorization checks passed, including four restore regressions; those four
+also passed against real PostgreSQL in disposable schemas. All 312 frontend
+tests passed, along with TypeScript/lint and the production build. A real
+localhost browser restored a temporary archived job, verified the persisted
+OPEN state and audit event, and removed the temporary job. The existing Backend
+Developer record was unchanged. The repeatable local launcher and connection
+check confirmed the test database is reachable and production access is denied.
 
 - Full backend regression: 853 passed; 83.21% coverage.
 - Final focused status/access/assignee checks: 465 passed.

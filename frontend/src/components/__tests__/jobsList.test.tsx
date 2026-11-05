@@ -2,7 +2,7 @@ import {chooseSelect} from '../../test-select';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import JobsPage from '../JobsPage';
-import { fetchJobsPage, fetchApplicationCounts, fetchJobDetail, fetchJobActivity, closeJob } from '../../lib/hiringApi';
+import { fetchJobsPage, fetchApplicationCounts, fetchJobDetail, fetchJobActivity, closeJob, reopenJob } from '../../lib/hiringApi';
 import { useAuth } from '../../lib/authContext';
 
 vi.mock('../../lib/hiringApi', () => ({
@@ -120,6 +120,27 @@ describe('Jobs lifecycle sync (Slice 7)', () => {
     await screen.findByText('BE-1');
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Change status for Backend Engineer')).toBeInTheDocument();
+  });
+
+  it('lets Super Admin restore an archived job through the future-date dialog', async () => {
+    vi.mocked(useAuth).mockReturnValue({user:{role:'super_admin'}} as ReturnType<typeof useAuth>);
+    vi.mocked(fetchJobsPage).mockResolvedValue({items:[{...JOB,lifecycleStatus:'ARCHIVED'}],total:1});
+    vi.mocked(reopenJob).mockResolvedValue(JOB as never);
+    render(<JobsPage/>);
+    const control=await screen.findByLabelText('Change status for Backend Engineer');
+    expect(control).toBeEnabled();
+    await chooseSelect(control,'OPEN');
+    fireEvent.click(screen.getByRole('button',{name:'Confirm status change'}));
+    expect(screen.getByRole('dialog',{name:'Restore archived job · BE-1'})).toBeVisible();
+    fireEvent.change(screen.getByLabelText('New closing date'),{target:{value:'2030-01-01T10:00'}});
+    fireEvent.click(screen.getByRole('button',{name:'Restore job'}));
+    await waitFor(()=>expect(reopenJob).toHaveBeenCalledWith('job-1',expect.any(String)));
+  });
+
+  it('keeps archived jobs read-only for a regular admin', async () => {
+    vi.mocked(fetchJobsPage).mockResolvedValue({items:[{...JOB,lifecycleStatus:'ARCHIVED'}],total:1});
+    render(<JobsPage/>);
+    expect(await screen.findByLabelText('Change status for Backend Engineer')).toBeDisabled();
   });
 
   it('syncs list after a details close (details -> list)', async () => {

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
+    "dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_e2e_local.ps1",
     "build": "npm run build:frontend && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "node scripts/clean_generated.mjs",

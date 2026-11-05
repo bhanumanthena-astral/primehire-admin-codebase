@@ -294,7 +294,7 @@ class JobCloseIn(BaseModel):
 
 
 class JobReopenIn(BaseModel):
-    """Reopen requires a valid FUTURE closing date (PRD §26)."""
+    """Reopen/restore requires a FUTURE closing date; archived restore is Super Admin-only."""
 
     model_config = ConfigDict(extra="forbid")
 

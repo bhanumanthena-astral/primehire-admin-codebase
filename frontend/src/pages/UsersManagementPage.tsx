@@ -9,6 +9,8 @@ import {JobAccess,defaultJobAccess,isJobAdmin} from '../lib/jobAccess';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/authContext';
 import { authFetch } from '../lib/authFetch';
+import { teamInvitationUrl } from '../lib/teamInvitation';
+import {StaticTeamAvatar,avatarRole,teamRoleLabel} from '../components/StaticTeamAvatar';
 import { User, Role } from '../lib/authTypes';
 import {
   Users,
@@ -93,7 +95,7 @@ export const UsersManagementPage: React.FC = () => {
       }
 
       const data = await res.json();
-      const fullInviteUrl = `${window.location.origin}${data.inviteUrl}`;
+      const fullInviteUrl = teamInvitationUrl(data.inviteUrl);
       setInviteUrl(fullInviteUrl);
       fetchUsers();
     } catch (err: any) {
@@ -126,7 +128,7 @@ export const UsersManagementPage: React.FC = () => {
       if (!res.ok) throw new Error(data.detail || 'Failed to create invitation');
       setInviteEmail(target.email);
       setInviteName(target.name);
-      setInviteUrl(`${window.location.origin}${data.inviteUrl}`);
+      setInviteUrl(teamInvitationUrl(data.inviteUrl));
       setCopied(false);
       setShowInviteModal(true);
     } catch (err: any) { setError(err.message); }
@@ -240,13 +242,13 @@ export const UsersManagementPage: React.FC = () => {
                 {users.map((u) => (
                   <TableRow key={u.userId} className="hover:bg-background/50 dark:hover:bg-muted/50 transition-colors">
                     <TableCell className="px-6 py-4">
-                      <div className="font-medium text-foreground dark:text-white">{u.name}</div>
-                      <div className="text-xs text-muted-foreground dark:text-muted-foreground">{u.email}</div>
+                      <div className="flex items-center gap-3"><StaticTeamAvatar accountId={u.userId} role={avatarRole(u.role)} portrait className="team-member-picture"/><div><div className="font-medium text-foreground dark:text-white">{u.name}</div>
+                      <div className="text-xs text-muted-foreground dark:text-muted-foreground">{u.email}</div></div></div>
                     </TableCell>
                     <TableCell className="px-6 py-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted dark:bg-card text-foreground dark:text-muted-foreground capitalize">
                         <Shield className="h-3 w-3 text-warning" />
-                        {u.role.replace('_', ' ')}
+                        {teamRoleLabel(u.role)}
                       </span>
                     </TableCell>
                     <TableCell className="px-6 py-4">
@@ -356,8 +358,8 @@ export const UsersManagementPage: React.FC = () => {
                   >
                     <option value="hr">HR</option>
                     <option value="recruiter">Recruiter</option><option value="viewer">Read-only User</option>
-                    <option value="technical_interviewer">Technical Interviewer</option>
-                    <option value="managerial_interviewer">Managerial Interviewer</option>
+                    <option value="technical_interviewer">Developer (Technical Interviewer)</option>
+                    <option value="managerial_interviewer">Manager (Managerial Interviewer)</option>
                     {currentUser?.role === 'super_admin' && <option value="admin">Admin</option>}
                     {currentUser?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
                   </AppSelect>

@@ -41,10 +41,32 @@ def set_path(document, path, value, *, unset=False):
     parts = path.split(".")
     current = document
     for key in parts[:-1]:
-        child = current.get(key)
-        if not isinstance(child, dict):
-            child = current[key] = {}
+        if isinstance(current, list):
+            if not key.isdigit():
+                raise ValueError("Array update paths require a numeric index")
+            index = int(key)
+            if index >= len(current):
+                if unset:
+                    return
+                current.extend([None] * (index + 1 - len(current)))
+            child = current[index]
+            if not isinstance(child, (dict, list)):
+                child = current[index] = {}
+        else:
+            child = current.get(key)
+            if not isinstance(child, (dict, list)):
+                child = current[key] = {}
         current = child
+    if isinstance(current, list):
+        if not parts[-1].isdigit():
+            raise ValueError("Array update paths require a numeric index")
+        index = int(parts[-1])
+        if index >= len(current):
+            if unset:
+                return
+            current.extend([None] * (index + 1 - len(current)))
+        current[index] = None if unset else copy.deepcopy(value)
+        return
     if unset:
         current.pop(parts[-1], None)
     else:

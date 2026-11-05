@@ -1,5 +1,20 @@
 # DECISIONS.md — Phase 1 Plan
 
+## 2026-11-05: localhost recovery and Super Admin archived-job restore
+
+The user requests reliable localhost development against E2E and reports that
+Super Admin cannot change the archived Backend Developer job. Archived status
+previously disabled every status control and the API accepted only CLOSED
+reopening. Super Admin may now explicitly restore ARCHIVED to OPEN through the
+existing reopen endpoint, requiring a future closing date, optimistic write
+check and `job.restore` audit event. Regular admins/staff keep their existing
+restrictions. No existing job is automatically restored. This is an authorized
+exception to the earlier terminal archive behavior, with no schema migration.
+
+Local startup recovers the private SSH tunnel and validates the isolated test
+database before starting local API/frontend/workers. No public database port,
+wildcard CORS, production credential sharing or DNS change is introduced.
+
 ## 2026-11-04: authorized E2E PostgreSQL migration
 
 The user explicitly replaces Oracle with their dedicated Ubuntu 24.04 x86_64

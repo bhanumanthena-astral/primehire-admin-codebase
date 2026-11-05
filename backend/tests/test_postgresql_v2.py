@@ -43,6 +43,34 @@ def test_updates_do_not_mutate_inputs_or_replace_identity():
     with pytest.raises(NotImplementedError): apply_update(row, {'$unsupported': {'x': 1}})
 
 
+def test_dotted_array_updates_preserve_questions_and_positions():
+    original = {'_id': 'q', 'questions': [{'question': 'First', 'asked': False}, {'question': 'Second'}]}
+    changed = apply_update(original, {'$set': {'questions.0.asked': True, 'questions.1.answer': 'Saved'}})
+    assert changed['questions'] == [{'question': 'First', 'asked': True}, {'question': 'Second', 'answer': 'Saved'}]
+    assert original['questions'][0]['asked'] is False
+    removed = apply_update(changed, {'$unset': {'questions.0': ''}})
+    assert removed['questions'] == [None, {'question': 'Second', 'answer': 'Saved'}]
+
+
+async def test_sql_dotted_array_update_preserves_other_questions(pg):
+    await pg.question_sets.insert_one({'_id': 'q', 'questions': [{'asked': False}, {'question': 'Keep'}]})
+    await pg.question_sets.update_one({'_id': 'q'}, {'$set': {'questions.0.asked': True}})
+    saved = await pg.question_sets.find_one({'_id': 'q'})
+    assert saved['questions'] == [{'asked': True}, {'question': 'Keep'}]
+
+
+async def test_sql_transaction_rolls_back_and_pool_remains_usable(pg):
+    from psycopg import sql
+    await pg.rollback_probe.insert_one({'_id': 'stable', 'value': 'original'})
+    table = sql.SQL('{}.{}').format(sql.Identifier(pg.schema), sql.Identifier('rollback_probe'))
+    with pytest.raises(RuntimeError, match='synthetic rollback'):
+        with pg.pool.connection() as connection:
+            connection.execute(sql.SQL("UPDATE {} SET doc=jsonb_set(doc, '{{value}}', '\"changed\"'::jsonb)").format(table))
+            raise RuntimeError('synthetic rollback')
+    assert (await pg.rollback_probe.find_one({'_id': 'stable'}))['value'] == 'original'
+    assert (await pg.rollback_probe.update_one({'_id': 'stable'}, {'$set': {'value': 'committed'}})).modified_count == 1
+
+
 @pytest.fixture
 def pg(db):
     if not os.environ.get('ELITEHR_TEST_POSTGRES_ENV'):

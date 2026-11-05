@@ -32,7 +32,7 @@ def synchronous_fixture_loop(request):
 def db():
     import os
     if os.environ.get('ELITEHR_TEST_POSTGRES_ENV'):
-        from postgres_support import validation_database, dispose
+        from tests.postgres_support import validation_database, dispose
         database = validation_database()
         try:
             yield database
@@ -56,7 +56,7 @@ def postgres_repository_compatibility(request, monkeypatch):
         return
     if not os.environ.get('ELITEHR_TEST_POSTGRES_ENV'):
         raise RuntimeError('PostgreSQL workflow replay needs the validation environment')
-    from postgres_support import validation_database, dispose
+    from tests.postgres_support import validation_database, dispose
     databases = []
     class Client:
         def __init__(self, *args, **kwargs): self.databases = {}

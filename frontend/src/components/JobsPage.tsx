@@ -556,7 +556,7 @@ export default function JobsPage({onUpload,renderAssessments}: {onUpload?: (job:
               onView={()=>{setSelectedJobId(j.jobId);setMode('details');}}
               onUpload={()=>{setSelectedJobId(j.jobId);setMode('details');}} onEdit={()=>setEditing(j)} onAssign={()=>setAssigning(j)} onAccess={()=>setAccessJob(j)}
               onStatus={status=>{
-                if(status==='OPEN'&&j.lifecycleStatus==='CLOSED') {setReopening(j);return;}
+                if(status==='OPEN'&&['CLOSED','ARCHIVED'].includes(j.lifecycleStatus||'')) {setReopening(j);return;}
                 void runAction(j.jobId,()=>status==='CLOSED'?closeJob(j.jobId):status==='ARCHIVED'?archiveJob(j.jobId):setJobLifecycle(j.jobId,status as "OPEN"|"ON_HOLD"));
               }}/>) }
           </div>
@@ -849,11 +849,12 @@ export function ReopenModal({
   onSaved: (j: Job) => void;
   onError: (msg: string | null) => void;
 }) {
+  const restoring = job.lifecycleStatus === 'ARCHIVED';
   const [closesAt, setClosesAt] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <ModalShell title={`Reopen · ${job.jobKey}`} onClose={onClose} dismissible={!saving}>
+    <ModalShell title={`${restoring?'Restore archived job':'Reopen'} · ${job.jobKey}`} onClose={onClose} dismissible={!saving}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -875,7 +876,7 @@ export function ReopenModal({
         className="space-y-3"
       >
         <p className="text-[0.78125rem] text-muted-foreground">
-          Reopening requires a valid future closing date. The job returns to OPEN.
+          {restoring?'Restoring an archived job requires a valid future closing date. Its candidates and history are preserved.':'Reopening requires a valid future closing date.'} The job returns to OPEN.
         </p>
         <label className="flex flex-col gap-1 text-[0.75rem] font-bold">
           New closing date
@@ -884,7 +885,7 @@ export function ReopenModal({
         {error && <p role="alert" className="text-[0.78125rem] font-medium text-destructive">{error}</p>}
         <div className="flex justify-end gap-2">
           <PAButton variant="secondary" type="button" onClick={onClose} disabled={saving}>Cancel</PAButton>
-          <PAButton type="submit" disabled={saving}>{saving ? 'Reopening…' : 'Reopen job'}</PAButton>
+          <PAButton type="submit" disabled={saving}>{saving ? restoring?'Restoring…':'Reopening…' : restoring?'Restore job':'Reopen job'}</PAButton>
         </div>
       </form>
     </ModalShell>

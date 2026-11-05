@@ -493,6 +493,15 @@ async def reset_password_request(
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
+    if settings.is_production:
+        # The legacy local flow returns its token to simulate email delivery.
+        # Until a verified reset-mail flow exists, public callers must never
+        # receive a credential capable of changing another user's password.
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset is temporarily unavailable. Contact your administrator.",
+        )
+
     user_repo = UserRepository(db)
     inv_repo = InvitationRepository(db)
     user = await user_repo.get_by_email(payload.email, org_id=payload.orgId)

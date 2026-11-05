@@ -15,7 +15,7 @@ _cpu_sample = None
 
 def capacity_snapshot(*, required_bytes=0, config=None):
     config = config or settings
-    if not config.free_tier_guard_enabled:
+    if not (config.free_tier_guard_enabled or getattr(config, 'resource_guard_enabled', False)):
         return {"enabled": False, "state": "disabled", "reasons": []}
     global _cpu_sample
     reasons = []
@@ -32,6 +32,10 @@ def capacity_snapshot(*, required_bytes=0, config=None):
         report['plannedAllocation'] = {'ocpus': 1, 'memoryGb': 8, 'volumeGb': 100,
             'cpuAllowancePercent': 50, 'memoryAllowancePercent': 66.67, 'volumeAllowancePercent': 50,
             'source': 'Deployment plan; tenancy-wide OCI usage is not connected'}
+        if not config.free_tier_guard_enabled:
+            report.pop('gpu')
+            report.pop('plannedAllocation')
+            report['hostCpuCount'] = len(os.sched_getaffinity(0))
         memory = {}
         for line in Path('/proc/meminfo').read_text().splitlines():
             key, value = line.split(':', 1)

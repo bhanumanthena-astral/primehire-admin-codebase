@@ -56,7 +56,7 @@ class IntakeAdmissionMiddleware:
                     raise HTTPException(401, "Your account changed. Sign in again.")
                 if user.impersonating or "resumes.upload" not in user.permissions:
                     raise HTTPException(403, "Resume upload access is required.")
-                if settings.free_tier_guard_enabled:
+                if settings.free_tier_guard_enabled or settings.resource_guard_enabled:
                     from ..services.capacity_guard import require_capacity
                     require_capacity(required_bytes=cap)
                 for number in range(settings.resume_upload_concurrency):

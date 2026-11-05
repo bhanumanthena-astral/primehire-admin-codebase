@@ -28,7 +28,7 @@ export function JobCard({job,user,count,busy,onView,onUpload,onEdit,onAssign,onA
       <div className="flex items-center justify-between gap-2 text-xs"><span className="inline-flex min-w-0 items-center gap-1.5 text-muted-foreground"><Users size={14}/><span className="truncate" title={job.assigneeEmail||''}>{job.assigneeName||job.assigneeEmail||'Unassigned'}</span></span><span className="shrink-0 text-muted-foreground">{filled} filled</span></div>
       <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{width:`${Math.min(100,total?filled/total*100:0)}%`}}/></div>
       <p className="mt-2 flex items-center gap-1 text-[0.6875rem] text-muted-foreground"><CalendarDays size={12}/>Closes {jobDate(job.closesAt)}</p>
-      {admin&&<div className="mt-3"><JobStatusControl compact job={job} busy={busy} onChange={onStatus}/></div>}
+      {admin&&<div className="mt-3"><JobStatusControl compact job={job} busy={busy} canRestoreArchived={user?.role==='super_admin'} onChange={onStatus}/></div>}
     </div>
     <div className="border-t border-border bg-background/30 px-4 py-2.5">
       <div className="flex flex-wrap items-center gap-1.5">

@@ -12,6 +12,7 @@ DEPLOYMENT: the worker must be running for parsing/scoring to complete.
 from __future__ import annotations
 
 import asyncio
+from pymongo.errors import ConnectionFailure
 import logging
 import signal
 from typing import Any, Awaitable, Callable
@@ -150,7 +151,7 @@ HANDLERS: dict[str, Handler] = {
 
 async def run_once(db: Any, kinds: list[str] | None = None, *, job_id: str | None = None) -> dict[str, Any] | None:
     from ..config import settings
-    if settings.free_tier_guard_enabled and kinds and any(k.startswith('resume_intake_') for k in kinds):
+    if (settings.free_tier_guard_enabled or settings.resource_guard_enabled) and kinds and any(k.startswith('resume_intake_') for k in kinds):
         # One heavy intake operation across the import lane and Kafka consumer,
         # acquired BEFORE the job claim so a waiting job cannot lose its lease.
         loop = asyncio.get_running_loop()
@@ -214,7 +215,15 @@ async def run_forever(db: Any, poll_seconds: int = 5, kinds: list[str] | None = 
     last_sweep = 0.0
     last_auto_close = 0.0
     while not stop.is_set():
-        outcome = await run_once(db) if kinds is None else await run_once(db, kinds=kinds)
+        try:
+            outcome = await run_once(db) if kinds is None else await run_once(db, kinds=kinds)
+        except ConnectionFailure:
+            logger.warning("Worker database connection unavailable; retrying shortly.")
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=max(1, poll_seconds))
+            except asyncio.TimeoutError:
+                pass
+            continue
         if outcome is None:
             try:
                 await asyncio.wait_for(stop.wait(), timeout=poll_seconds)

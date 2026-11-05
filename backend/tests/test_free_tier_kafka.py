@@ -41,6 +41,20 @@ def test_guard_pauses_before_reserve_and_fails_closed(monkeypatch):
     assert capacity_guard.capacity_snapshot()['state'] == 'paused'
 
 
+def test_e2e_resource_guard_does_not_require_oracle_profile(monkeypatch):
+    resources(monkeypatch)
+    monkeypatch.setattr(settings, 'free_tier_guard_enabled', False)
+    monkeypatch.setattr(settings, 'resource_guard_enabled', True)
+    report = capacity_guard.require_capacity()
+    assert report['state'] == 'healthy'
+    assert 'plannedAllocation' not in report
+    resources(monkeypatch, available=2300)
+    monkeypatch.setattr(settings, 'free_tier_guard_enabled', False)
+    with pytest.raises(HTTPException) as error:
+        capacity_guard.require_capacity()
+    assert error.value.status_code == 503
+
+
 async def enqueue(db, index=0):
     return await BackgroundJobRepository(db).enqueue(org_id='org', kind='resume_intake_parse',
         entity_type='resume_intake_item', entity_key=str(index), payload={'itemId': str(index)})

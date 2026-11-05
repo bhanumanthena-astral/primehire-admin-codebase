@@ -42,7 +42,9 @@ import {AcceptInvitePage} from './pages/AcceptInvitePage';
 import { ImpersonationBanner } from './components/auth/ImpersonationBanner';
 import { LoginPage } from './pages/LoginPage';
 import {GoogleCompletePage} from './pages/GoogleCompletePage';
-import {GoogleCalendarConnection} from './components/auth/GoogleCalendarConnection';
+import {ProfileLink} from './components/ProfileLink';
+import {StaticTeamAvatar,avatarRole} from './components/StaticTeamAvatar';
+import {ProfilePage} from './pages/ProfilePage';
 import { UsersManagementPage } from './pages/UsersManagementPage';
 import {
   FileText,
@@ -425,13 +427,12 @@ function AdminDashboard() {
           );
         })}
       </nav>
+      <div className="px-3 pb-3"><ProfileLink fullWidth/></div>
 
       {/* user card */}
       <div className="apple-account border-t border-sidebar-border p-3">
         <div className="flex items-center gap-2.5 rounded-[12px] border border-border bg-card px-3 py-2.5 shadow-[var(--shadow-card)]">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-[0.6875rem] font-semibold text-primary-foreground">
-            {user?.name ? user.name.slice(0, 2).toUpperCase() : 'SU'}
-          </div>
+          <StaticTeamAvatar accountId={user?.userId} role={avatarRole(user?.role||'admin')} portrait className="workspace-account-picture"/>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[0.78125rem] font-bold text-foreground">{user?.name || 'Administrator'}</div>
             <div className="text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground capitalize">
@@ -506,11 +507,9 @@ function AdminDashboard() {
                 </Button>
               )}
             </div>
-            <GoogleCalendarConnection/><ModeToggle />
+            <ProfileLink/><ModeToggle />
             <div className="hidden items-center gap-2 md:flex" aria-label="Signed in user">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-[0.6875rem] font-semibold text-primary-foreground">
-                {user?.name ? user.name.slice(0, 2).toUpperCase() : 'SU'}
-              </div>
+              <StaticTeamAvatar accountId={user?.userId} role={avatarRole(user?.role||'admin')} portrait className="workspace-account-picture"/>
               <div className="leading-tight">
                 <div className="max-w-[120px] truncate text-[0.75rem] font-bold text-foreground">
                   {user?.name || 'Administrator'}
@@ -664,6 +663,8 @@ export default function App() {
         <Routes>
           <Route path="/assessment-access" element={<CandidateAssessmentAccess/>}/>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/profile" element={<PrivateRoute><ImpersonationBanner/><ProfilePage/></PrivateRoute>}/>
+          <Route path="/account/profile" element={<PrivateRoute><ImpersonationBanner/><ProfilePage/></PrivateRoute>}/>
           <Route path="/auth/google/complete" element={<GoogleCompletePage/>}/>
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
           <Route
@@ -699,7 +700,7 @@ function RoleWorkspace() {
   if(reviewer&&portalsEnabled===null)return <main className="flex min-h-screen items-center justify-center bg-background text-muted-foreground" role="status">Opening your workspace…</main>;
   if(user?.role==='hr'&&hrJobs)return <AdminDashboard/>;
   if (reviewer&&portalsEnabled&&user) return <RecruitmentWorkspace standalone onOpenJobs={user.role==='hr'&&hasJobAccess(user,'view')?()=>setHrJobs(true):undefined} />;
-  if(user&&['technical_interviewer','managerial_interviewer'].includes(user.role))return <main className="min-h-screen bg-background p-8"><h1 className="text-xl font-bold">Interviewer workspace</h1><p className="mt-4">Recruitment portals are not enabled on this backend.</p><Button className="mt-6" onClick={logout}>Sign out</Button></main>;
-  if (user && ['hr','recruiter','viewer'].includes(user.role) && !hasJobAccess(user,'view')) return <main className="min-h-screen flex items-center justify-center bg-background p-8"><section className="max-w-md rounded-2xl border border-border bg-card p-8"><h1 className="text-xl font-bold">Your account is ready</h1><p className="mt-3 text-sm text-muted-foreground">Your administrator has not granted Jobs access. Contact them to update your permissions.</p><Button variant="ghost" className="mt-6 underline" onClick={logout}>Sign out</Button></section></main>;
+  if(user&&['technical_interviewer','managerial_interviewer'].includes(user.role))return <main className="min-h-screen bg-background p-8"><h1 className="text-xl font-bold">Interviewer workspace</h1><p className="mt-4">Recruitment portals are not enabled on this backend.</p><div className="mt-5"><ProfileLink/></div><Button className="mt-6" onClick={logout}>Sign out</Button></main>;
+  if (user && ['hr','recruiter','viewer'].includes(user.role) && !hasJobAccess(user,'view')) return <main className="min-h-screen flex items-center justify-center bg-background p-8"><section className="max-w-md rounded-2xl border border-border bg-card p-8"><h1 className="text-xl font-bold">Your account is ready</h1><p className="mt-3 text-sm text-muted-foreground">Your administrator has not granted Jobs access. Contact them to update your permissions.</p><div className="mt-5"><ProfileLink/></div><Button variant="ghost" className="mt-6 underline" onClick={logout}>Sign out</Button></section></main>;
   return <AdminDashboard />;
 }

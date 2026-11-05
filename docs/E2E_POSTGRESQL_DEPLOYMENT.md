@@ -91,6 +91,16 @@ were audited without known vulnerabilities; pypdf was updated to 6.21.4.
 
 ## Localhost first; public cutover explicitly deferred
 
+Local recovery: run `npm run dev:local` from the repository root. On first setup,
+provide `-- -PrivateKeyPath "C:\path\to\your-key.ppk"`; the ignored local launch
+profile remembers only that file path and the server address. The key is never
+copied. The helper recreates loopback-only PostgreSQL/scanner and private preview
+tunnels, starts missing local API/frontend/worker processes and waits for readiness.
+Use `npm run dev:local -- -RestartApi` after backend code/configuration changes.
+It refuses unrelated processes occupying its ports and does not alter public
+DNS, database roles or production data. Verify the actual connection with
+`backend/.venv-v2/Scripts/python.exe scripts/verify_e2e_connection.py`.
+
 The user selected `elitehr.vils.ai` for the future main address, then explicitly
 deferred changing its existing CNAME to Render. Do not replace its DNS or expose
 the E2E app publicly until the user resumes cutover. No public DNS, Render

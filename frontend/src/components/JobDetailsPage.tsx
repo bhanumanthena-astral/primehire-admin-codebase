@@ -387,6 +387,7 @@ export default function JobDetailsPage({
   const { job, applications, counts } = detail;
   const lifecycle = (job.lifecycleStatus || 'DRAFT').toUpperCase();
   const actions = {...jobActionsFor(lifecycle, isJobAdmin(user), counts.total ?? 0),canEdit:hasJobAccess(user,'edit',job)&&lifecycle!=='ARCHIVED'};
+  const canRestoreArchived = lifecycle==='ARCHIVED' && user?.role==='super_admin';
   const owner = resolveOwner(job, directory);
 
   return (
@@ -412,8 +413,8 @@ export default function JobDetailsPage({
           {acceptsResumes(job)&&hasJobAccess(user,'upload',job)&&<PAButton onClick={()=>onUpload?.(job)}>Upload resumes</PAButton>}
           {canManage && (
             <div className="flex flex-wrap gap-1.5">
-              {isJobAdmin(user)&&<JobStatusControl job={job} busy={busy} onChange={status=>{
-                if(status==='OPEN'&&lifecycle==='CLOSED'){setReopening(true);return;}
+              {isJobAdmin(user)&&<JobStatusControl job={job} busy={busy} canRestoreArchived={canRestoreArchived} onChange={status=>{
+                if(status==='OPEN'&&['CLOSED','ARCHIVED'].includes(lifecycle)){setReopening(true);return;}
                 void runAction(()=>status==='CLOSED'?closeJob(job.jobId):status==='ARCHIVED'?archiveJob(job.jobId):setJobLifecycle(job.jobId,status as "OPEN"|"ON_HOLD"));
               }}/>}
               {isJobAdmin(user)&&lifecycle!=='ARCHIVED'&&<PAButton variant="secondary" onClick={()=>setAccessOpen(true)}>Assignee access</PAButton>}
@@ -435,10 +436,10 @@ export default function JobDetailsPage({
                   title="Are you sure you want to close this job? New applications will no longer be accepted."
                   busy={busy} onConfirm={() => void runAction(() => closeJob(job.jobId))} />
               )}
-              {actions.canReopen && (
+              {(actions.canReopen || canRestoreArchived) && (
                 <Button variant="ghost" type="button" onClick={() => setReopening(true)}
                   className="cursor-pointer rounded-md border border-border bg-card px-2.5 py-1.5 text-[0.75rem] font-bold transition-colors hover:border-[var(--ring)]">
-                  Reopen
+                  {canRestoreArchived?'Restore job':'Reopen'}
                 </Button>
               )}
               {actions.canArchive && (

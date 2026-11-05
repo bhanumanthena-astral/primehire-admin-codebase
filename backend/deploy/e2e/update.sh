@@ -16,7 +16,7 @@ python3 -m venv "$target/.venv"
 "$target/.venv/bin/python" -m pip install --disable-pip-version-check -r "$target/requirements-production.txt"
 chmod -R a+rX "$target/.venv"
 cd "$target"
-runuser -u elitehr -- .venv/bin/python -m deploy.runtime check --env-file /etc/elitehr/backend.env
+.venv/bin/python -m deploy.e2e.preflight
 /opt/elitehr/current/.venv/bin/python /usr/local/lib/elitehr/backup.py
 active=()
 for role in api resume assessment recruitment scheduler; do

@@ -1,5 +1,9 @@
 # Elite HR V2 frontend
 
+The supplied VILS AI logo is stored in `public/images/vils-ai-logo.png`.
+`index.html` uses it as the browser favicon and Apple touch icon. Vite copies
+the original image into the production build without regenerating the artwork.
+
 This folder is a standalone frontend project. It contains the React UI, its own
 package/lockfile and a Cloudflare Pages API gateway. It needs no Python backend
 source, MongoDB data, JWT signing key or provider credentials to build.

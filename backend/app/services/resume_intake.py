@@ -80,7 +80,7 @@ async def spool(upload, org, limit_mb, extensions):
                 chunk = await upload.read(256 * 1024)
                 if not chunk:
                     break
-                if settings.free_tier_guard_enabled:
+                if settings.free_tier_guard_enabled or settings.resource_guard_enabled:
                     from .capacity_guard import require_capacity
                     require_capacity(required_bytes=len(chunk))
                 total += len(chunk)
@@ -149,7 +149,7 @@ async def accept_upload(db, user, *, job_id, mode, source, consent, uploads, arc
         raise HTTPException(422, "An accompanying resume ZIP is supported only in Excel mode.")
     if await db["resume_intake_items"].count_documents({"orgId": user.org_id, "status": {"$in": ["queued", "processing"]}}) >= 20000:
         raise HTTPException(429, "Your organization's processing queue is full. Retry later.", headers={"Retry-After": "30"})
-    if settings.free_tier_guard_enabled:
+    if settings.free_tier_guard_enabled or settings.resource_guard_enabled:
         from .capacity_guard import require_capacity
         require_capacity(required_bytes=(limits.zipMaxMb + limits.expandedMaxMb + limits.excelMaxMb) * 1024**2)
     staged = []
@@ -183,7 +183,7 @@ async def accept_upload(db, user, *, job_id, mode, source, consent, uploads, arc
             reserved = sum([int(b.get("reservedItems", 0)) async for b in repo.batches.find({**scope, "imported": False}, {"reservedItems": 1})])
             active = await repo.items.count_documents({**scope, "status": {"$in": ["queued", "processing", "review_required", "duplicate_suspected", "confirming"]}})
             units = limits.excelMaxRows + (limits.zipMaxFiles if archive else 0) if mode == "excel" else limits.zipMaxFiles if mode == "zip" else len(uploads)
-            if settings.free_tier_guard_enabled:
+            if settings.free_tier_guard_enabled or settings.resource_guard_enabled:
                 from .capacity_guard import require_capacity
                 require_capacity(required_bytes=(limits.expandedMaxMb + limits.zipMaxMb) * 1024**2)
             capacity = settings.free_tier_active_resume_limit if settings.free_tier_guard_enabled else 20000

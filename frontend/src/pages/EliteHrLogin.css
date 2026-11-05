@@ -1,4 +1,33 @@
-/* Sign-in shares the application's semantic Apple-inspired surface system. */
-.elite-page { background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
-.elite-card { background: var(--card); border: 1px solid var(--border); border-radius: 1.375rem; box-shadow: var(--shadow-card); }
-@media (max-width: 480px) { .elite-card { border-radius: 1.125rem; } }
+.elite-page,.profile-page{--primary:#245ede;--primary-foreground:#fff;--background:#f5f8ff;--foreground:#142139;--card:#fff;--card-foreground:#142139;--border:#e3eaf5;--input:#dae3f0;--muted:#edf3ff;--muted-foreground:#69768c;--ring:#3973ea;--warning:#245ede;--destructive:#b52f49;color-scheme:light;color:#142139;font-family:var(--font-sans);background:#f5f8ff}
+.elite-page{min-height:100dvh;background:radial-gradient(ellipse at 75% 55%,#e9f0ff 0,transparent 48%),#f7f9fd}
+.elite-page>header{max-width:1460px;width:100%;padding:30px 56px}.elite-page>header>a{letter-spacing:-.6px;font-size:21px}.login-header-note{display:flex;align-items:center;gap:9px;font-size:12px;color:#718096}
+.login-stage{display:grid;grid-template-columns:minmax(210px,1fr) 420px minmax(280px,1.1fr);align-items:center;gap:40px;width:min(1380px,100%);margin:auto;padding:42px 48px 60px;flex:1}
+.elite-card{position:relative;z-index:1;background:#fff;border:1px solid #edf0f6;border-radius:30px;box-shadow:0 24px 70px -35px #48699530;padding:42px 36px;width:100%;max-width:440px}.elite-card>div:first-child{text-align:center}.elite-card>div:first-child>div{margin:0 auto 22px;background:#edf3ff;color:#245ede}.elite-card h1{font-size:32px;letter-spacing:-1.3px}.elite-card input{height:51px;background:#fff;border:1px solid #dfe6f0;border-radius:10px;box-shadow:none}.elite-card form>button[type=submit]{height:50px;border-radius:10px;background:#245ede;color:#fff;box-shadow:0 6px 15px #245ede20}.elite-card input:focus{outline:2px solid #b7cdfb;outline-offset:2px}.elite-card label{font-size:12px;color:#48566c}.elite-card form>p:last-child{font-size:11px}
+@media(prefers-reduced-motion:reduce){.elite-page *{scroll-behavior:auto}}
+/* Static editorial composition; character art is a regular image. */
+.elite-page{background:#f4f7fc}
+.login-stage{position:relative;grid-template-columns:minmax(180px,1fr) 440px minmax(260px,1fr);gap:30px;max-width:1380px;padding-top:45px;padding-bottom:65px}
+.login-stage:after{content:'';position:absolute;left:40px;right:40px;bottom:66px;height:1px;background:#c6d1e1;z-index:0}
+.elite-card{border-radius:30px;padding:40px 36px;box-shadow:0 20px 50px -30px #52677d30}
+.login-editorial{align-self:stretch;position:relative;min-height:460px}
+.editorial-pillar{position:absolute;bottom:0;left:16%;width:80px;height:185px;background-color:#b9d4ff;background-image:radial-gradient(#204c8d 2.7px,transparent 3px);background-size:22px 22px;z-index:0}
+.editorial-outline{position:absolute;width:86px;height:105px;bottom:0;left:49%;border:1px solid #68809e;background:#f8fbff;font-size:66px;font-weight:200;line-height:100px;text-align:center;color:#71849a}
+.editorial-message{position:absolute;top:37%;left:32%;width:115px;height:80px;border:1px solid #68809e;display:grid;align-content:center;gap:12px;padding:23px;background:#f4f7fc}
+.editorial-message:after{content:'';position:absolute;bottom:-21px;left:-1px;width:22px;height:22px;border-left:1px solid #acc6eb;transform:skewY(-44deg)}
+.editorial-message i{display:block;height:1px;background:#71849a;width:65px}.editorial-message i:last-child{width:45px}
+.editorial-squiggle{position:absolute;top:22%;left:20%;width:100px;height:24px;border-top:1px solid #7e93b0;transform:rotate(-10deg);border-radius:50%}
+.editorial-dot{position:absolute;width:11px;height:11px;top:63%;right:20%;border:1px solid #71849a;border-radius:50%}
+.login-character{height:510px;position:relative;align-self:end;isolation:isolate}
+.team-avatar{position:relative;width:100%;height:100%;z-index:1}.team-avatar img{display:block;width:100%;height:100%;object-fit:contain}.team-avatar-fallback{display:grid;place-items:center;height:100%;background:#e4eeff;color:#245ede;font-weight:600;font-size:30px;border-radius:25px}
+.login-character>.login-hero-image{position:absolute;bottom:0;left:-5%;width:100%;height:100%;object-fit:contain}
+.editorial-pillar-right{left:auto;right:-8%;height:150px;width:65px;z-index:0}
+.team-avatar-portrait{overflow:hidden;border-radius:inherit}.team-avatar-portrait img{object-fit:cover;object-position:50% 15%}
+.elite-page footer{color:#71829b;font-size:10px}
+@media(min-width:1600px){.login-character{height:560px}}
+@media(max-width:1100px){.login-stage{grid-template-columns:minmax(120px,1fr) 420px minmax(200px,1fr);gap:12px;padding-left:25px;padding-right:25px}.login-character{grid-column:3;grid-row:1;height:450px}.login-editorial{grid-column:1;grid-row:1}.elite-card{grid-column:2;grid-row:1}.editorial-message{left:5%;width:90px}.editorial-outline{display:none}.editorial-pillar{left:10%;width:60px}}
+@media(max-width:800px){.login-stage{grid-template-columns:minmax(0,440px) 180px;justify-content:center}.login-editorial{display:none}.elite-card{grid-column:1}.login-character{grid-column:2;height:350px}.editorial-pillar-right{display:none}}
+@media(max-width:620px){.elite-page>header{padding:22px}.login-header-note{font-size:10px}.login-stage{display:flex;flex-direction:column;padding:15px 20px 35px;gap:0}.login-stage:after{display:none}.elite-card{order:0;padding:30px 25px;border-radius:25px}.login-character{order:1;height:270px;width:220px;align-self:center;margin-top:10px}.login-character>.login-hero-image{left:0}.elite-page footer{padding-bottom:22px}}
+
+.team-member-picture{width:40px;height:42px;border-radius:12px;background:#edf3ff;flex-shrink:0;overflow:hidden}.team-member-picture img{object-fit:cover;object-position:center 15%}.team-member-picture .team-avatar-fallback{font-size:14px}
+
+.workspace-account-picture{width:36px;height:38px;flex-shrink:0;overflow:hidden;border-radius:12px;background:#e7efff}.workspace-account-picture img{object-fit:cover;object-position:center 15%}.workspace-account-picture .team-avatar-fallback{font-size:14px}

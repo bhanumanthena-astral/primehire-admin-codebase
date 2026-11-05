@@ -137,6 +137,7 @@ class Settings(BaseSettings):
     resume_doc_converter: str = ""
     # Opt-in, single-host Oracle free deployment profile.
     free_tier_guard_enabled: bool = False
+    resource_guard_enabled: bool = False
     free_tier_active_resume_limit: int = 1000
     resume_kafka_enabled: bool = False
     resume_kafka_bootstrap_servers: str = "127.0.0.1:9092"

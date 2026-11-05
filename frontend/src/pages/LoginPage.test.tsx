@@ -6,11 +6,13 @@ import {LoginPage} from './LoginPage';
 import {useAuth} from '../lib/authContext';
 import {recentSignInMethod} from '../lib/googleConnection';
 vi.mock('../lib/authContext',()=>({useAuth:vi.fn()}));
+vi.mock('../components/StaticTeamAvatar',()=>({StaticTeamAvatar:()=>null}));
 const login=vi.fn(),verifyMfa=vi.fn();
 function open(){render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<LoginPage/>}/><Route path="/" element={<h1>Workspace home</h1>}/></Routes></MemoryRouter>);}
 beforeEach(()=>{vi.clearAllMocks();vi.mocked(useAuth).mockReturnValue({login,verifyMfa} as any);login.mockResolvedValue({mfaRequired:false});verifyMfa.mockResolvedValue(undefined);});
 it('preserves credential validation and explicit password visibility',async()=>{
   open();fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
+  expect(screen.queryByRole('button',{name:/Sign in with Google/i})).not.toBeInTheDocument();
   expect(login).not.toHaveBeenCalled();
   expect(await screen.findByText('Please enter your email or phone number.')).toBeVisible();
   const password=screen.getByPlaceholderText('Passcode');

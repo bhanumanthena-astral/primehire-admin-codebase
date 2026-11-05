@@ -22,7 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppSelect } from "../ui/AppSelect";
 import { ModeToggle } from "../ui/primitives";
-import {GoogleCalendarConnection} from '../auth/GoogleCalendarConnection';
+import {ProfileLink} from '../ProfileLink';
+import {StaticTeamAvatar,avatarRole} from '../StaticTeamAvatar';
 import { useAuth } from "../../lib/authContext";
 import {
   Application,
@@ -1081,7 +1082,7 @@ export function RecruitmentWorkspace({
               </span>
             </span>
           </div>
-          <div className="flex items-center gap-3"><GoogleCalendarConnection/><ModeToggle/><span className="text-sm">{user?.name}</span></div>
+          <div className="flex items-center gap-3"><ProfileLink/><ModeToggle/><StaticTeamAvatar accountId={user?.userId} role={avatarRole(user?.role||'hr')} portrait className="workspace-account-picture"/><span className="text-sm">{user?.name}</span></div>
         </div>
       </header>
       <main className={opened||candidate?'w-full':'mx-auto max-w-7xl px-4 py-6 sm:px-6'}>{workspace}</main>

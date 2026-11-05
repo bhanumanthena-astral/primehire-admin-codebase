@@ -1,6 +1,8 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render as renderWithRouter, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import {MemoryRouter} from 'react-router-dom';
+function render(ui:React.ReactNode){return renderWithRouter(<MemoryRouter>{ui}</MemoryRouter>);}
 import { RecruitmentWorkspace } from "../recruitment/RecruitmentWorkspace";
 import { RecruitmentCalendar } from "../recruitment/RecruitmentCalendar";
 import { TalentPool } from "../recruitment/TalentPool";
