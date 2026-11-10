@@ -16,6 +16,7 @@ class UserRole(str, Enum):
     HR = Role.HR.value
     RECRUITER = Role.RECRUITER.value
     VIEWER = Role.VIEWER.value
+    LEADERSHIP = Role.LEADERSHIP.value
     TECHNICAL_INTERVIEWER = Role.TECHNICAL_INTERVIEWER.value
     MANAGERIAL_INTERVIEWER = Role.MANAGERIAL_INTERVIEWER.value
 

@@ -77,7 +77,9 @@ if (-not (Listener 3000)) {
     } finally { $env:FASTAPI_URL = $previousLocalProxy }
 }
 $apiReady = $false
-for ($attempt=0; $attempt -lt 20; $attempt++) {
+# PostgreSQL index checks can take longer than 20 connection-refused retries after reconnecting.
+$startupDeadline = [DateTime]::UtcNow.AddMinutes(2)
+while ([DateTime]::UtcNow -lt $startupDeadline) {
     try {
         $ready = Invoke-RestMethod 'http://127.0.0.1:8002/api/ready' -TimeoutSec 2
         if ($ready.status -eq 'ready' -and $ready.checks.postgres -eq 'ok') {

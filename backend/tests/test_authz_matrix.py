@@ -46,6 +46,7 @@ def client(mock_db):
 _SAMPLE_UUID = "00000000-0000-0000-0000-000000000000"
 
 AUTHZ_MATRIX = [
+    ('GET','/api/leadership/dashboard',['super_admin','admin','leadership'],['hr','recruiter','viewer','technical_interviewer','managerial_interviewer']),
     ('GET','/api/auth/google/config',None,[]),
     ('POST','/api/auth/google/start',None,[]),
     ('GET','/api/auth/google/callback',None,[]),
@@ -152,14 +153,14 @@ AUTHZ_MATRIX = [
     ("GET", f"/api/resumes/batches/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("GET", f"/api/resumes/files/{_SAMPLE_UUID}/download", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
 
-    # --- Reports & Directory (reads open to every authenticated role
+    # --- Reports & Directory (operational reads exclude leadership
     # via the applications.view_all router-level dependency) ---
-    ("GET", f"/api/reports/{_SAMPLE_UUID}", "ANY_AUTHED", []),
-    ("GET", "/api/assessments", "ANY_AUTHED", []),
-    ("GET", "/api/candidates", "ANY_AUTHED", []),
+    ("GET", f"/api/reports/{_SAMPLE_UUID}", ["super_admin","admin","hr","technical_interviewer","managerial_interviewer"], ["leadership","viewer","recruiter"]),
+    ("GET", "/api/assessments", ["super_admin","admin","hr","technical_interviewer","managerial_interviewer"], ["leadership","viewer","recruiter"]),
+    ("GET", "/api/candidates", ["super_admin","admin","hr","technical_interviewer","managerial_interviewer"], ["leadership","viewer","recruiter"]),
 
     # --- Candidate write API (reads view_all; writes resumes.upload) ---
-    ("GET", f"/api/candidates/{_SAMPLE_UUID}", "ANY_AUTHED", []),
+    ("GET", f"/api/candidates/{_SAMPLE_UUID}", ["super_admin","admin","hr","technical_interviewer","managerial_interviewer"], ["leadership","viewer","recruiter"]),
     ("POST", "/api/candidates", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("POST", "/api/candidates/bulk", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
     ("PUT", f"/api/candidates/{_SAMPLE_UUID}", ["super_admin", "admin", "hr"], ["technical_interviewer", "managerial_interviewer"]),
@@ -325,7 +326,7 @@ def test_allowed_role_passes_guard(client, mock_db, method, path, role):
 # roles (a router-level write permission here silently 403s interviewers
 # while the matrix claims the read is open to everyone).
 
-_ALL_ROLES = ["super_admin", "admin", "hr", "technical_interviewer", "managerial_interviewer"]
+_ALL_ROLES = ["super_admin", "admin", "hr", "technical_interviewer", "managerial_interviewer", "leadership"]
 
 _ANY_AUTHED_ROWS = [
     (m, p, role)

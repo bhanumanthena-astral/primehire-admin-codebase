@@ -360,12 +360,13 @@ export const UsersManagementPage: React.FC = () => {
                     <option value="recruiter">Recruiter</option><option value="viewer">Read-only User</option>
                     <option value="technical_interviewer">Developer (Technical Interviewer)</option>
                     <option value="managerial_interviewer">Manager (Managerial Interviewer)</option>
+                    <option value="leadership">Leadership (Hiring Intelligence)</option>
                     {currentUser?.role === 'super_admin' && <option value="admin">Admin</option>}
                     {currentUser?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
                   </AppSelect>
                 </div>
 
-                <JobAccessEditor value={inviteAccess} onChange={setInviteAccess} allowed={defaultJobAccess(inviteRole)} disabled={['admin','super_admin'].includes(inviteRole)}/>
+                {inviteRole==='leadership'?<p className="rounded-lg border border-border bg-muted p-3 text-xs text-muted-foreground">Dedicated leadership dashboard with read-only hiring metrics. Candidate contacts, review comments and operational controls are not included.</p>:<JobAccessEditor value={inviteAccess} onChange={setInviteAccess} allowed={defaultJobAccess(inviteRole)} disabled={['admin','super_admin'].includes(inviteRole)}/>}
                 <div className="flex justify-end gap-2.5 pt-2">
                   <Button variant="ghost"
                     type="button"

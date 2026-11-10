@@ -4,6 +4,7 @@ export type Role =
   | 'hr'
   | 'recruiter'
   | 'viewer'
+  | 'leadership'
   | 'technical_interviewer'
   | 'managerial_interviewer';
 

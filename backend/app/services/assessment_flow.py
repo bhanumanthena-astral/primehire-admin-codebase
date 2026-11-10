@@ -268,7 +268,7 @@ async def handle_assessment_sync(db: Any, job: dict[str, Any]) -> dict[str, Any]
             await capture(db,app_doc,reporting_job,submitted=False)
         patch={"syncedAt":_utcnow().isoformat(),"syncError":None}
         if status.get('started'):
-            patch.update(state='in_progress',status='In progress',startedAt=status.get('startedAt'))
+            patch.update(state='in_progress',status='In progress',startedAt=status.get('startedAt') or assessment.get('startedAt'))
         await _set_assessment(db, org_id, application_id, patch)
         return {"pending": "not submitted"}
     score: int | float | None = None
@@ -290,7 +290,10 @@ async def handle_assessment_sync(db: Any, job: dict[str, Any]) -> dict[str, Any]
         except Exception:
             logger.warning('Report catalog synchronization deferred for %s',application_id)
     await _set_assessment(db, org_id, application_id, {
-        "submittedAt": status.get("submittedAt") or _utcnow().isoformat(),
+        "submittedAt": status.get("submittedAt") or assessment.get('submittedAt') or _utcnow().isoformat(),
+        "submissionTimeSource": 'provider' if status.get('submittedAt') else assessment.get('submissionTimeSource') or ('unknown' if assessment.get('submittedAt') else 'observed'),
+        # Completion can be the first successful poll: retain its actual start timestamp too.
+        "startedAt": status.get('startedAt') or assessment.get('startedAt'),
         "score": score, "scores": scores, "reportPending": report_pending,
         "state": "report_pending" if report_pending else "completed",
         "status": "Report pending" if report_pending else "Completed",

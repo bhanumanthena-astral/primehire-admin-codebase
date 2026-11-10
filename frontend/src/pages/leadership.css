@@ -1,0 +1,184 @@
+.ld-workspace {
+  --ld-canvas: #f5f7fa;
+  --ld-paper: #fff;
+  --ld-text: #17243a;
+  --ld-muted: #53647a;
+  --ld-line: #dce3ec;
+  --ld-hover: #eff4fb;
+  --ld-bar: #5380df;
+  --ld-teal: #11867b;
+  --ld-accent: #245bb4;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  background: var(--ld-canvas);
+  color: var(--ld-text);
+  font-variant-numeric: tabular-nums;
+}
+.dark .ld-workspace {
+  --ld-canvas: #111820;
+  --ld-paper: #19232f;
+  --ld-text: #e8eef5;
+  --ld-muted: #a4b3c6;
+  --ld-line: #334152;
+  --ld-hover: #263649;
+  --ld-bar: #81a3eb;
+  --ld-teal: #55c9b4;
+  --ld-accent: #99baff;
+}
+.ld-workspace button, .ld-workspace summary, .ld-workspace a {cursor: pointer;}
+.ld-workspace :focus-visible {outline: 2px solid #528deb; outline-offset: 3px;}
+.ld-workspace button:disabled {cursor: default;}
+.ld-sidebar {
+  position: sticky; top: 0; height: 100dvh;
+  display: flex; flex-direction: column; gap: 44px;
+  background: #14233b; color: #edf4ff;
+  padding: 30px 14px 14px;
+}
+.ld-brand {display: flex; align-items: center; gap: 11px; padding: 0 5px; font-size: 21px; font-weight: 660; letter-spacing: -.8px;}
+.ld-brand > span {display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: #3d72d8; color: white; font-size: 15px; letter-spacing: -.5px;}
+.ld-brand small {display: block; font-size: 11px; font-weight: 450; letter-spacing: .025em; color: #bccce1;}
+.ld-sidebar nav {display: grid; gap: 5px;}
+.ld-sidebar nav button, .ld-account a, .ld-account button {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 11px 12px; border-radius: 7px; font-size: 13px; font-weight: 530; color: #c0cee0;
+}
+.ld-sidebar nav button:hover, .ld-account a:hover, .ld-account button:hover {background: #203651; color: white;}
+.ld-sidebar nav button[aria-current] {color: white; background: #2b4468; box-shadow: inset 3px 0 #8caff9;}
+.ld-account {margin-top: auto; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #35455c; padding-top: 13px;}
+.ld-account a {min-width: 0; padding-inline: 7px; color: white;}
+.ld-account a span {overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+.ld-account svg {flex: none;}
+.ld-main {min-width: 0; max-width: 1740px; width: 100%; margin: 0 auto; padding: 0 clamp(18px, 2.5vw, 45px) 28px;}
+.ld-context {display: flex; align-items: center; justify-content: space-between; min-height: 58px; border-bottom: 1px solid var(--ld-line);}
+.ld-context > span {display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ld-muted);}
+.ld-heading {display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; padding: 26px 0 23px;}
+.ld-heading h1 {font-size: clamp(28px, 2.1vw, 40px); font-weight: 600; line-height: 1.12; letter-spacing: -.045em;}
+.ld-heading p, .ld-panel-head p, .ld-distribution p {font-size: 12px; line-height: 1.5; margin-top: 5px; color: var(--ld-muted);}
+.ld-filters {display: flex; gap: 7px; align-items: center; min-width: 0;}
+.ld-filters button {border-radius: 7px; background: var(--ld-paper); border-color: var(--ld-line);}
+.ld-filters [role=combobox] {max-width: 210px; min-width: 105px; height: 36px; width: auto; font-size: 12px;}
+.ld-filters [role=combobox] span {overflow: hidden; text-overflow: ellipsis;}
+.ld-filters > button:last-child {width: 36px; height: 36px; padding: 0;}
+.ld-content {display: grid; gap: 16px; min-width: 0;}
+.ld-stats, .ld-panel, .ld-waiting {border: 1px solid var(--ld-line); border-radius: 12px; background: var(--ld-paper); min-width: 0;}
+.ld-stats {display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 20px 0;}
+.ld-stats article {padding: 0 clamp(14px, 1.5vw, 26px); border-left: 1px solid var(--ld-line);}
+.ld-stats article:first-child {border: 0;}
+.ld-stat-label {display: flex; gap: 8px; align-items: center; color: var(--ld-muted);}
+.ld-stat-label h2 {font-size: 12px; font-weight: 560; line-height: 1.3;}
+.ld-stat-label svg {flex: none; color: var(--ld-accent);}
+.ld-stats strong {display: block; font-size: clamp(32px, 2.5vw, 46px); font-weight: 550; line-height: 1.2; letter-spacing: -.055em; margin: 10px 0 3px;}
+.ld-stats p {font-size: 11px; color: var(--ld-muted); line-height: 1.45;}
+.ld-top-grid, .ld-bottom-grid {display: grid; gap: 16px; align-items: stretch; min-width: 0;}
+.ld-top-grid {grid-template-columns: minmax(0, 1.85fr) minmax(260px, 1fr);}
+.ld-bottom-grid {grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);}
+.ld-panel {padding: clamp(16px, 1.5vw, 24px);}
+.ld-panel-head {display: flex; justify-content: space-between; align-items: start; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;}
+.ld-panel-head h2, .ld-waiting h2, .ld-message h2 {font-size: 17px; line-height: 1.25; font-weight: 600; letter-spacing: -.032em;}
+.ld-panel-head > svg {color: var(--ld-muted);}
+.ld-legend {display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 10px; color: var(--ld-muted); padding-top: 4px;}
+.ld-legend i, .ld-stage-list i {width: 8px; height: 8px; background: var(--ld-bar); border-radius: 2px; flex: none;}
+.ld-legend b {width: 12px; height: 3px; margin-left: 7px; background: var(--ld-teal); border-radius: 2px;}
+.ld-chart {height: 194px; width: 100%; min-width: 0;}
+.ld-daily {margin-top: 10px; font-size: 11px; color: var(--ld-muted);}
+.ld-daily summary {width: max-content;}
+.ld-daily > div {max-height: 220px; overflow: auto; margin-top: 10px;}
+.ld-waiting {padding: 20px; background: #174741; color: #f4fbf7; border-color: #184640; display: flex; flex-direction: column;}
+.ld-waiting-title, .ld-text-link {display: flex; align-items: center; gap: 9px;}
+.ld-waiting-title svg {color: #a2d5c7;}
+.ld-waiting-title h2 {color: #f4fbf7;}
+.ld-waiting-total {display: flex; gap: 12px; align-items: baseline; margin: 14px 0 12px;}
+.ld-waiting-total strong {font-size: 47px; line-height: 1; font-weight: 530; letter-spacing: -.07em;}
+.ld-waiting-total p {font-size: 12px; color: #c7e3d9;}
+.ld-waiting-rows {margin-top: auto; display: grid;}
+.ld-waiting-rows button {padding: 9px 0; display: flex; align-items: center; gap: 7px; font-size: 12px; text-align: left; border-top: 1px solid #39635c;}
+.ld-waiting-rows b {margin-left: auto; color: #fff; font-weight: 600;}
+.ld-waiting-rows svg {color: #9bc1b8;}
+.ld-waiting-rows button:hover {color: #c9f5e5;}
+.ld-pipeline {display: flex; align-items: center; justify-content: center; gap: clamp(14px, 2vw, 32px); padding: 10px 0;}
+.ld-ring {width: clamp(112px, 11vw, 165px); aspect-ratio: 1; border-radius: 50%; padding: 12%; padding: clamp(12px,1.35vw,21px); display: grid; flex: none; background: var(--ld-line);}
+.ld-ring > div {display: grid; place-content: center; justify-items: center; border-radius: 50%; background: var(--ld-paper); text-align: center;}
+.ld-ring strong {font-size: clamp(25px, 2.4vw, 36px); line-height: 1; font-weight: 580; letter-spacing: -.06em;}
+.ld-ring span {max-width: 82px; font-size: 10px; line-height: 1.2; margin-top: 5px; color: var(--ld-muted);}
+.ld-stage-list {flex: 1; min-width: 0;}
+.ld-stage-list button {display: flex; width: 100%; align-items: center; gap: 7px; border-radius: 4px; padding: 4px; line-height: 1.3; font-size: 12px; text-align: left;}
+.ld-stage-list button:hover, .ld-stage-list button[aria-pressed=true] {background: var(--ld-hover);}
+.ld-stage-list b {margin-left: auto; font-weight: 600;}
+.ld-stage-detail {border-top: 1px solid var(--ld-line); padding-top: 12px; max-height: 175px; overflow: auto;}
+.ld-stage-detail h3, .ld-distribution h3 {font-size: 13px; font-weight: 600;}
+.ld-stage-detail button {display: inline-flex; align-items: center; gap: 5px; color: var(--ld-accent); padding: 4px 8px 4px 0; font-size: 12px;}
+.ld-text-link, .ld-role-name {color: var(--ld-accent); font-weight: 550; font-size: 12px;}
+.ld-role-name {display: inline-flex; gap: 5px; align-items: center; text-align: start;}
+.ld-panel [data-slot=table-container] {border: 0; border-radius: 0;}
+.ld-panel th {font-size: 11px; font-weight: 550; background: var(--ld-canvas); padding: 9px 10px; height: auto; color: var(--ld-muted);}
+.ld-panel td {padding: 10px; font-size: 12px; color: var(--ld-text);}
+.ld-panel td small {display: block; color: var(--ld-muted); font-size: 10px; line-height: 1.4; padding-top: 2px;}
+.ld-search {position: relative; max-width: 330px; margin: 0 0 16px;}
+.ld-search svg {position: absolute; left: 10px; top: 12px; color: var(--ld-muted);}
+.ld-search input {padding-left: 33px;}
+.ld-pagination {display: flex; align-items: center; gap: 5px; margin-top: 13px; font-size: 11px; color: var(--ld-muted);}
+.ld-pagination span {margin-right: auto;}
+.ld-role-name[aria-pressed=true] {text-decoration: underline; text-underline-offset: 3px;}
+.ld-distribution {margin-top: 20px; border-top: 1px solid var(--ld-line); padding-top: 15px;}
+.ld-bars {display: grid; gap: 7px; max-width: 550px; margin-top: 12px;}
+.ld-bars > div {display: grid; grid-template-columns: 92px 1fr 35px; gap: 10px; align-items: center; font-size: 11px; color: var(--ld-muted);}
+.ld-bars meter {width: 100%; height: 9px; border: 0; border-radius: 3px; background: var(--ld-hover);}
+.ld-bars meter::-webkit-meter-bar {height: 7px; border: 0; background: var(--ld-hover);}
+.ld-bars meter::-webkit-meter-optimum-value, .ld-bars meter::-moz-meter-bar {background: var(--ld-teal);}
+.ld-age {min-width: 32px; display: inline-block; text-align: center; padding: 2px 6px; border-radius: 4px;}
+.ld-age-old {background: #f9e2b7; color: #784800;}
+.ld-definitions {font-size: 11px; color: var(--ld-muted); padding: 4px 0;}
+.ld-definitions summary {display: flex; gap: 5px; align-items: center; width: max-content;}
+.ld-definitions ul {padding: 10px 0 0 18px; list-style: disc; line-height: 1.7;}
+.ld-warning {background: #fff4d8; border: 1px solid #ecd6a7; color: #73551d; padding: 12px 15px; border-radius: 8px; font-size: 13px;}
+.ld-message {display: grid; justify-items: start; gap: 10px; padding-block: 30px;}
+@media (max-width: 1200px) {
+  .ld-workspace {grid-template-columns: 184px minmax(0,1fr);}
+  .ld-top-grid {grid-template-columns: minmax(0,1.55fr) minmax(235px,1fr);}
+  .ld-bottom-grid {grid-template-columns: minmax(0,1fr) minmax(0,1.2fr);}
+  .ld-pipeline {gap: 10px;}
+}
+@media (max-width: 960px) {
+  .ld-workspace {display: block;}
+  .ld-sidebar {position: static; height: auto; padding: 12px 18px; flex-direction: row; align-items: center; gap: 20px;}
+  .ld-brand > span {width: 32px; height: 32px; border-radius: 7px; font-size: 12px;}
+  .ld-brand {font-size: 17px;}
+  .ld-brand small {font-size: 9px;}
+  .ld-sidebar nav {display: flex; flex: 1;}
+  .ld-sidebar nav button {padding: 9px; font-size: 12px; gap: 5px;}
+  .ld-sidebar nav button[aria-current] {box-shadow: inset 0 -2px #8caff9;}
+  .ld-account {border: 0; margin: 0 0 0 auto; padding: 0;}
+  .ld-account a span {display: none;}
+  .ld-context {min-height: 47px;}
+}
+@media (max-width: 700px) {
+  .ld-sidebar {flex-wrap: wrap; gap: 9px; padding: 10px 14px 6px;}
+  .ld-sidebar nav {order: 3; flex-basis: 100%; gap: 2px;}
+  .ld-sidebar nav button {flex: 1; justify-content: center; white-space: nowrap; font-size: 11px;}
+  .ld-sidebar nav svg {width: 14px;}
+  .ld-main {padding: 0 13px 24px;}
+  .ld-context {display: flex; min-height: 44px;}
+  .ld-heading {align-items: start; padding: 18px 0; gap: 14px;}
+  .ld-heading h1 {font-size: 29px;}
+  .ld-filters {width: 100%;}
+  .ld-filters [role=combobox] {min-width: 0; flex: 1; max-width: none;}
+  .ld-content, .ld-top-grid, .ld-bottom-grid {gap: 12px;}
+  .ld-stats {grid-template-columns: repeat(2,minmax(0,1fr)); padding: 0;}
+  .ld-stats article {padding: 14px;}
+  .ld-stats article:nth-child(3) {border-left: 0;}
+  .ld-stats article:nth-child(n+3) {border-top: 1px solid var(--ld-line);}
+  .ld-stats strong {font-size: 31px; margin-top: 7px;}
+  .ld-top-grid, .ld-bottom-grid {grid-template-columns: minmax(0,1fr);}
+  .ld-waiting {padding: 16px;}
+  .ld-waiting-total {margin: 13px 0;}
+  .ld-waiting-rows {grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 16px;}
+  .ld-waiting-rows button {font-size: 11px;}
+  .ld-chart {height: 186px;}
+  .ld-pipeline {gap: 22px; padding-inline: 3px;}
+  .ld-ring {width: 125px; padding: 15px;}
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld-workspace *, .ld-workspace *::before, .ld-workspace *::after {animation-duration: .01ms !important; transition-duration: .01ms !important;}
+}
+

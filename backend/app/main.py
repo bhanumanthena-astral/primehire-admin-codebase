@@ -17,6 +17,7 @@ from .api.directory import router as directory_router
 from .api.candidates import router as candidates_router
 from .api.auth import router as auth_router
 from .api.users import router as users_router
+from .api.leadership import router as leadership_router
 from .api.hiring import router as hiring_router
 from .api.resumes import router as resumes_router
 from .api.resume_intake import router as resume_intake_router
@@ -184,6 +185,7 @@ app.include_router(auth_router)
 from .api.google import router as google_router
 app.include_router(google_router)
 app.include_router(users_router)
+app.include_router(leadership_router)
 app.include_router(hiring_router)
 from .api.job_assessments import router as job_assessments_router
 app.include_router(job_assessments_router)

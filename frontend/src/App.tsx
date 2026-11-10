@@ -46,6 +46,7 @@ import {ProfileLink} from './components/ProfileLink';
 import {StaticTeamAvatar,avatarRole} from './components/StaticTeamAvatar';
 import {ProfilePage} from './pages/ProfilePage';
 import { UsersManagementPage } from './pages/UsersManagementPage';
+import {LeadershipDashboard} from './pages/LeadershipDashboard';
 import {
   FileText,
   LayoutDashboard,
@@ -696,6 +697,7 @@ function RoleWorkspace() {
       .catch(()=>{if(!controller.signal.aborted)setPortalsEnabled(false);});
     return()=>controller.abort();
   },[reviewer,user?.userId]);
+  if(user?.role==='leadership')return <LeadershipDashboard/>;
   if(reviewer&&location.pathname.startsWith('/reports')&&!hrJobs)return <main className="mx-auto min-h-screen max-w-7xl space-y-5 bg-background p-4 sm:p-6"><Button variant="outline" onClick={()=>navigate('/')}>Back to interview workspace</Button><ReportsWorkspace/></main>;
   if(reviewer&&portalsEnabled===null)return <main className="flex min-h-screen items-center justify-center bg-background text-muted-foreground" role="status">Opening your workspace…</main>;
   if(user?.role==='hr'&&hrJobs)return <AdminDashboard/>;

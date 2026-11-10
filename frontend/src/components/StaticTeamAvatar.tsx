@@ -5,7 +5,7 @@ export function avatarRole(role:string):TeamAvatarRole {
   return ['admin','super_admin'].includes(role)?'admin':role==='hr'?'hr':role.includes('manager')?'manager':['technical_interviewer','developer'].includes(role)?'developer':'member';
 }
 export function teamRoleLabel(role:string):string {
-  return ({hr:'HR professional',recruiter:'Recruiter',technical_interviewer:'Developer',managerial_interviewer:'Manager',admin:'Admin',super_admin:'Super Admin',viewer:'Read-only user'} as Record<string,string>)[role]||role.replaceAll('_',' ');
+  return ({hr:'HR professional',recruiter:'Recruiter',technical_interviewer:'Developer',managerial_interviewer:'Manager',admin:'Admin',super_admin:'Super Admin',viewer:'Read-only user',leadership:'Leadership'} as Record<string,string>)[role]||role.replaceAll('_',' ');
 }
 const assets:Record<TeamAvatarRole,string>={hr:'/images/team/hr-static.png',manager:'/images/team/admin-male-static.png',developer:'/images/team/developer-static.png',admin:'/images/team/admin-male-static.png',member:'/images/team/manager-static.png'};
 const BHANU_ACCOUNT_ID='4b9e2e41-c708-40c3-8aeb-361c5cbd91df';

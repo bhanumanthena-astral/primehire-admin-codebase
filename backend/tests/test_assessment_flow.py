@@ -484,6 +484,24 @@ async def test_sync_started_assessment_shows_in_progress_without_claiming_submis
     assert not saved['assessment'].get('submittedAt')
 
 
+async def test_first_completion_poll_retains_actual_start_and_first_observed_submission(client,mock_db,monkeypatch):
+    from app.services import assessment_flow as flow
+    _, _, application = _make_shortlisted(client)
+    key = application['applicationId']
+    await mock_db.applications.update_one({'applicationId':key},{'$set':{'assessment':{'interviewId':'int-1'}}})
+    started = '2026-11-01T10:00:00Z'
+    async def provider(**kwargs):
+        return {'submitted':True,'reportAvailable':False,'started':True,'startedAt':started}
+    monkeypatch.setattr(flow,'get_interview_status',provider)
+    await flow.handle_assessment_sync(mock_db,{'orgId':'default','payload':{'applicationId':key}})
+    first = (await mock_db.applications.find_one({'applicationId':key}))['assessment']
+    await flow.handle_assessment_sync(mock_db,{'orgId':'default','payload':{'applicationId':key}})
+    second = (await mock_db.applications.find_one({'applicationId':key}))['assessment']
+    assert first['startedAt'] == second['startedAt'] == started
+    assert first['submittedAt'] == second['submittedAt']
+    assert second['submissionTimeSource'] == 'observed'
+
+
 async def test_generate_from_batch_response_and_retry_finished_failure(client, mock_db):
     _, _, application = _make_shortlisted(client)
     key=application['applicationId']

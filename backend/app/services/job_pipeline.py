@@ -37,9 +37,10 @@ def scoped_history(org_id):
     ]
 
 
-async def pipeline_counts(db, org_id, job_ids):
+async def pipeline_counts(db, org_id, job_ids, *, application_metrics=None):
+    application_metrics = application_metrics or {}
     keys = ['resumesUploaded', 'atsTotal', 'atsScored', 'atsProcessing', 'linksGenerated',
-            'linksSent', 'assessmentsCompleted', 'technical', 'managerial', 'hr']
+            'linksSent', 'assessmentsCompleted', 'technical', 'managerial', 'hr', *application_metrics]
     result = {key: dict.fromkeys(keys, 0) for key in job_ids}
     if not result:
         return result
@@ -63,7 +64,8 @@ async def pipeline_counts(db, org_id, job_ids):
             'assessmentsCompleted': tally(conditions['assessmentsCompleted']),
             'technical': tally(conditions['technical']),
             'managerial': tally(conditions['managerial']),
-            'hr': tally(conditions['hr'])}},
+            'hr': tally(conditions['hr']),
+            **{key: tally(condition) for key, condition in application_metrics.items()}}},
     ]):
         values = result[row['_id']]
         values['resumesUploaded'] += row.pop('legacyResumes')

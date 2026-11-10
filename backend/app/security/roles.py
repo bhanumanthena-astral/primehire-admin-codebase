@@ -13,9 +13,11 @@ class Role(str, Enum):
     MANAGERIAL_INTERVIEWER = "managerial_interviewer"
     RECRUITER = "recruiter"
     VIEWER = "viewer"
+    LEADERSHIP = "leadership"
 
 
 PERMISSIONS = frozenset({
+    "leadership.view",
     "google.connect",
     "candidates.view", "candidates.manage",
     "assessments.view", "assessments.manage",
@@ -44,6 +46,7 @@ PERMISSIONS = frozenset({
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     Role.SUPER_ADMIN.value: PERMISSIONS,
     Role.ADMIN.value: frozenset({
+        "leadership.view",
         "candidates.view", "candidates.manage",
         "assessments.view", "assessments.manage",
         "recruitment.view", "recruitment.manage", "recruitment.review",
@@ -75,6 +78,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     }),
     Role.RECRUITER.value: frozenset({"reports.view", "reports.refresh", "applications.transition", "candidates.view", "candidates.manage", "assessments.view", "assessments.manage", "jobs.view", "jobs.manage", "resumes.upload", "recruitment.view", "recruitment.manage"}),
     Role.VIEWER.value: frozenset({"candidates.view", "assessments.view", "jobs.view"}),
+    Role.LEADERSHIP.value: frozenset({"leadership.view"}),
     Role.TECHNICAL_INTERVIEWER.value: frozenset({
         "recruitment.view", "recruitment.review",
         "applications.view_all",

@@ -1,5 +1,17 @@
 # DECISIONS.md — Phase 1 Plan
 
+## 2026-11-09: authorized dedicated leadership workspace
+
+The user explicitly requests implementation of a new leadership login and hiring
+intelligence module. Add the leadership role to existing invitations/sign-in and a
+separate read-only dashboard, using projected tenant-scoped existing collections.
+No new service, environment variable or table is needed. Charts distinguish live
+stage occupancy, cumulative milestones and period activity. Handoff medians/p90,
+sample counts, stage aging and waiting queues use recorded event times; missing
+provider starts remain unavailable. Existing accounts/data are preserved. Bound
+analysis reads and disclose partial coverage, rather than silently truncate.
+See LEADERSHIP_WORKSPACE.md for semantics, limits and validation.
+
 ## 2026-11-05: localhost recovery and Super Admin archived-job restore
 
 The user requests reliable localhost development against E2E and reports that
