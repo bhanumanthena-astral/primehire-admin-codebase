@@ -33,7 +33,7 @@ import { Toaster } from '@/components/ui/sonner';
 import {
   ModeToggle,
 } from './components/ui/primitives';
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {RecruitmentWorkspace} from './components/recruitment/RecruitmentWorkspace';
 import {recruitmentRequest} from './lib/recruitmentApi';
 import { AuthProvider, useAuth } from './lib/authContext';
@@ -657,12 +657,15 @@ function AdminDashboard() {
   );
 }
 
+function CandidateProfileRoute(){const {id}=useParams();const navigate=useNavigate();return <main className="mx-auto max-w-7xl p-6"><ApplicantProfilePage applicantId={id||''} onBack={()=>navigate(-1)}/></main>;}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
           <Route path="/assessment-access" element={<CandidateAssessmentAccess/>}/>
+          <Route path="/candidate-profile/:id" element={<PrivateRoute><CandidateProfileRoute/></PrivateRoute>}/>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/profile" element={<PrivateRoute><ImpersonationBanner/><ProfilePage/></PrivateRoute>}/>
           <Route path="/account/profile" element={<PrivateRoute><ImpersonationBanner/><ProfilePage/></PrivateRoute>}/>

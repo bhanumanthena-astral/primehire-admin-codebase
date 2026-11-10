@@ -568,7 +568,7 @@ async def get_job(
     if not doc:
         raise HTTPException(status_code=404, detail="Job not found")
     from ..services.job_pipeline import pipeline_counts
-    totals = await pipeline_counts(db, current_user.org_id, [job_id])
+    totals = await pipeline_counts(db, current_user.org_id, [job_id], include_history=True)
     return JobPublic(**{**doc, 'pipeline': totals[job_id]})
 
 
@@ -809,7 +809,7 @@ async def get_job_detail(
     total = await db["applications"].count_documents({"orgId": current_user.org_id, "jobId": job_id})
     active = await db["applications"].count_documents({"orgId": current_user.org_id, "jobId": job_id, "status": "active"})
     from ..services.job_pipeline import pipeline_counts
-    totals = await pipeline_counts(db, current_user.org_id, [job_id])
+    totals = await pipeline_counts(db, current_user.org_id, [job_id], include_history=True)
     return JobDetailPublic(
         job=JobPublic(**{**doc, 'pipeline': totals[job_id]}),
         applications=apps,

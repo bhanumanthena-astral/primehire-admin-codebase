@@ -2,6 +2,22 @@ import mongomock_motor
 from app.services.job_pipeline import pipeline_counts, pipeline_details
 
 
+async def test_previous_round_keeps_candidate_and_profile_identity():
+    db = mongomock_motor.AsyncMongoMockClient()['previous_round']
+    await db.applications.insert_one({'orgId':'org','jobId':'job','applicationId':'a',
+        'applicantId':'person','currentStage':'ROUND2_PENDING_ASSIGNMENT'})
+    await db.stage_history.insert_one({'orgId':'org','applicationId':'a','toStage':'ROUND1_SCHEDULED'})
+    await db.applicants.insert_one({'orgId':'org','applicantId':'person','name':'Candidate'})
+    current = await pipeline_counts(db,'org',['job'])
+    reached = await pipeline_counts(db,'org',['job'],include_history=True)
+    assert current['job']['technical'] == 0
+    assert reached['job']['technical'] == 1
+    details = await pipeline_details(db,'org','job','technical')
+    assert details['total'] == 1
+    assert details['items'][0]['applicantId'] == 'person'
+    assert details['items'][0]['status'] == 'ROUND2_PENDING_ASSIGNMENT'
+
+
 async def test_counts_intake_without_double_counting_created_profiles_and_keeps_milestones():
     db = mongomock_motor.AsyncMongoMockClient()['pipeline_test']
     for key, state, ats in [('i1','completed','done'),('i2','review_required','queued'),('i3','uploaded',None),('i4','deleted','done')]:

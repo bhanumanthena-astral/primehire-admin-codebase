@@ -1,10 +1,11 @@
 import {useEffect, useState} from 'react';
+import {Link} from 'react-router-dom';
 import {Button} from '@/components/ui/button';
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {authFetch} from '../lib/authFetch';
 import type {HiringStage} from './JobHiringProgress';
 
-type PipelineRow = {id:string; name:string; source:string; status:string; atsState?:string|null; atsScore:number|null; assessment:{score:number|null;label:string}|null};
+type PipelineRow = {applicantId?:string;id:string; name:string; source:string; status:string; atsState?:string|null; atsScore:number|null; assessment:{score:number|null;label:string}|null};
 type PipelinePage = {items:PipelineRow[];total:number};
 const pageSize=25;
 function displayStatus(value:string) {
@@ -38,8 +39,8 @@ export function JobPipelineDetails({jobId,stage}:{jobId:string;stage:HiringStage
       <TableHead className="text-right">{isResume?'ATS status':'Assessment score / status'}</TableHead>
     </TableRow></TableHeader><TableBody>
       {data?.items.map(row=><TableRow key={row.id}>
-        <TableCell className="min-w-48"><p className="font-medium">{row.name}</p>{isResume&&<p className="mt-1 max-w-72 truncate text-xs text-muted-foreground" title={row.source}>{row.source}</p>}</TableCell>
-        <TableCell>{displayStatus(row.status)}</TableCell><TableCell className="text-right tabular-nums">{row.atsScore??'—'}</TableCell>
+        <TableCell className="min-w-48">{row.applicantId?<Link className="font-medium text-primary underline-offset-4 hover:underline" to={`/candidate-profile/${encodeURIComponent(row.applicantId)}`}>{row.name}</Link>:<p className="font-medium">{row.name}</p>}{isResume&&<p className="mt-1 max-w-72 truncate text-xs text-muted-foreground" title={row.source}>{row.source}</p>}</TableCell>
+        <TableCell>{['technical','managerial','hr'].includes(stage)&&!(stage==='technical'?row.status.startsWith('ROUND1_'):stage==='managerial'?row.status.startsWith('ROUND2_'):row.status==='HR_ROUND')?'Round completed � ':''}{displayStatus(row.status)}</TableCell><TableCell className="text-right tabular-nums">{row.atsScore??'—'}</TableCell>
         <TableCell className="text-right tabular-nums">{isResume?(row.atsState==='done'?'Scored':displayStatus(row.atsState||'Not scored')):(row.assessment?.score??row.assessment?.label??'Not attempted')}</TableCell>
       </TableRow>)}
       {!data?.items.length&&<TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">No records in this stage yet.</TableCell></TableRow>}

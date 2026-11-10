@@ -5,7 +5,7 @@ def nonempty(field):
     return {'$ne': [{'$ifNull': [field, None]}, None]}
 
 
-def application_conditions():
+def application_conditions(include_history=False):
     completed = {'$or': [
         nonempty('$assessment.submittedAt'), nonempty('$assessment.completedAt'), nonempty('$assessment.score'),
         {'$in': ['$assessment.state', ['completed', 'report_pending']]},
@@ -19,7 +19,7 @@ def application_conditions():
         {'$eq': ['$currentStage', 'ASSESSMENT_SENT']},
         {'$in': ['ASSESSMENT_SENT', '$history.toStage']}]}
     legacy = {'$eq': [{'$ifNull': ['$intakeItemId', None]}, None]}
-    return {
+    conditions = {
         'resumesUploaded': legacy,
         'atsTotal': {'$and': [legacy, {'$or': [nonempty('$matchScore'), nonempty('$scoreBreakdown.ats')]}]},
         'linksSent': sent, 'assessmentsCompleted': completed,
@@ -27,6 +27,15 @@ def application_conditions():
         'managerial': {'$in': ['$currentStage', ['ROUND2_PENDING_ASSIGNMENT', 'ROUND2_SCHEDULED', 'ROUND2_REVIEW_PENDING']]},
         'hr': {'$eq': ['$currentStage', 'HR_ROUND']},
     }
+    if include_history:
+        for key, stages in {
+            'technical': ['ROUND1_PENDING_ASSIGNMENT', 'ROUND1_SCHEDULED', 'ROUND1_REVIEW_PENDING'],
+            'managerial': ['ROUND2_PENDING_ASSIGNMENT', 'ROUND2_SCHEDULED', 'ROUND2_REVIEW_PENDING'],
+            'hr': ['HR_ROUND'],
+        }.items():
+            conditions[key] = {'$or': [conditions[key], *[
+                {'$in': [stage, '$history.toStage']} for stage in stages]]}
+    return conditions
 
 
 def scoped_history(org_id):
@@ -37,7 +46,7 @@ def scoped_history(org_id):
     ]
 
 
-async def pipeline_counts(db, org_id, job_ids, *, application_metrics=None):
+async def pipeline_counts(db, org_id, job_ids, *, application_metrics=None, include_history=False):
     application_metrics = application_metrics or {}
     keys = ['resumesUploaded', 'atsTotal', 'atsScored', 'atsProcessing', 'linksGenerated',
             'linksSent', 'assessmentsCompleted', 'technical', 'managerial', 'hr', *application_metrics]
@@ -54,7 +63,7 @@ async def pipeline_counts(db, org_id, job_ids, *, application_metrics=None):
                     'atsProcessing': tally({'$in': ['$atsState', ['queued', 'scoring']]})}},
     ]):
         result[row['_id']].update({key: row[key] for key in ['resumesUploaded', 'atsScored', 'atsProcessing']})
-    conditions = application_conditions()
+    conditions = application_conditions(include_history)
     async for row in db['applications'].aggregate([
         {'$match': scope},
         *scoped_history(org_id),
@@ -81,7 +90,7 @@ async def pipeline_details(db, org_id, job_id, stage, skip=0, limit=25):
     from .job_applications import assessment_result
 
     scope = {'orgId': org_id, 'jobId': job_id}
-    condition = application_conditions()[stage]
+    condition = application_conditions(include_history=True)[stage]
     items = []
     intake_total = 0
     if stage in {'resumesUploaded', 'atsTotal'}:
@@ -126,6 +135,7 @@ async def pipeline_details(db, org_id, job_id, stage, skip=0, limit=25):
         if ats_score is None:
             ats_score = (row.get('scoreBreakdown') or {}).get('ats')
         items.append({'id': 'application:' + row['applicationId'],
+            'applicantId': row.get('applicantId'),
             'name': person.get('name') or (person.get('profile') or {}).get('name') or 'Unknown candidate',
             'source': 'Candidate profile', 'status': row.get('currentStage') or 'RESUME_REVIEWED',
             'atsScore': ats_score, 'atsState': 'done' if ats_score is not None else None,

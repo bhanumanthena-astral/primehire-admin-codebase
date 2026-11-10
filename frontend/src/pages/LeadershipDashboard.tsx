@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import {Link} from 'react-router-dom';
 import {Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts';
-import {ArrowRight, ArrowUpRight, BriefcaseBusiness, CheckCheck, ChevronDown, ChevronRight, Clock3, Files, GitBranch, LayoutDashboard, LogOut, RefreshCw, Search, UserRound, UsersRound} from 'lucide-react';
+import {Settings2, Sparkles, ArrowRight, ArrowUpRight, BriefcaseBusiness, CheckCheck, ChevronDown, ChevronRight, Clock3, Files, GitBranch, LayoutDashboard, LogOut, RefreshCw, Search, UserRound, UsersRound} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
@@ -10,6 +10,7 @@ import {ModeToggle} from '../components/ui/primitives';
 import {useAuth} from '../lib/authContext';
 import {LeadershipData, LeadershipRole, LeadershipTiming, loadLeadership} from '../lib/leadershipApi';
 import './leadership.css';
+import {LeadershipAssistant} from '../components/LeadershipAssistant';
 
 const formatNumber = new Intl.NumberFormat('en-IN');
 const formatDay = new Intl.DateTimeFormat('en-IN', {day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata'});
@@ -36,6 +37,7 @@ function shortDate(value: string) {
 function PortfolioStats({data}: {data: LeadershipData}) {
   const m = data.summary;
   const entries = [
+    {label: 'Hires', value: m.hired, context: 'Joined candidates · all time', icon: UsersRound},
     {label: 'Open roles', value: m.openRoles, context: formatNumber.format(m.openPositions) + ' positions to fill', icon: BriefcaseBusiness},
     {label: 'Resumes received', value: m.resumesInWindow, context: 'Last ' + data.days + ' days', icon: Files},
     {label: 'Assessments completed', value: m.assessmentsCompleted, context: formatNumber.format(m.linksSent) + ' links sent · all time', icon: CheckCheck},
@@ -63,7 +65,7 @@ function ActivityChart({data}: {data: LeadershipData}) {
           <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={26} tickMargin={9} tickLine={false} axisLine={false} tick={{fontSize: 10, fill: 'var(--ld-muted)'}}/>
           <YAxis allowDecimals={false} tickMargin={4} axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--ld-muted)'}}/>
           <Tooltip labelFormatter={value => shortDate(String(value))} cursor={{fill: 'var(--ld-hover)'}} contentStyle={{background: 'var(--ld-paper)', borderColor: 'var(--ld-line)', borderRadius: 8, color: 'var(--ld-text)'}}/>
-          <Bar dataKey="resumes" name="Resumes" fill="var(--ld-bar)" radius={[3, 3, 0, 0]} maxBarSize={32} isAnimationActive={false}/>
+          <Line type="monotone" dataKey="resumes" name="Resumes" stroke="var(--ld-bar)" strokeWidth={2.5} dot={false} isAnimationActive={false}/>
           <Line dataKey="assessments" name="Assessments completed" stroke="var(--ld-teal)" strokeWidth={2.4} dot={data.days <= 7} isAnimationActive={false}/>
         </ComposedChart>
       </ResponsiveContainer>
@@ -193,6 +195,7 @@ function TimingView({data, selected, onSelect}: {data: LeadershipData; selected:
 
 export function LeadershipDashboard() {
   const {user, logout} = useAuth();
+  const [settingsOpen,setSettingsOpen]=useState(false);
   const [view, setView] = useState<View>('overview');
   const [days, setDays] = useState(30);
   const [jobId, setJobId] = useState('');
@@ -233,7 +236,7 @@ export function LeadershipDashboard() {
   return <div className="ld-workspace">
     <aside className="ld-sidebar">
       <div className="ld-brand"><span>EH</span><div>Elite HR<small>Leadership workspace</small></div></div>
-      <nav aria-label="Leadership navigation">{navigation.map(({key, label, icon: Icon}) => <button key={key} aria-current={view === key ? 'page' : undefined} onClick={() => navigate(key)}><Icon size={18}/>{label}</button>)}</nav>
+      <nav aria-label="Leadership navigation">{navigation.map(({key, label, icon: Icon}) => <button key={key} aria-current={view === key ? 'page' : undefined} onClick={() => navigate(key)}><Icon size={18}/>{label}</button>)}<button onClick={()=>setSettingsOpen(true)}><Settings2 size={18}/>Settings</button></nav>
       <div className="ld-account"><Link to="/account/profile" aria-label="Account profile"><UserRound size={18}/><span>{user?.name || 'Account profile'}</span></Link><button aria-label="Sign out" onClick={() => void logout()}><LogOut size={16}/></button></div>
     </aside>
     <main className="ld-main">
@@ -257,6 +260,7 @@ export function LeadershipDashboard() {
         <details className="ld-definitions"><summary>Metric definitions <ChevronDown size={14}/></summary><ul>{matching.quality.notes.map(note => <li key={note}>{note}</li>)}</ul></details>
       </div>}
     </main>
+    <LeadershipAssistant key={`${user?.userId}:${user?.orgId}:${days}:${jobId}`} days={days} jobId={jobId} settingsOpen={settingsOpen} onSettingsClose={()=>setSettingsOpen(false)}/>
   </div>;
 }
 

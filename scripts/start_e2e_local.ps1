@@ -46,9 +46,9 @@ if ($dbListener) {
     foreach ($port in @(13310,18080,18002)) {
         if (Listener $port) { throw "Local E2E port $port is already occupied; inspect it before reconnecting." }
     }
-    $tunnel = Background $plink @('-batch','-ssh','-i',('"'+$PrivateKeyPath+'"'),'-N',
-        '-L','25432:127.0.0.1:5432','-L','13310:127.0.0.1:3310',
-        '-L','18080:127.0.0.1:9000','-L','18002:127.0.0.1:8002',"root@$Server") 'e2e-tunnel'
+    $powershell = (Get-Command powershell.exe).Source
+    $tunnel = Background $powershell @('-NoProfile','-ExecutionPolicy','Bypass','-File',
+        (Join-Path $taskRoot 'scripts/keep_e2e_tunnel.ps1'),'-PrivateKeyPath',$PrivateKeyPath,'-Server',$Server) 'e2e-tunnel'
     for ($attempt=0; $attempt -lt 30 -and -not (Listener 25432); $attempt++) {
         if ($tunnel.HasExited) { throw 'SSH connection failed. Check .tmp/e2e-tunnel.err.log and your SSH agent.' }
         Start-Sleep -Milliseconds 300

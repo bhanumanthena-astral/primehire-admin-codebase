@@ -9,9 +9,9 @@ export const hiringSteps = [
   {key:'atsTotal', label:'Resumes under ATS', icon:Search, note:'Resumes with completed ATS scores, plus those queued or currently being scored.'},
   {key:'linksSent', label:'Assessment links sent', icon:Send, note:'Delivered invitations and links confirmed as shared by a candidate submission. Generating a link alone does not count as sending it.'},
   {key:'assessmentsCompleted', label:'Assessments completed', icon:CheckCircle2, note:'Candidates who submitted their assessment, including reports still being generated and candidates who have moved to later rounds.'},
-  {key:'technical', label:'Technical round', icon:Code2, note:'Candidates currently awaiting a technical interviewer, scheduled for a technical interview, or awaiting its review.'},
-  {key:'managerial', label:'Managerial round', icon:Users, note:'Candidates currently awaiting a managerial interviewer, scheduled for a managerial interview, or awaiting its review.'},
-  {key:'hr', label:'HR round', icon:MessageCircle, note:'Candidates currently in the HR round.'},
+  {key:'technical', label:'Technical round', icon:Code2, note:'Candidates who reached this round, including candidates who have advanced to later rounds.'},
+  {key:'managerial', label:'Managerial round', icon:Users, note:'Candidates who reached this round, including candidates who have advanced to later rounds.'},
+  {key:'hr', label:'HR round', icon:MessageCircle, note:'Candidates who reached this round, including candidates who have advanced to later rounds.'},
 ] as const;
 export type HiringStage = typeof hiringSteps[number]['key'];
 
@@ -61,7 +61,7 @@ export function JobHiringProgress({jobId, pipeline, onRefresh}:{jobId:string; pi
         })}
       </ol>
     </div>
-    <p className="mt-1 text-[0.6875rem] leading-relaxed text-muted-foreground">Resume and assessment stages show totals; interview stages show candidates currently in each round. Funnel shapes show the sequence, not conversion percentages.</p>
+    <p className="mt-1 text-[0.6875rem] leading-relaxed text-muted-foreground">Resume and assessment stages show totals; interview stages include candidates who have completed each round. Funnel shapes show the sequence, not conversion percentages.</p>
     {selectedStep&&selected&&<section id="hiring-stage-details" aria-label={`${selectedStep.label} details`} className="mt-5 overflow-hidden rounded-xl border border-border bg-background/40">
       <div className="flex items-start justify-between gap-4 border-b border-border p-4 sm:p-5">
         <div><div className="flex flex-wrap items-center gap-3"><h3 className="text-sm font-bold">{selectedStep.label}</h3><span className="rounded-full bg-primary/20 px-2.5 py-1 text-xs font-bold tabular-nums">{pipeline?.[selected]?.toLocaleString()??'—'}</span></div><p className="mt-2 max-w-3xl text-xs leading-relaxed text-muted-foreground">{selectedStep.note}</p>
