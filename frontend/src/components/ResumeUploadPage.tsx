@@ -1,3 +1,5 @@
+import {TableColumnSettings} from './TableColumnSettings';
+import {useTableColumnSettings} from '../lib/useTableColumnSettings';
 import {Progress} from '@/components/ui/progress';
 import {AppSelect} from '@/src/components/ui/AppSelect';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -20,6 +22,7 @@ import {ResumeFilePicker, fileSize} from './ResumeFilePicker';
 import {BriefcaseBusiness, CheckCircle2, FileText, Loader2, ShieldCheck, Upload} from 'lucide-react';
 import {Capabilities, intakeGet} from '../lib/resumeIntakeApi';
 import {legacyScreensAllowed} from '../lib/deploymentMode';
+const UPLOAD_COLUMNS=['File','Size','Status','Name','Email','Phone','Skills'].map(label=>({key:label.toLowerCase(),label,required:label==='File'}));
 const IntakeWorkspace = React.lazy(()=>import('./ResumeIntakePage'));
 
 function statusTone(s: string): 'success' | 'warning' | 'danger' | 'neutral' | 'info' {
@@ -35,6 +38,28 @@ function statusTone(s: string): 'success' | 'warning' | 'danger' | 'neutral' | '
  */
 export function LegacyResumeUploadPage({initialJobKey=''}:{initialJobKey?:string}) {
   const {user}=useAuth();
+  const columns=useTableColumnSettings(UPLOAD_COLUMNS,user?`elitehr:table-columns:resume-upload:${user.orgId}:${user.userId}`:undefined);
+  function renderFileCell(f:ResumeFile,key:string){switch(key){
+    case 'file':return <TableCell className="px-2 py-1 font-mono text-xs">{f.fileName}</TableCell>;
+    case 'size':return <TableCell className="px-2 py-1">{(f.sizeBytes / 1024).toFixed(1)} KB</TableCell>;
+    case 'status':return <TableCell className="px-2 py-1">
+                      <Pill tone={statusTone(f.status)}>{f.status}</Pill>
+                      {f.error && <span className="ml-1 text-xs opacity-70">{f.error}</span>}
+                      {f.llmStatus === 'pending' && (
+                        <span className="ml-1"><Pill tone="warning">AI scoring pending</Pill></span>
+                      )}
+                      {f.status === 'parsed' && !f.llmStatus && (
+                        <span className="ml-1"><Pill tone="neutral">Saved for later matching</Pill></span>
+                      )}
+                      {(f.llmStatus === 'failed' || f.llmStatus === 'skipped') && f.status === 'parsed' && (
+                        <span className="ml-1"><Pill tone="neutral">AI unavailable — deterministic score used</Pill></span>
+                      )}
+                    </TableCell>;
+    case 'name':return <TableCell className="px-2 py-1">{f.parsedJson?.name || '—'}</TableCell>;
+    case 'email':return <TableCell className="px-2 py-1">{f.parsedJson?.email || '—'}</TableCell>;
+    case 'phone':return <TableCell className="px-2 py-1">{f.parsedJson?.phone || '—'}</TableCell>;
+    case 'skills':return <TableCell className="px-2 py-1 text-xs">{(f.parsedJson?.skills || []).join(', ') || '—'}</TableCell>;
+  }}
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobKey, setJobKey] = useState(initialJobKey);
   const [consent, setConsent] = useState(false);
@@ -204,41 +229,18 @@ export function LegacyResumeUploadPage({initialJobKey=''}:{initialJobKey?:string
             <Progress aria-label="Resume processing progress" value={Math.min(processed, batchTotal)} max={Math.max(batchTotal, 1)}
               className="w-full [&_[data-slot=progress-track]]:h-2"/>
           </div>
+          <div className="flex justify-end"><TableColumnSettings settings={columns}/></div>
           <div className="overflow-x-auto">
             <Table className="w-full text-sm">
               <TableHeader>
                 <TableRow className="text-left opacity-70">
-                  <TableHead className="px-2 py-1">File</TableHead>
-                  <TableHead className="px-2 py-1">Size</TableHead>
-                  <TableHead className="px-2 py-1">Status</TableHead>
-                  <TableHead className="px-2 py-1">Name</TableHead>
-                  <TableHead className="px-2 py-1">Email</TableHead>
-                  <TableHead className="px-2 py-1">Phone</TableHead>
-                  <TableHead className="px-2 py-1">Skills</TableHead>
+                  {columns.visible.map(column=><TableHead key={column.key} className="px-2 py-1">{column.label}</TableHead>)}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {selected.files.map((f) => (
                   <TableRow key={f.fileId} className="border-t">
-                    <TableCell className="px-2 py-1 font-mono text-xs">{f.fileName}</TableCell>
-                    <TableCell className="px-2 py-1">{(f.sizeBytes / 1024).toFixed(1)} KB</TableCell>
-                    <TableCell className="px-2 py-1">
-                      <Pill tone={statusTone(f.status)}>{f.status}</Pill>
-                      {f.error && <span className="ml-1 text-xs opacity-70">{f.error}</span>}
-                      {f.llmStatus === 'pending' && (
-                        <span className="ml-1"><Pill tone="warning">AI scoring pending</Pill></span>
-                      )}
-                      {f.status === 'parsed' && !f.llmStatus && (
-                        <span className="ml-1"><Pill tone="neutral">Saved for later matching</Pill></span>
-                      )}
-                      {(f.llmStatus === 'failed' || f.llmStatus === 'skipped') && f.status === 'parsed' && (
-                        <span className="ml-1"><Pill tone="neutral">AI unavailable — deterministic score used</Pill></span>
-                      )}
-                    </TableCell>
-                    <TableCell className="px-2 py-1">{f.parsedJson?.name || '—'}</TableCell>
-                    <TableCell className="px-2 py-1">{f.parsedJson?.email || '—'}</TableCell>
-                    <TableCell className="px-2 py-1">{f.parsedJson?.phone || '—'}</TableCell>
-                    <TableCell className="px-2 py-1 text-xs">{(f.parsedJson?.skills || []).join(', ') || '—'}</TableCell>
+                    {columns.visible.map(column=><React.Fragment key={column.key}>{renderFileCell(f,column.key)}</React.Fragment>)}
                   </TableRow>
                 ))}
               </TableBody>
