@@ -68,7 +68,7 @@ def test_invalid_csv_values_block_group(row):
 def test_invalid_question_or_inconsistent_header_blocks_entire_group():
     result=parse_csv(csv_text([{'Weightage (%)':'50'},{'Weightage (%)':'50','Question Prompt / Text':''}]),'default')
     assert all(row['status']=='invalid' for row in result['rows'])
-    result=parse_csv(csv_text([{'Weightage (%)':'50'},{'Weightage (%)':'50','Language Selection':'Dutch'}]),'default')
+    result=parse_csv(csv_text([{'Weightage (%)':'50'},{'Weightage (%)':'50','Language Selection':'Dutch'}],headers=['Assessment Group ID']+HEADERS+OPTIONAL),'default')
     assert result['groups'][0]['status']=='invalid'
     assert any(error['field']=='Language Selection' for row in result['rows'] for error in row['errors'])
 
@@ -83,7 +83,7 @@ async def test_preview_confirm_partial_import_and_replay(module_client,db,monkey
     calls=[]
     async def forbidden(*args):calls.append(args);raise AssertionError('Import must not publish')
     monkeypatch.setattr(service,'create_upstream',forbidden)
-    text=csv_text([{}, {'Assessment Group ID':'invalid','Question Prompt / Text':''}])
+    text=csv_text([{}, {'Job Title':'Invalid assessment','Question Prompt / Text':''}])
     body={'text':text}
     preview=(await module_client.post('/api/assessment-management/csv/validate',json=body,headers=headers())).json()
     assert await db['assessments'].count_documents({})==0
@@ -99,6 +99,30 @@ async def test_preview_confirm_partial_import_and_replay(module_client,db,monkey
     assert await db['audit_log'].count_documents({'action':'assessment_management.csv_import'})==2
     bad=await module_client.post('/api/assessment-management/csv/import',json={**body,'previewHash':'0'*64},headers=headers())
     assert bad.status_code==409
+
+
+async def test_csv_without_group_id_imports_every_question_and_replay_is_safe(module_client,db):
+    assert 'Assessment Group ID' not in HEADERS+OPTIONAL
+    text=csv_text([{'Weightage (%)':'50'}, {'Weightage (%)':'50','Question Prompt / Text':'Explain a list'}])
+    preview=(await module_client.post('/api/assessment-management/csv/validate',json={'text':text},headers=headers())).json()
+    assert not preview['fileErrors'] and len(preview['groups'])==1
+    assert preview['groups'][0]['groupId']=='Assessment 1'
+    assert len(preview['groups'][0]['config']['questions'])==2
+    body={'text':text,'previewHash':preview['previewHash'],'confirmed':True}
+    imported=await module_client.post('/api/assessment-management/csv/import',json=body,headers=headers())
+    assert imported.status_code==200 and imported.json()['imported']==1
+    saved=await db.assessments.find_one({})
+    assert [q['text'] for q in saved['questions']]==['Explain a dictionary','Explain a list']
+    repeated=await module_client.post('/api/assessment-management/csv/import',json=body,headers=headers())
+    assert repeated.json()['duplicates']==1 and await db.assessments.count_documents({})==1
+    assert 'Group ID' not in str(repeated.json())
+
+
+def test_csv_automatically_separates_assessments_by_existing_details():
+    result=parse_csv(csv_text([{}, {'Job Title':'Different role'}]),'default')
+    assert not result['fileErrors'] and len(result['groups'])==2
+    assert all(group['status']=='valid' for group in result['groups'])
+    assert result['groups'][0]['config']['jobId']!=result['groups'][1]['config']['jobId']
 
 
 async def test_draft_edit_conflicts_validation_failure_and_immutable_identity(module_client,db):

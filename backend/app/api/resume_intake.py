@@ -166,6 +166,8 @@ async def batch_items(batch_id: str, skip: int = Query(0, ge=0), limit: int = Qu
     query = {"orgId": user.org_id, "batchId": batch_id}
     if status:
         query["status"] = status
+    else:
+        query["status"] = {"$ne": "deleted"}
     if q:
         query["$or"] = [{"fileName": {"$regex": re.escape(q), "$options": "i"}}, {"profile.name": {"$regex": re.escape(q), "$options": "i"}}]
     repo = IntakeRepository(db)

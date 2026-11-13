@@ -2,12 +2,13 @@
 import csv
 import hashlib
 import io
+import json
 import re
 from datetime import date, datetime, time, timedelta, timezone
 from pydantic import ValidationError
 from ..schemas.assessment_management import AssessmentConfig
 
-HEADERS = ['Assessment Group ID', 'Job Description', 'Language Selection', 'Round Type',
+HEADERS = ['Job Description', 'Language Selection', 'Round Type',
            'Start Date', 'End Date', 'Question Type', 'Max Duration (Seconds)', 'Max Score',
            'Weightage (%)', 'Question Prompt / Text', 'Expected Reference Answer']
 OPTIONAL = ['Job Title', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer']
@@ -37,7 +38,8 @@ def parse_csv(text, org):
         missing = [value for value in HEADERS if value not in headers]
         if missing:
             raise ValueError('Missing mandatory columns: ' + ', '.join(missing))
-        if any(value not in HEADERS + OPTIONAL for value in headers):
+        # Accept older saved templates, but new uploads need no user-created identifier.
+        if any(value not in HEADERS + OPTIONAL + ['Assessment Group ID'] for value in headers):
             raise ValueError('Unknown column headers; use the downloadable template')
         grouped = {}
         for values in reader:
@@ -54,13 +56,10 @@ def parse_csv(text, org):
                 # other questions while silently dropping this malformed row.
                 values = (values + [''] * len(headers))[:len(headers)]
             values = dict(zip(headers, [value.strip() for value in values]))
-            group = values['Assessment Group ID']
-            row['groupId'] = group
-            if not group or len(group) > 100:
-                row.update(status='invalid', errors=[{'field': 'Assessment Group ID', 'reason': 'A Group ID of 1–100 characters is required'}])
-                result['groups'].append({'groupId': f'Invalid row {row_number}', 'rows': [row_number], 'status': 'invalid', 'config': None})
-                continue
+            metadata_keys = ['Job Description', 'Language Selection', 'Round Type', 'Start Date', 'End Date', 'Job Title']
+            group = values.get('Assessment Group ID') or 'auto:' + digest(json.dumps([values.get(key, '') for key in metadata_keys], ensure_ascii=False))
             grouped.setdefault(group, []).append((row, values))
+            row['groupId'] = f'Assessment {list(grouped).index(group) + 1}'
             if len(grouped) > 100:
                 raise ValueError('Maximum 100 assessments per file')
         if not result['rows']:
@@ -120,7 +119,7 @@ def parse_csv(text, org):
                 row['status'] = 'invalid' if invalid else 'valid'
                 if invalid and not row['errors']:
                     row['errors'].append({'field': 'Assessment Group', 'reason': 'Another question in this group is invalid; the entire group is blocked'})
-            result['groups'].append({'groupId': group, 'rows': [row['row'] for row, _ in entries],
+            result['groups'].append({'groupId': entries[0][0]['groupId'], 'rows': [row['row'] for row, _ in entries],
                 'status': 'invalid' if invalid else 'valid', 'config': config.model_dump(mode='json') if config and not invalid else None})
     except (csv.Error, ValueError) as error:
         result['fileErrors'].append(str(error) if isinstance(error, ValueError) else 'Malformed CSV quoting')

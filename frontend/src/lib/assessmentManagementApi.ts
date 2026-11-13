@@ -53,12 +53,12 @@ export const assessmentFormDate = (value: string) => value ? new Date(`${value}+
 export const assessmentTime = (value?: string) => value && Number.isFinite(Date.parse(value))
   ? new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) + ' IST' : 'Not available';
 
-export const CSV_HEADERS = ['Assessment Group ID','Job Description','Language Selection','Round Type','Start Date','End Date','Question Type','Max Duration (Seconds)','Max Score','Weightage (%)','Question Prompt / Text','Expected Reference Answer','Job Title','Option A','Option B','Option C','Option D','Correct Answer'];
+export const CSV_HEADERS = ['Job Description','Language Selection','Round Type','Start Date','End Date','Question Type','Max Duration (Seconds)','Max Score','Weightage (%)','Question Prompt / Text','Expected Reference Answer','Job Title','Option A','Option B','Option C','Option D','Correct Answer'];
 export function downloadAssessmentTemplate() {
   const year = new Intl.DateTimeFormat('en', {timeZone:'Asia/Kolkata',year:'numeric'}).format(new Date());
   const rows = [CSV_HEADERS,
-    ['backend-001','Build Python services','English','TECHNICAL',`${Number(year)+1}-01-01`,`${Number(year)+1}-01-31`,'SPEAK_TO_ANSWER','120','10','50','Explain a Python dictionary','A dictionary maps unique keys to values','Backend Engineer','','','','',''],
-    ['backend-001','Build Python services','English','TECHNICAL',`${Number(year)+1}-01-01`,`${Number(year)+1}-01-31`,'MCQ','60','10','50','Which structure maps keys to values?','Dictionary','Backend Engineer','List','Dictionary','Tuple','Set','B']];
+    ['Build Python services','English','TECHNICAL',`${Number(year)+1}-01-01`,`${Number(year)+1}-01-31`,'SPEAK_TO_ANSWER','120','10','50','Explain a Python dictionary','A dictionary maps unique keys to values','Backend Engineer','','','','',''],
+    ['Build Python services','English','TECHNICAL',`${Number(year)+1}-01-01`,`${Number(year)+1}-01-31`,'MCQ','60','10','50','Which structure maps keys to values?','Dictionary','Backend Engineer','List','Dictionary','Tuple','Set','B']];
   const text = rows.map(row => row.map(cell => `"${cell.replaceAll('"','""')}"`).join(',')).join('\r\n');
   const url = URL.createObjectURL(new Blob(['\ufeff'+text], {type:'text/csv;charset=utf-8'}));
   const link = document.createElement('a'); link.href=url; link.download='assessment_upload_template.csv'; link.click();

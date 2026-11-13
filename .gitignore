@@ -33,3 +33,9 @@ htmlcov/
 .coverage.*
 *.tsbuildinfo
 tunnel_url.txt
+
+# Local tool state and generated knowledge-transfer deliverables
+.wrangler/
+/.bob/
+/.ua/
+/docs/technical-kt/

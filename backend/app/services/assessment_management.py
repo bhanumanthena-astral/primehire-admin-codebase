@@ -64,7 +64,7 @@ async def preview_csv(db, user, text):
             group.update(status='duplicate', config=None)
             for row in result['rows']:
                 if row.get('groupId') == group['groupId']:
-                    row.update(status='duplicate', errors=[{'field': 'Assessment Group ID', 'reason': 'Already imported; open the saved assessment or use a new Group ID'}])
+                    row.update(status='duplicate', errors=[{'field': 'Assessment', 'reason': 'Already imported; open the saved assessment to review its questions'}])
     return result
 
 

@@ -412,8 +412,8 @@ export default function JobDetailsPage({
           </div>
           {acceptsResumes(job)&&hasJobAccess(user,'upload',job)&&<PAButton onClick={()=>onUpload?.(job)}>Upload resumes</PAButton>}
           {canManage && (
-            <div className="flex flex-wrap gap-1.5">
-              {isJobAdmin(user)&&<JobStatusControl job={job} busy={busy} canRestoreArchived={canRestoreArchived} onChange={status=>{
+            <div className="flex flex-wrap items-center gap-1.5">
+              {isJobAdmin(user)&&<JobStatusControl compact job={job} busy={busy} canRestoreArchived={canRestoreArchived} onChange={status=>{
                 if(status==='OPEN'&&['CLOSED','ARCHIVED'].includes(lifecycle)){setReopening(true);return;}
                 void runAction(()=>status==='CLOSED'?closeJob(job.jobId):status==='ARCHIVED'?archiveJob(job.jobId):setJobLifecycle(job.jobId,status as "OPEN"|"ON_HOLD"));
               }}/>}

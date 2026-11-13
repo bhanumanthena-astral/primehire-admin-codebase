@@ -100,6 +100,7 @@ async def test_association_notes_versions_assignment_and_admin_delete(client, db
     await drain(db)
     assert await db['applicants'].count_documents({}) == 1
     assert await db['applications'].count_documents({}) == 2
+
     versions = (await client.get(path+'/versions',headers=headers())).json()['items']
     assert len(versions) == 2
     assert all('storageKey' not in version for version in versions)
@@ -110,6 +111,20 @@ async def test_association_notes_versions_assignment_and_admin_delete(client, db
     assert deleted.status_code == 200
     assert (await client.get(path+'/download',headers=headers())).status_code == 409
     assert await db['applications'].count_documents({}) == 2
+
+
+async def test_deleted_resume_is_hidden_from_default_results_but_auditable(client,db):
+    item=await ready(client,db)
+    response=await client.request('DELETE',f"/api/resume-intake/items/{item['itemId']}",
+        json={'expectedRevision':item['revision'],'reason':'Remove unsupported test upload'},headers=headers('super_admin'))
+    assert response.status_code==200
+    path=f"/api/resume-intake/batches/{item['batchId']}"
+    visible=(await client.get(path,headers=headers())).json()
+    assert visible['total']==0 and visible['items']==[]
+    deleted=(await client.get(path+'?status=deleted',headers=headers())).json()
+    assert deleted['total']==1 and deleted['items'][0]['status']=='deleted'
+    assert (await db.resume_intake_items.find_one({'_id':item['itemId']}))['storageKey']==''
+    assert await db.audit_log.count_documents({'action':'resume_intake.delete'})==1
 
 
 async def test_resume_versions_filter_permissions_before_pagination(client, db):
