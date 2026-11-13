@@ -605,7 +605,7 @@ export interface BulkSendItem {
   reason?: string;
 }
 
-export async function sendAssessments(applicationIds: string[], generateOnly = false): Promise<{
+export async function sendAssessments(applicationIds: string[], generateOnly = false, template?: {subject:string; body:string}): Promise<{
   items: BulkSendItem[];
   accepted: number;
   total: number;
@@ -613,7 +613,7 @@ export async function sendAssessments(applicationIds: string[], generateOnly = f
   const res = await hiringFetch(`${API_BASE}/api/applications/send-assessments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ applicationIds, generateOnly }),
+    body: JSON.stringify({ applicationIds, generateOnly, ...(template && {template: {subject: template.subject, body: template.body}}) }),
   });
   if (!res.ok) throw new Error(await apiErrorMessage(res, 'POST send-assessments'));
   return res.json();

@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import logging
 import random
+import re
+from html import escape
 from typing import Any
 
 import httpx
@@ -51,7 +53,22 @@ def render_assessment_invite(
     password: str | None,
     job_title: str,
     window_text: str,
+    template: dict | None = None,
+    context: dict | None = None,
 ) -> dict[str, str]:
+    if template:
+        values = {**(context or {}), "candidate_name": candidate_name, "job_title": job_title,
+                  "company": settings.email_from_name, "link": link, "password": password}
+        def fill(text, fields):
+            return re.sub(r"{{(\w+)}}", lambda match: str(fields.get(match[1]) or ""), text)
+        body = template["body"]
+        if "{{link}}" not in body:
+            body += "\nAssessment link: {{link}}"
+        if password and "{{password}}" not in body:
+            body += "\nPassword: {{password}}"
+        public = {key: value for key, value in values.items() if key not in ("password", "link")}
+        return {"subject": " ".join(fill(template["subject"], public).splitlines()),
+                "html": escape(fill(body, values)).replace("\n", "<br>")}
     subject = f"Your assessment invitation — {job_title}"
     access = (
         f"<p>Access password: <strong>{password}</strong></p>"
@@ -80,11 +97,13 @@ async def queue_assessment_invite(
     password: str | None,
     job_title: str,
     window_text: str,
+    template: dict | None = None,
+    context: dict | None = None,
 ) -> dict[str, Any]:
     """Render + encrypt + enqueue (idempotent on dedupe). Never sends here."""
     rendered = render_assessment_invite(
         candidate_name=to_name, link=link, password=password,
-        job_title=job_title, window_text=window_text,
+        job_title=job_title, window_text=window_text, template=template, context=context,
     )
     body = json.dumps({"to": to_email, "subject": rendered["subject"], "html": rendered["html"]})
     repo = EmailOutboxRepository(db)

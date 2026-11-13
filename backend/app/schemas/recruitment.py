@@ -30,7 +30,8 @@ class Schedule(Strict):
     endsAt: datetime
     meetingLink: str = Field(default="", max_length=500)
     location: str = Field(default="", max_length=200)
-    reminderMinutes: Literal[10, 15, 20] = 15
+    reminderMinutes: int | None = Field(default=None, ge=5, le=120)
+    emailTemplate: Literal["standard", "brief"] = "standard"
     reason: str = Field(min_length=3, max_length=500)
     overrideReason: str = Field(default="", max_length=500)
 

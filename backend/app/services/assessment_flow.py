@@ -59,16 +59,16 @@ async def _set_assessment(db: Any, org_id: str, application_id: str, patch: dict
 
 
 async def request_assessment_send(
-    db: Any, *, org_id: str, application_id: str, actor_user_id: str, generate_only: bool = False
+    db: Any, *, org_id: str, application_id: str, actor_user_id: str, generate_only: bool = False, template: dict | None = None
 ) -> dict[str, Any]:
     from ..models.recruitment import lease
     async with lease(db, org_id, [f'assessment-send:{application_id}']):
         return await _request_assessment_send(db, org_id=org_id, application_id=application_id,
-            actor_user_id=actor_user_id, generate_only=generate_only)
+            actor_user_id=actor_user_id, generate_only=generate_only, template=template)
 
 
 async def _request_assessment_send(
-    db: Any, *, org_id: str, application_id: str, actor_user_id: str, generate_only: bool = False
+    db: Any, *, org_id: str, application_id: str, actor_user_id: str, generate_only: bool = False, template: dict | None = None
 ) -> dict[str, Any]:
     """Human-triggered (or autoSend) intent. Validates, persists, enqueues."""
     apps = ApplicationRepository(db)
@@ -90,10 +90,11 @@ async def _request_assessment_send(
     await _set_assessment(db, org_id, application_id, {"state": "send_requested", "error": None,
         "providerCandidateId": provider_id})
     queue = BackgroundJobRepository(db)
+    intent = {"applicationId": application_id, "actorUserId": actor_user_id, "generateOnly": generate_only, "template": template}
     queued = await queue.enqueue(
         org_id=org_id, kind="assessment_send", entity_type="application",
         entity_key=application_id,
-        payload={"applicationId": application_id, "actorUserId": actor_user_id, "generateOnly": generate_only},
+        payload=intent,
         dedupe_key=f"assessment_generate:application:{application_id}" if generate_only else None,
     )
     # Explicit retries can revive a finished/dead request after a provider/parser
@@ -102,7 +103,7 @@ async def _request_assessment_send(
         await db['background_jobs'].update_one({'orgId':org_id,'jobId':queued['jobId'],
             'status':{'$in':['done','dead']}}, {'$set':{'status':'pending','attempts':0,
             'runAfter':_utcnow(),'leaseUntil':None,'lastError':None,'result':None,
-            'payload':{'applicationId':application_id,'actorUserId':actor_user_id,'generateOnly':generate_only}}})
+            'payload':intent}})
     audit = AuditLogRepository(db)
     await audit.log(org_id=org_id, actor_user_id=actor_user_id, action="assessment.send_requested",
                     resource_type="application", resource_id=application_id,
@@ -228,7 +229,9 @@ async def _handle_assessment_send(db: Any, job: dict[str, Any]) -> dict[str, Any
         db, org_id=org_id, application_id=application_id,
         to_email=email, to_name=(applicant or {}).get("name") or "Candidate",
         link=link, password=password, job_title=job_doc.get("title", ""),
-        window_text=window_text,
+        window_text=window_text, template=payload.get("template"),
+        context={"start_time": assessment.get("windowStart"), "end_time": assessment.get("windowEnd"),
+                 "round_type": job_doc.get("assessmentRoundType") or "Technical"},
     )
     await _set_assessment(db, org_id, application_id,
                           {"state": "email_queued", "messageId": msg["messageId"], "error": None})

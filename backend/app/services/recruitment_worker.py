@@ -46,31 +46,36 @@ def invitation_html(row, name, purpose):
         .astimezone(ZoneInfo("Asia/Kolkata"))
         .strftime("%I:%M %p IST")
     )
-    heading = (
-        "Your interview invitation"
-        if purpose == "candidate"
-        else (
-            "Interview reminder"
-            if purpose == "reminder"
-            else "An interview has been assigned to you"
-        )
-    )
+    candidate = purpose in {"candidate", "candidate_reminder"}
+    reminder = purpose in {"reminder", "candidate_reminder"}
+    rescheduled = row.get("scheduleRevision", 1) > 1
+    heading = "Interview reminder" if reminder else "Interview rescheduled" if rescheduled else "Interview invitation"
+    if reminder:
+        intro = "Your interview starts soon."
+    elif rescheduled:
+        intro = "Please use the updated schedule below."
+    elif candidate:
+        intro = "Congratulations on progressing to the next interview stage."
+    else:
+        intro = "You are scheduled to interview the candidate below."
+    closing = "" if row.get("emailTemplate") == "brief" else "<p>Please be available at the scheduled time. Contact your recruiter if you need to reschedule.</p>"
     link = (
         f'<p><a href="{escape(row["meetingLink"],quote=True)}">Join the meeting</a></p>'
         if row.get("meetingLink")
         else ""
     )
-    return f'<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;padding:28px"><h1>{heading}</h1><p>Dear {escape(name)},</p><p>{"Congratulations on progressing to the next interview stage." if purpose=="candidate" else "Please review the assigned candidate in your hiring workspace."}</p><h2>{escape(row.get("jobTitle","Job"))}</h2><p><strong>{escape(row["round"].title())} interview</strong><br>{stamp} – {end}</p>{link}<p>{escape(row.get("location", ""))}</p><p>Please be available at the scheduled time. Contact your recruiter if you need to reschedule.</p><p>Regards,<br>{escape(settings.email_from_name or "Recruitment team")}</p></div>'
+    return f'<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;padding:28px"><h1>{heading}</h1><p>Dear {escape(name)},</p><p>{intro}</p><h2>{escape(row.get("jobTitle","Job"))}</h2><p><strong>{escape(row["round"].title())} interview</strong><br>{stamp} – {end}</p>{link}<p>{escape(row.get("location", ""))}</p>{closing}<p>Regards,<br>{escape(settings.email_from_name or "Recruitment team")}</p></div>'
 
 
 async def enqueue_email(db, row, purpose):
+    is_candidate = purpose in {"candidate", "candidate_reminder"}
     recipient = (
-        await db["applicants" if purpose == "candidate" else "users"].find_one(
+        await db["applicants" if is_candidate else "users"].find_one(
             {
                 "orgId": row["orgId"],
-                "applicantId" if purpose == "candidate" else "userId": (
+                "applicantId" if is_candidate else "userId": (
                     row["applicantId"]
-                    if purpose == "candidate"
+                    if is_candidate
                     else row["interviewerId"]
                 ),
             }
@@ -80,9 +85,12 @@ async def enqueue_email(db, row, purpose):
     email = recipient.get("email", "")
     if "@" not in email or email.endswith("@placeholder.local"):
         raise ValueError("A valid recipient email is required")
-    subject = f'{"Interview reminder" if purpose=="reminder" else "Interview invitation"} — {row.get("jobTitle","Job")}'
+    event = "Interview reminder" if purpose in {"reminder", "candidate_reminder"} else (
+        "Interview rescheduled" if row.get("scheduleRevision", 1) > 1 else "Interview invitation"
+    )
+    subject = f'{event} — {row["round"].title()} — {row.get("jobTitle", "Job")}'
     rendered = invitation_html(row, recipient.get("name", "Candidate"), purpose)
-    if purpose != "candidate":
+    if not is_candidate:
         candidate = await db["applicants"].find_one({"orgId": row["orgId"], "applicantId": row["applicantId"]}, {"name": 1}) or {}
         rendered = rendered.replace("<h2>", f'<p><strong>Candidate:</strong> {escape(candidate.get("name", "Candidate"))}</p><h2>', 1)
     body = json.dumps(
@@ -121,7 +129,7 @@ async def deliver(db, msg):
         or row["status"] != "scheduled"
         or row.get("scheduleRevision", 1) != msg.get("interviewRevision")
         or aware(row["endsAt"]) <= now()
-        or (msg.get("kind") == "recruit_reminder" and aware(row["startsAt"]) <= now())
+        or (msg.get("kind") in {"recruit_reminder", "recruit_candidate_reminder"} and aware(row["startsAt"]) <= now())
     ):
         await repo.coll.update_one(
             {"orgId": org, "messageId": key},
@@ -246,6 +254,7 @@ async def tick(db):
                     row["reminderAt"]
                 ) <= now() < aware(row["startsAt"]):
                     await enqueue_email(db, row, "reminder")
+                    await enqueue_email(db, row, "candidate_reminder")
                     changes["reminderQueued"] = True
                     await RecruitmentRepository(db, row["orgId"]).notify(
                         row["interviewerId"],

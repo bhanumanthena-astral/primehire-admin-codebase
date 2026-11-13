@@ -245,7 +245,13 @@ async def schedule(db, user, payload, *, existing=None):
             raise HTTPException(409, availability['message'])
         values = payload.model_dump(exclude={"overrideReason", "expectedRevision"})
         revision = (existing["revision"] + 1) if existing else 1
+        minutes = payload.reminderMinutes
+        if minutes is None:
+            from ..models.organization import OrganizationRepository
+            org = await OrganizationRepository(db).get_by_org_id(user.org_id)
+            minutes = ((org or {}).get("settings") or {}).get("reminderLeadMinutes", 15)
         values.update(
+            reminderMinutes=minutes,
             orgId=user.org_id,
             interviewId=key,
             jobId=app["jobId"],
@@ -259,8 +265,8 @@ async def schedule(db, user, payload, *, existing=None):
             updatedBy=user.user_id,
             createdAt=existing.get("createdAt", now()) if existing else now(),
             updatedAt=now(),
-            reminderAt=payload.startsAt - timedelta(minutes=payload.reminderMinutes),
-            candidateEmailRequested=False,
+            reminderAt=payload.startsAt - timedelta(minutes=minutes),
+            candidateEmailRequested=True,
             assignmentEmailQueued=False,
             candidateEmailQueued=False,
             reminderQueued=False,
@@ -406,6 +412,7 @@ async def detail(db, user, key):
             "status",
             "revision",
             "reminderMinutes",
+            "emailTemplate",
             "createdAt",
             "updatedAt",
             "jobTitle",

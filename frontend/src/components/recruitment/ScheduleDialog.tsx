@@ -57,7 +57,8 @@ export function ScheduleDialog({
   const [end, setEnd] = useState(existing ? localTime(existing.endsAt) : "");
   const [meeting, setMeeting] = useState(existing?.meetingLink || "");
   const [location, setLocation] = useState(existing?.location || "");
-  const [reminder, setReminder] = useState(existing?.reminderMinutes || 15);
+  const [reminder, setReminder] = useState(String(existing?.reminderMinutes ?? ""));
+  const [emailTemplate, setEmailTemplate] = useState("");
   const [reason, setReason] = useState("");
   const [override, setOverride] = useState("");
   const [busy, setBusy] = useState(false);
@@ -124,7 +125,8 @@ export function ScheduleDialog({
         endsAt: new Date(`${end}+05:30`).toISOString(),
         meetingLink: meeting,
         location,
-        reminderMinutes: reminder,
+        reminderMinutes: reminder ? Number(reminder) : null,
+        emailTemplate,
         reason,
         overrideReason: override,
         ...(existing ? { expectedRevision: existing.revision } : {}),
@@ -184,18 +186,18 @@ export function ScheduleDialog({
             </AppSelect>
           </label>
           <label className="space-y-2 text-sm font-medium">
-            Reminder
-            <AppSelect
-              aria-label="Interview reminder"
-              value={String(reminder)}
-              onValueChange={(v) => setReminder(Number(v))}
-            >
-              {[10, 15, 20].map((m) => (
-                <option key={m} value={m}>
-                  {m} minutes before
-                </option>
-              ))}
-            </AppSelect>
+            Email reminder (minutes before)
+            <Input type="number" min={5} max={120} placeholder="Use admin setting"
+              aria-label="Interview reminder" value={reminder} onChange={e => setReminder(e.target.value)} />
+          </label>
+          <label className="space-y-2 text-sm font-medium">
+            Interview email template
+            <select required className="block w-full rounded border bg-background p-2" value={emailTemplate}
+              onChange={e => setEmailTemplate(e.target.value)}>
+              <option value="">Choose a template</option>
+              <option value="standard">Standard invitation</option>
+              <option value="brief">Brief confirmation</option>
+            </select>
           </label>
         </div>
         <div className="rounded-xl border border-border p-4">

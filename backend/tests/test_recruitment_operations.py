@@ -38,7 +38,7 @@ async def test_private_recruitment_key_works_without_assessment_outbox_key(clien
 
 def test_invalid_private_recruitment_key_fails_startup():
     from app.config import Settings, validate_settings
-    candidate = Settings(recruitment_portals_enabled=True, mongodb_database='primehire_admin_v2', recruitment_outbox_encryption_key='invalid')
+    candidate = Settings(recruitment_email_dry_run=True, recruitment_portals_enabled=True, mongodb_database='primehire_admin_v2', recruitment_outbox_encryption_key='invalid')
     with pytest.raises(RuntimeError, match='RECRUITMENT_OUTBOX_ENCRYPTION_KEY'):
         validate_settings(candidate)
 
@@ -328,23 +328,14 @@ async def test_reminder_and_reschedule_invalidate_old_delivery(client, db):
         await db["recruit_email_outbox"].count_documents({"kind": "recruit_reminder"})
         == 1
     )
-    await client.post(
-        f"/api/recruitment/interviews/{key}/send-invitation",
-        json={"expectedRevision": 1, "reason": "Send candidate invitation"},
-        headers=headers(),
-    )
-    await worker.tick(db)
+    assert await db["recruit_email_outbox"].count_documents({"kind": "recruit_candidate_reminder"}) == 1
+    assert await db["recruit_email_outbox"].count_documents({"kind": "recruit_candidate"}) == 1
     changed = await client.put(
         f"/api/recruitment/interviews/{key}",
         json={**schedule(), "expectedRevision": 1},
         headers=headers(),
     )
     assert changed.status_code == 200, changed.text
-    await client.post(
-        f"/api/recruitment/interviews/{key}/send-invitation",
-        json={"expectedRevision": 2, "reason": "Send revised candidate invitation"},
-        headers=headers(),
-    )
     await worker.tick(db)
     assert (
         await db["recruit_email_outbox"].count_documents({"kind": "recruit_candidate"})
@@ -366,13 +357,13 @@ async def test_real_delivery_boundary_uses_gate_and_encrypted_outbox(
     monkeypatch.setattr(settings, "email_dry_run", False)
     monkeypatch.setattr(settings, "email_test_recipient_allowlist", "@example.test")
     await worker.tick(db)
-    assert len(sent) == 1
+    assert len(sent) == 2
     msg = await db["recruit_email_outbox"].find_one({})
     assert (
         msg["wiped"] and msg["payloadEncrypted"] is None and msg["sentVia"] == "zepto"
     )
     await worker.tick(db)
-    assert len(sent) == 1
+    assert len(sent) == 2
 
 
 async def test_email_failure_backoff_and_allowlist(client, db, monkeypatch):

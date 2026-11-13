@@ -1,3 +1,5 @@
+import { savedMailTemplates } from '../mockData';
+import { AssessmentMailPicker } from './AssessmentMailPicker';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Table, TableHeader, TableRow, TableHead, TableBody, TableCell} from '@/components/ui/table';
@@ -41,6 +43,9 @@ function assessmentLabel(state: string): string {
  * Nothing PII is written to localStorage or URLs (memory state only).
  */
 export default function ApplicantsPage({ onOpen }: { onOpen: (id: string) => void }) {
+  const templates = savedMailTemplates();
+  const [templateId, setTemplateId] = useState('');
+  const template = templates.find(item => item.id === templateId);
   const [items, setItems] = useState<Applicant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +95,7 @@ export default function ApplicantsPage({ onOpen }: { onOpen: (id: string) => voi
     setSending(true);
     setError(null);
     try {
-      const out = await sendAssessments(Array.from(selected));
+      const out = await sendAssessments(Array.from(selected), false, template);
       setResults(out.items);
       setSelected(new Set());
       setConfirming(false);
@@ -114,7 +119,7 @@ export default function ApplicantsPage({ onOpen }: { onOpen: (id: string) => voi
         <div className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm">
           <span>{selected.size} shortlisted candidate(s) selected</span>
           <Button variant="ghost"
-            onClick={() => setConfirming(true)}
+            onClick={() => {setTemplateId('');setConfirming(true)}}
             className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
           >
             Send assessments…
@@ -132,9 +137,9 @@ export default function ApplicantsPage({ onOpen }: { onOpen: (id: string) => voi
             {dryRun ? ' Dry-run is ON: nothing will be delivered.' : ''}
           </p>
           <div className="flex gap-2">
-            <Button variant="ghost"
-              onClick={() => void onConfirmSend()}
-              disabled={sending}
+            <AssessmentMailPicker templates={templates} value={templateId} onChange={setTemplateId}/><Button variant="ghost"
+              onClick={() => template && void onConfirmSend()}
+              disabled={sending || !template}
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
             >
               {sending ? 'Queueing…' : 'Confirm send'}

@@ -545,3 +545,27 @@ async def test_manual_link_sync_repeats_until_report_ready_and_preserves_zero(cl
     assert row['assessment']['reportPending'] is False
     assert await enqueue_sync_sweep(mock_db) == 0
     assert CALLS['zepto']==0
+
+def test_selected_invitation_preserves_credentials_and_escapes_text():
+    from app.services.email_send import render_assessment_invite
+    result = render_assessment_invite(candidate_name="A&B", password="p<123", link="https://example.test/start",
+        job_title="Engineer", window_text="", template={"subject": "Welcome {{candidate_name}}",
+        "body": "Hello {{candidate_name}}"})
+    assert result["subject"] == "Welcome A&B"
+    assert "Hello A&amp;B" in result["html"] and "p&lt;123" in result["html"]
+    assert "https://example.test/start" in result["html"]
+
+
+def test_manual_email_requires_permission_and_hides_provider_response(client, monkeypatch):
+    from app.services import email_send
+    body = {"toEmail": "candidate@example.com", "subject": "Invitation", "htmlBody": "<p>Welcome</p>"}
+    assert client.post("/api/send-email", json=body).status_code == 401
+    assert client.post("/api/send-email", headers=_hr(), json=body).status_code == 503
+    monkeypatch.setattr(settings, "email_dry_run", False)
+    assert client.post("/api/send-email", headers=_hr(), json=body).status_code == 403
+    monkeypatch.setattr(settings, "email_test_recipient_allowlist", "@example.com")
+    async def accepted(*args):
+        return "private-provider-response"
+    monkeypatch.setattr(email_send, "send_via_zepto", accepted)
+    response = client.post("/api/send-email", headers=_hr(), json=body)
+    assert response.status_code == 200 and response.json() == {"success": True}

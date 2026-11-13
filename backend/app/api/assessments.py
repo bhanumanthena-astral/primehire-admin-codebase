@@ -17,7 +17,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from ..models.hiring import AuditLogRepository
 from ..models.organization import OrganizationRepository, default_settings
@@ -31,10 +31,45 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["assessments"])
 
 
+class ManualAssessmentEmail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    toEmail: EmailStr
+    toName: str = Field(default="", max_length=200)
+    subject: str = Field(min_length=1, max_length=300, pattern=r"^[^\r\n]+$")
+    htmlBody: str = Field(min_length=1, max_length=100000)
+
+
+@router.post("/send-email")
+async def send_manual_assessment_email(
+    payload: ManualAssessmentEmail,
+    user: CurrentUser = Depends(require_permission("applications.transition")),
+):
+    from ..config import settings
+    from ..services import email_send
+
+    if user.impersonating:
+        raise HTTPException(403, "Sending email while impersonating is disabled.")
+    if settings.email_dry_run or not settings.zeptomail_api_key:
+        raise HTTPException(503, "Live assessment email is disabled.")
+    if not email_send.recipient_allowed(payload.toEmail):
+        raise HTTPException(403, "Recipient is outside the test allowlist.")
+    try:
+        await email_send.send_via_zepto(payload.toEmail, payload.toName, payload.subject, payload.htmlBody)
+    except email_send.EmailSendError:
+        raise HTTPException(502, "Email provider could not accept the message.") from None
+    return {"success": True}
+
+
+class InvitationTemplate(BaseModel):
+    subject: str = Field(min_length=1, max_length=300, pattern=r"^[^\r\n]+$")
+    body: str = Field(min_length=1, max_length=20000)
+
+
 class BulkSendRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     applicationIds: list[str] = Field(default_factory=list, max_length=50)
+    template: InvitationTemplate | None = None
     generateOnly: bool = False
 
 
@@ -67,6 +102,7 @@ async def bulk_send_assessments(
             outcome = await request_assessment_send(
                 db, org_id=current_user.org_id, application_id=application_id,
                 actor_user_id=current_user.user_id, generate_only=payload.generateOnly,
+                template=payload.template.model_dump() if payload.template else None,
             )
         except HTTPException as exc:
             outcome={'result':'failed','reason':str(exc.detail)}

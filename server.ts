@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import jwt from "jsonwebtoken";
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
@@ -19,66 +18,6 @@ async function startServer() {
   // API routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
-  });
-
-  // Proxy to ZeptoMail
-  app.post("/api/send-email", async (req, res) => {
-    // JWT Authentication guard
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Missing or invalid authorization header" });
-    }
-    const token = authHeader.substring(7);
-    const jwtSecret = process.env.JWT_SECRET;
-    if (jwtSecret) {
-      try {
-        jwt.verify(token, jwtSecret, { audience: "primehire", issuer: "primehire" });
-      } catch {
-        return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
-      }
-    }
-
-    const { toEmail, toName, subject, htmlBody } = req.body;
-    
-    const apiKey = process.env.ZEPTOMAIL_API_KEY;
-    if (!apiKey) {
-      console.error("[Email Proxy Error] ZeptoMail API key is missing in environment variables.");
-      return res.status(500).json({ error: "ZeptoMail API key is missing on the server." });
-    }
-
-    try {
-      console.log(`[Email Proxy] Dispatching email to ${toEmail} (${toName})...`);
-      
-      const payload = {
-        from: { address: "noreply@nxtagent.ai", name: "PrimeHire Careers" },
-        to: [{ email_address: { address: toEmail, name: toName || "" } }],
-        subject,
-        htmlbody: htmlBody
-      };
-
-      const response = await fetch("https://api.zeptomail.in/v1.1/email", {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "Authorization": apiKey
-        },
-        body: JSON.stringify(payload)
-      });
-
-      console.log(`[Email Proxy Response] Status: ${response.status} ${response.statusText}`);
-      const bodyText = await response.text();
-      console.log(`[Email Proxy Response Body]`, bodyText);
-
-      if (response.ok) {
-        res.json({ success: true, details: bodyText });
-      } else {
-        res.status(response.status).json({ success: false, error: bodyText });
-      }
-    } catch (error: any) {
-      console.error("[Email Proxy Error] Failed to transmit email:", error.message);
-      res.status(500).json({ success: false, error: error.message });
-    }
   });
 
   // Proxy to the local FastAPI backend (auth + future /api/* routes).
@@ -221,7 +160,7 @@ async function startServer() {
 
   // Generic FastAPI passthrough for every other /api/* route
   // (assessments, candidates, users, jobs, resumes, ...). Registered AFTER
-  // the specific handlers above so /api/health, /api/send-email,
+  // the specific handlers above so /api/health,
   // /api/auth/* and /api/primehire|backend/* keep their behavior.
   // Forwards auth + cookies (httpOnly refresh flow) and streams raw
   // bodies so multipart resume uploads and file downloads also work.

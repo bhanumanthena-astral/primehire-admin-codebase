@@ -47,7 +47,9 @@ it('shows scores, selects explicit candidates and queues invitations after confi
  fireEvent.click(screen.getByRole('button',{name:'3. Assessments'}));fireEvent.click(await screen.findByRole('button',{name:'View table'}));await screen.findByText('Zoe');expect(screen.getByText('85')).toBeInTheDocument();expect(screen.getByText('75')).toBeInTheDocument();
  expect(vi.mocked(recruitmentRequest).mock.calls[0][0]).toContain('jobId=job-a');
  fireEvent.click(screen.getByRole('checkbox',{name:'Select Zoe'}));fireEvent.click(screen.getByRole('button',{name:'Send email invitations'}));expect(sendAssessments).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'Confirm action'}));await waitFor(()=>expect(sendAssessments).toHaveBeenCalledWith(['app-a']));
+ expect(screen.getByRole('button',{name:'Confirm action'})).toBeDisabled();
+ fireEvent.change(screen.getByLabelText('Invitation template'),{target:{value:'tpl-invite'}});
+ fireEvent.click(screen.getByRole('button',{name:'Confirm action'}));await waitFor(()=>expect(sendAssessments).toHaveBeenCalledWith(['app-a'],false,expect.objectContaining({id:'tpl-invite'})));
  fireEvent.click(screen.getByRole('button',{name:'WhatsApp · paid add-on'}));expect(await screen.findByText('WhatsApp invitations cost extra')).toBeInTheDocument();expect(screen.getByRole('button',{name:'Manager enablement unavailable until pricing is configured'})).toBeDisabled();
 });
 

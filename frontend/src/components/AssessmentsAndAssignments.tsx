@@ -1,3 +1,5 @@
+import { authFetch } from '../lib/authFetch';
+import { AssessmentMailPicker } from './AssessmentMailPicker';
 import {Job, updateJob} from '../lib/hiringApi';
 import {AppSelect} from '@/src/components/ui/AppSelect';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -291,6 +293,12 @@ export default function AssessmentsAndAssignments({
   const [rescheduleEndTime, setRescheduleEndTime] = useState('');
   const [isRescheduling, setIsRescheduling] = useState(false);
 
+  const [inviteTarget, setInviteTarget] = useState<{id?: LocalCandidateId} | null>(null);
+  const [inviteTemplateId, setInviteTemplateId] = useState('');
+  function chooseInvitation(id?: LocalCandidateId) {
+    setInviteTemplateId('');
+    setInviteTarget({id});
+  }
   const [passwordEditCandId, setPasswordEditCandId] = useState<LocalCandidateId | null>(null);
   const [newCandPassword, setNewCandPassword] = useState('');
   const [isSavingPassword, setIsSavingPassword] = useState(false);
@@ -990,11 +998,11 @@ export default function AssessmentsAndAssignments({
   const sendEmailViaApi = async (toEmail: string, toName: string, subject: string, plainTextBody: string) => {
     const htmlBody = `
       <div style="font-family: sans-serif; font-size: 14px; color: #111827; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
-        ${plainTextBody.split('\n').map(line => line.trim() ? `<div>${line}</div>` : '<br/>').join('')}
+        ${plainTextBody.split('\n').map(line => line.trim() ? `<div>${line.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</div>` : '<br/>').join('')}
       </div>
     `;
 
-    const response = await fetch('/api/send-email', {
+    const response = await authFetch('/api/send-email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1012,7 +1020,7 @@ export default function AssessmentsAndAssignments({
       let parsedErr = errText;
       try {
         const json = JSON.parse(errText);
-        parsedErr = json.error || errText;
+        parsedErr = json.detail || json.error || errText;
       } catch {
         // use errText as is
       }
@@ -1022,7 +1030,7 @@ export default function AssessmentsAndAssignments({
     return await response.json();
   };
 
-  const handleSendInvite = async (candId: LocalCandidateId) => {
+  const handleSendInvite = async (candId: LocalCandidateId, template: MailTemplate) => {
     const target = candidates.find(c => c.id === candId);
     if (!target) return;
 
@@ -1043,11 +1051,6 @@ export default function AssessmentsAndAssignments({
     onSetCandidates(prev => prev.map(c => c.id === candId ? { ...c, rowLoading: true, mailStatus: 'Sending' } : c));
 
     try {
-      const template = templates.find(t => t.type === 'STANDARD_INVITATION') || templates[0];
-      if (!template) {
-        throw new Error('No invitation email template found.');
-      }
-
       const { subject, body } = renderTemplate(template, target, activeAssessment!);
 
       await sendEmailViaApi(target.email, target.name, subject, body);
@@ -1185,7 +1188,7 @@ export default function AssessmentsAndAssignments({
     }
   };
 
-  const handleBulkSendInvites = async () => {
+  const handleBulkSendInvites = async (template: MailTemplate) => {
     const selectedActiveCands = activeAssessmentCandidates.filter(c => selectedCandidateIds.includes(c.id));
     // Rule: selected rows with generated links only, must be active and not completed
     const targetCands = selectedActiveCands.filter(c => (c.link !== null && c.link !== '') && c.status === 'ACTIVE' && !c.submittedDate);
@@ -1201,15 +1204,6 @@ export default function AssessmentsAndAssignments({
         ? { ...c, rowLoading: true, mailStatus: 'Sending' }
         : c
     ));
-
-    const template = templates.find(t => t.type === 'STANDARD_INVITATION') || templates[0];
-    if (!template) {
-      toast.error('No invitation template found.');
-      onSetCandidates(prev => prev.map(c =>
-        targetCands.some(tc => tc.id === c.id) ? { ...c, rowLoading: false } : c
-      ));
-      return;
-    }
 
     let successCount = 0;
     let failCount = 0;
@@ -2828,7 +2822,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                   const isSendEnabled = selectedCandidateIds.length > 0 && selectedWithLinks.length > 0;
                   return (
                     <Button variant="ghost"
-                      onClick={handleBulkSendInvites}
+                      onClick={() => chooseInvitation()}
                       disabled={!isSendEnabled}
                       className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-lg border transition cursor-pointer"
                       style={isSendEnabled ? {
@@ -3061,7 +3055,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                             <div className="flex flex-col gap-1.5 max-w-[120px] mx-auto">
                               {/* Send Invite */}
                               <Button variant="ghost"
-                                onClick={() => handleSendInvite(c.id)}
+                                onClick={() => chooseInvitation(c.id)}
                                 disabled={!inviteEnabled}
                                 className="text-[0.6875rem] font-bold px-2 py-1.5 rounded-lg border inline-flex items-center justify-center gap-1 transition cursor-pointer"
                                 style={inviteEnabled ? {
@@ -3880,6 +3874,16 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
       {/* =========================================================================
           UPDATE PASSWORD DIALOG
           ========================================================================= */}
+      {inviteTarget && <Modal label="Send assessment invitation" onClose={() => setInviteTarget(null)}>
+        <AssessmentMailPicker templates={templates} value={inviteTemplateId} onChange={setInviteTemplateId}/>
+        <button disabled={!inviteTemplateId} onClick={() => {
+          const template = templates.find(item => item.id === inviteTemplateId);
+          if (!template) return;
+          setInviteTarget(null);
+          if (inviteTarget.id) void handleSendInvite(inviteTarget.id, template);
+          else void handleBulkSendInvites(template);
+        }}>Send email</button>
+      </Modal>}
       {passwordEditCandId && (
         <Modal onClose={() => {setPasswordEditCandId(null);setNewCandPassword('');}}
           dismissible={!isSavingPassword} label="Update Candidate Password" className="max-w-md p-6 space-y-4 text-left">

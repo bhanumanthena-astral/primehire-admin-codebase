@@ -88,11 +88,13 @@ unreachable backend returns a sanitized 502 rather than a misleading success.
 Connect the V2 FastAPI release, with resume/recruitment enabled and Candidate /
 Assessment Management capabilities present. The current V2 screens use native
 backend APIs. Old development-only flows still reference /api/backend/* and
-/api/send-email; those provider-specific endpoints are not in the FastAPI
+that provider-specific prefix is absent from the FastAPI
 release. The gateway does not recreate them, provide credentials or redirect
 them to V1. Verify native V2 capabilities before launch; do not fall back to
 legacy screens against a partial backend. Any deliberate legacy compatibility
 requires a separately authorized, authenticated backend implementation.
+
+Manual assessment email uses the authenticated FastAPI POST /api/send-email route. Configure ZeptoMail only on the backend and mail workers.
 
 The assessment library's Candidate assignments action now opens native V2
 assignment statuses and links to Candidates for date/link management. Production

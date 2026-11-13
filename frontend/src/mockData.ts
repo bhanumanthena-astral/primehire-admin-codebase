@@ -48,6 +48,13 @@ The {{company}} Recruitment Team`
   }
 ];
 
+export function savedMailTemplates(): MailTemplate[] {
+  try {
+    const stored = localStorage.getItem('primehire_templates');
+    return stored ? JSON.parse(stored) : INITIAL_TEMPLATES;
+  } catch { return INITIAL_TEMPLATES; }
+}
+
 // Helper to substitute variables in mail templates
 export function renderTemplate(template: MailTemplate, candidate: Candidate, assessment: AssessmentProfile, company = 'PrimeHire'): { subject: string; body: string } {
   const vars: Record<string, string> = {
@@ -63,6 +70,10 @@ export function renderTemplate(template: MailTemplate, candidate: Candidate, ass
 
   let subject = template.subject;
   let body = template.body;
+  if (template.type !== 'REMINDER') {
+    if (!body.includes('{{link}}')) body += '\nAssessment link: {{link}}';
+    if (candidate.password && !body.includes('{{password}}')) body += '\nPassword: {{password}}';
+  }
 
   Object.entries(vars).forEach(([key, val]) => {
     subject = subject.replaceAll(key, val);
