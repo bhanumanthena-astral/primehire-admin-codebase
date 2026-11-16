@@ -61,13 +61,13 @@ const pendingRound = (app: Application) => app.activeInterview ? null
 export function RecruitmentWorkspace({
   standalone = false,
   onOpenJobs,
-  scopedJobId,
+  scopedJobId, initialRound,
   initialScheduleApplication,
   onInitialScheduleHandled,
   externalSearch,
   onSearchChange,
 }: {
-  scopedJobId?: string;
+  scopedJobId?: string; initialRound?: "technical"|"managerial"|"hr";
   initialScheduleApplication?: Application;
   onInitialScheduleHandled?: () => void;
   externalSearch?: string;
@@ -90,7 +90,7 @@ export function RecruitmentWorkspace({
         : role === "hr"
           ? "HR Interview Portal"
           : "Recruitment workspace";
-  const [view, setView] = useState(externalSearch?.trim() ? "candidates" : "tracker");
+  const [view, setView] = useState(initialRound ? "interviews" : externalSearch?.trim() ? "candidates" : "tracker");
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobPage, setJobPage] = useState(0);
@@ -114,7 +114,7 @@ export function RecruitmentWorkspace({
   const [interviewPage, setInterviewPage] = useState(0);
   const [notificationPage, setNotificationPage] = useState(0);
   const [bucket, setBucket] = useState("upcoming");
-  const [round, setRound] = useState("");
+  const [round, setRound] = useState<string>(initialRound || "");
   const scheduling = schedulingFilters[view === "interviews" ? bucket : stage];
   const applicationStage = scheduling ? "" : stage;
   const applicationFilter = `jobId=${encodeURIComponent(job)}&stage=${applicationStage}${scheduling ? `&schedulingRound=${scheduling.round}` : ""}`;
@@ -256,7 +256,7 @@ export function RecruitmentWorkspace({
         "GET",
         controller.signal,
       ) : Promise.resolve<Page<Interview>>({items: [], total: 0}),
-      recruitmentRequest<any>(
+      initialRound ? Promise.resolve({items:[],total:0}) : recruitmentRequest<any>(
         `/notifications?skip=${notificationPage * 25}`,
         undefined,
         "GET",
@@ -612,7 +612,7 @@ export function RecruitmentWorkspace({
         className="flex flex-wrap gap-1 rounded-xl border border-border bg-card p-2"
         aria-label="Recruitment workspace"
       >
-        {tabs.map(([id, label, Icon]) => (
+        {tabs.filter(([id])=>!initialRound||["interviews","calendar","candidates"].includes(id)).map(([id, label, Icon]) => (
           <Button
             key={id}
             variant={view === id ? "secondary" : "ghost"}
@@ -1032,7 +1032,7 @@ export function RecruitmentWorkspace({
         </>
       )}
       {!!queue.length && (
-        <ScheduleDialog
+        <ScheduleDialog deferInvitation={!!initialRound}
           key={`${queue[0].applicationId}:${reschedule?.interviewId || "new"}`}
           application={queue[0]}
           existing={reschedule || undefined}

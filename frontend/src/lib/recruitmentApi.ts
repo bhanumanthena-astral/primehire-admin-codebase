@@ -16,13 +16,14 @@ export type Person = {
   [key: string]: any;
 };
 export type Application = {
+  invitationDelivery?: {status:string;via?:string;retryId?:string}|null;
   atsScore?: number | null;
   applicationId: string;
   applicantId: string;
   jobId: string;
   currentStage: string;
   createdAt: string;
-  assessment?: { score?: number; status?: string; completedAt?: string; reportAvailable?: boolean; link?: string; password?: string; passwordUnavailable?: boolean; error?: string };
+  assessment?: { score?: number; status?: string; completedAt?: string; sentAt?: string; windowEnd?: string; reportAvailable?: boolean; link?: string; password?: string; passwordUnavailable?: boolean; error?: string };
   candidate: Person;
   jobTitle?: string;
   activeInterview?: Booking | null;

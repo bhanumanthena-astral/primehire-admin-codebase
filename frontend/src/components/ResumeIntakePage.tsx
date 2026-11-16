@@ -25,10 +25,10 @@ const SOURCE = ['local','linkedin','naukri','referral','email','other'];
 const STATUS = ['uploaded','queued','processing','review_required','duplicate_suspected','confirming','completed','duplicate','failed','rejected','unsupported_format','scan_required','virus_detected','password_protected','ocr_required','conversion_required','confirmation_paused','deleted'];
 const label = (value:string) => value.replaceAll('_',' ').replace(/^./, s=>s.toUpperCase());
 
-export default function ResumeIntakePage({capabilities, initialJobKey='', scopedJob}:{capabilities:Capabilities;initialJobKey?:string;scopedJob?:Job}) {
+export default function ResumeIntakePage({capabilities, initialJobKey='', scopedJob, initialView, onChanged}:{capabilities:Capabilities;initialJobKey?:string;scopedJob?:Job;initialView?:'upload'|'batches';onChanged?:()=>void}) {
   const {user} = useAuth();
   const [caps,setCaps] = useState(capabilities);
-  const [view,setView] = useState<'upload'|'batches'|'candidates'>(caps.canUpload?'upload':'batches');
+  const [view,setView] = useState<'upload'|'batches'|'candidates'>(initialView==='batches'?'batches':caps.canUpload?'upload':'batches');
   const [mode,setMode] = useState('single'); const [source,setSource] = useState('local');
   const [jobs,setJobs] = useState<Job[]>(scopedJob?[scopedJob]:[]); const [jobId,setJobId] = useState(scopedJob?.jobId||''); const [jobSearch,setJobSearch] = useState(''); const [jobPage,setJobPage] = useState(0); const [moreJobs,setMoreJobs] = useState(false);
   const [files,setFiles] = useState<File[]>([]); const [archive,setArchive] = useState<File[]>([]); const [consent,setConsent] = useState(false);
@@ -41,7 +41,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
   const key = useRef(''); const uploadAbort = useRef<AbortController|null>(null); const latestStatus = useRef('');
   const selectedJob = jobs.find(job=>job.jobId===jobId);
   const eligible = !!selectedJob && acceptsResumes(selectedJob) && hasJobAccess(user,'upload',selectedJob);
-  const changed = () => setReload(n=>n+1);
+  const changed = () => {setReload(n=>n+1);onChanged?.()};
   const resetUpload = () => {key.current='';setConsent(false);};
   useEffect(()=>()=>uploadAbort.current?.abort(),[]);
   useEffect(()=>{

@@ -32,6 +32,7 @@ class Schedule(Strict):
     location: str = Field(default="", max_length=200)
     reminderMinutes: int | None = Field(default=None, ge=5, le=120)
     emailTemplate: Literal["standard", "brief"] = "standard"
+    deferCandidateInvitation: bool = False
     reason: str = Field(min_length=3, max_length=500)
     overrideReason: str = Field(default="", max_length=500)
 
@@ -70,6 +71,10 @@ class Reschedule(Schedule):
 class Action(Strict):
     expectedRevision: int = Field(ge=1)
     reason: str = Field(min_length=3, max_length=500)
+
+
+class InvitationAction(Action):
+    emailTemplate: Literal["standard", "brief"] | None = None
 
 
 class Review(Strict):

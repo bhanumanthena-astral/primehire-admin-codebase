@@ -61,6 +61,9 @@ async def lifespan(app):
         await base.db["jobs"].insert_one(
             {
                 "jobId": "recruit-job",
+                "jobKey": "DEMO-ENGINEER", "mustHaveSkills": ["Python"], "niceToHaveSkills": [],
+                "matchThreshold": 70, "assessmentJobId": None, "reuseAssessmentMonths": 3,
+                "createdBy": "browser-admin", "updatedAt": now(),
                 "orgId": "default",
                 "title": "Recruitment Platform Engineer",
                 "assigneeUserId": "browser-recruiter",
@@ -107,6 +110,8 @@ async def lifespan(app):
             "fixture",
         )
         await base.db['jobs'].insert_one({'orgId':'default','jobId':'previous-browser-job','jobKey':'TALENT-BROWSER-SOURCE','requestKey':'talent-browser-source','title':'Previous Backend Role',
+            'mustHaveSkills':[], 'niceToHaveSkills':[], 'matchThreshold':70, 'assessmentJobId':None,
+            'reuseAssessmentMonths':3, 'createdBy':'browser-admin', 'updatedAt':now(),
             'assigneeUserId':'browser-recruiter','lifecycleStatus':'CLOSED','createdAt':now()-timedelta(days=45)})
         await base.db['applications'].insert_one({'orgId':'default','applicationId':'previous-browser-app',
             'jobId':'previous-browser-job','applicantId':'recruit-person6','currentStage':'REJECTED',

@@ -30,12 +30,12 @@ export function ScheduleDialog({
   application,
   existing,
   onClose,
-  onSaved,
+  onSaved, deferInvitation=false,
 }: {
   application: Application;
   existing?: Interview;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: () => void; deferInvitation?:boolean;
 }) {
   const [round, setRound] = useState<Round>(
     existing?.round ||
@@ -58,6 +58,7 @@ export function ScheduleDialog({
   const [meeting, setMeeting] = useState(existing?.meetingLink || "");
   const [location, setLocation] = useState(existing?.location || "");
   const [reminder, setReminder] = useState(String(existing?.reminderMinutes ?? ""));
+  const [booking,setBooking]=useState<Interview|null>(null);
   const [emailTemplate, setEmailTemplate] = useState("");
   const [reason, setReason] = useState("");
   const [override, setOverride] = useState("");
@@ -126,7 +127,8 @@ export function ScheduleDialog({
         meetingLink: meeting,
         location,
         reminderMinutes: reminder ? Number(reminder) : null,
-        emailTemplate,
+        emailTemplate:emailTemplate||"standard",
+        deferCandidateInvitation:deferInvitation,
         reason,
         overrideReason: override,
         ...(existing ? { expectedRevision: existing.revision } : {}),
@@ -138,13 +140,45 @@ export function ScheduleDialog({
       );
       if(result.googleCalendarStatus==='synced')toast.success('Interview scheduled. Google Calendar event and reminder added.');
       else if(result.googleCalendarStatus&&!['not_configured','not_connected'].includes(result.googleCalendarStatus))toast.message('Interview saved. Google Calendar needs attention.',{description:result.googleCalendarError||'Calendar sync is pending. Open the interview to check its status.'});
-      onSaved();
+      if(deferInvitation)setBooking(result); else onSaved();
     } catch (e: any) {
       setError(e.message);
     } finally {
       setBusy(false);
     }
   }
+  const preview=emailTemplate && start && <section aria-label="Interview invitation preview" className="space-y-1 rounded-xl border p-3 text-sm">
+          <strong>{existing?'Interview rescheduled':'Interview invitation'} · {round.toUpperCase()}</strong>
+          <p>Dear {application.candidate.name}, {existing?'your interview has been rescheduled.':'congratulations on progressing to the next interview stage.'}</p>
+          <p>{start.replace('T',' ')} – {end.replace('T',' ')} IST</p>
+          {meeting&&<p className="break-all">{meeting}</p>}{location&&<p>{location}</p>}
+          {emailTemplate==='standard'&&<p>Please be available at the scheduled time. Contact your recruiter if you need to reschedule.</p>}
+          <p className="text-xs">{booking?'Confirm to queue this candidate’s invitation.':'Saving queues separate emails for the candidate and assigned interviewer.'}</p>
+        </section>;
+  if(booking) return <Modal label="Send interview invitation" onClose={onSaved} dismissible={!busy} className="max-w-xl space-y-4 p-5">
+    <h2 className="text-lg font-semibold">Interview saved · {application.candidate.name}</h2>
+    <label className="space-y-2 text-sm font-medium">
+            Interview email template
+            <select required className="block w-full rounded border bg-background p-2" value={emailTemplate}
+              onChange={e => setEmailTemplate(e.target.value)}>
+              <option value="">Choose a template</option>
+              <option value="standard">Standard invitation</option>
+              <option value="brief">Brief confirmation</option>
+            </select>
+          </label>
+    {preview}
+    {error&&<p role="alert">{error}</p>}
+    <Button variant="outline" disabled={busy} onClick={onSaved}>Send later</Button>
+    <Button disabled={busy||!emailTemplate} onClick={async()=>{
+      setBusy(true);setError('');
+      try {
+        await recruitmentRequest('/interviews/'+encodeURIComponent(booking.interviewId)+'/send-invitation',
+          {expectedRevision:booking.revision,reason:'Recruiter confirmed the invitation preview',emailTemplate},'POST');
+        toast.success('Candidate invitation queued for '+application.candidate.name);onSaved();
+      } catch(e){setError(e instanceof Error?e.message:'Could not queue invitation')}
+      finally{setBusy(false)}
+    }}>Confirm and send invitation</Button>
+  </Modal>;
   return (
     <Modal
       label={existing ? "Reschedule interview" : "Schedule interview"}
@@ -190,7 +224,7 @@ export function ScheduleDialog({
             <Input type="number" min={5} max={120} placeholder="Use admin setting"
               aria-label="Interview reminder" value={reminder} onChange={e => setReminder(e.target.value)} />
           </label>
-          <label className="space-y-2 text-sm font-medium">
+          {!deferInvitation&&<label className="space-y-2 text-sm font-medium">
             Interview email template
             <select required className="block w-full rounded border bg-background p-2" value={emailTemplate}
               onChange={e => setEmailTemplate(e.target.value)}>
@@ -198,7 +232,7 @@ export function ScheduleDialog({
               <option value="standard">Standard invitation</option>
               <option value="brief">Brief confirmation</option>
             </select>
-          </label>
+          </label>}
         </div>
         <div className="rounded-xl border border-border p-4">
           <label className="text-sm font-medium">
@@ -337,6 +371,7 @@ export function ScheduleDialog({
             />
           </details>
         )}
+        {preview}
         {error && (
           <p
             role="alert"

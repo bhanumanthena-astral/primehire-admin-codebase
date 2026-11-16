@@ -1,4 +1,6 @@
-import {useState} from 'react';
+import {HiringStageWorkspace} from './HiringStageWorkspace';
+import type {Job} from '../lib/hiringApi';
+import {useEffect,useRef,useState} from 'react';
 import {FileText, Search, Send, CheckCircle2, Code2, Users, MessageCircle, RefreshCw, MousePointer2, X} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import type {JobPipeline} from '../lib/hiringApi';
@@ -25,8 +27,14 @@ const fills = [
   'color-mix(in srgb, var(--accent) 68%, var(--foreground))',
 ];
 
-export function JobHiringProgress({jobId, pipeline, onRefresh}:{jobId:string; pipeline?:JobPipeline|null; onRefresh:()=>void}) {
+export function JobHiringProgress({jobId, job, onJobChanged, pipeline, onRefresh}:{job?:Job; onJobChanged?:(job:Job)=>void; jobId:string; pipeline?:JobPipeline|null; onRefresh:()=>void}) {
   const [selected,setSelected]=useState<HiringStage|null>(null);
+  const refresh=useRef(onRefresh); refresh.current=onRefresh;
+  useEffect(()=>{
+    if(!job||!selected)return;
+    const timer=setInterval(()=>{if(!document.hidden)refresh.current()},30000);
+    return ()=>clearInterval(timer);
+  },[jobId,selected,!!job]);
   const selectedStep=hiringSteps.find(step=>step.key===selected);
   return <section aria-label="Hiring lifecycle progress" className="ehr-rise overflow-hidden rounded-[1.25rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">
     <header className="flex flex-wrap items-start justify-between gap-3">
@@ -70,7 +78,7 @@ export function JobHiringProgress({jobId, pipeline, onRefresh}:{jobId:string; pi
         </div>
         <Button variant="ghost" size="icon" aria-label="Close stage details" onClick={()=>setSelected(null)}><X size={16}/></Button>
       </div>
-      <JobPipelineDetails key={`${jobId}:${selected}`} jobId={jobId} stage={selected}/>
+      {job ? <HiringStageWorkspace key={selected} stage={selected} job={job} onChanged={onRefresh} onJobChanged={onJobChanged}/> : <JobPipelineDetails key={`${jobId}:${selected}`} jobId={jobId} stage={selected}/>}
     </section>}
   </section>;
 }

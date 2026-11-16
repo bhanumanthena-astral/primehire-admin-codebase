@@ -243,7 +243,7 @@ async def schedule(db, user, payload, *, existing=None):
             db, user.org_id, payload.interviewerId, payload.startsAt, payload.endsAt, existing=existing)
         if availability['available'] is False:
             raise HTTPException(409, availability['message'])
-        values = payload.model_dump(exclude={"overrideReason", "expectedRevision"})
+        values = payload.model_dump(exclude={"overrideReason", "expectedRevision", "deferCandidateInvitation"})
         revision = (existing["revision"] + 1) if existing else 1
         minutes = payload.reminderMinutes
         if minutes is None:
@@ -266,7 +266,8 @@ async def schedule(db, user, payload, *, existing=None):
             createdAt=existing.get("createdAt", now()) if existing else now(),
             updatedAt=now(),
             reminderAt=payload.startsAt - timedelta(minutes=minutes),
-            candidateEmailRequested=True,
+            candidateEmailRequested=not payload.deferCandidateInvitation,
+            candidateEmailTemplate=payload.emailTemplate,
             assignmentEmailQueued=False,
             candidateEmailQueued=False,
             reminderQueued=False,

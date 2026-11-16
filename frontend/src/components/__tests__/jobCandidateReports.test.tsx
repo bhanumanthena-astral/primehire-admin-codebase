@@ -55,3 +55,13 @@ it('shows a real provider-pending error and allows retry without a mock report',
  fireEvent.click(screen.getByRole('button',{name:'Retry report'}));
  expect(await screen.findByText('Report for Synthetic Candidate: 0')).toBeVisible();
 });
+
+it('scopes completed reports and forwards the range selection to scheduling',async()=>{
+ const bulk=vi.fn();
+ render(<JobCandidateReports completedOnly job={job} onSchedule={vi.fn()} onScheduleSelected={bulk}/>);
+ await screen.findByText('Synthetic Candidate');
+ expect(vi.mocked(recruitmentRequest).mock.calls[0][0]).toContain('pipelineStage=assessmentsCompleted');
+ fireEvent.click(screen.getByRole('button',{name:'Select all in range'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Schedule interviews (1)'}));
+ expect(bulk).toHaveBeenCalledWith([candidate]);
+});

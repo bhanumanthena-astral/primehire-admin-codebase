@@ -58,7 +58,8 @@ def invitation_html(row, name, purpose):
         intro = "Congratulations on progressing to the next interview stage."
     else:
         intro = "You are scheduled to interview the candidate below."
-    closing = "" if row.get("emailTemplate") == "brief" else "<p>Please be available at the scheduled time. Contact your recruiter if you need to reschedule.</p>"
+    template = row.get("candidateEmailTemplate", row.get("emailTemplate")) if candidate else row.get("emailTemplate")
+    closing = "" if template == "brief" else "<p>Please be available at the scheduled time. Contact your recruiter if you need to reschedule.</p>"
     link = (
         f'<p><a href="{escape(row["meetingLink"],quote=True)}">Join the meeting</a></p>'
         if row.get("meetingLink")

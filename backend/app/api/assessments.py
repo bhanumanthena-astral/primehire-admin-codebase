@@ -17,7 +17,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.hiring import AuditLogRepository
 from ..models.organization import OrganizationRepository, default_settings
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api", tags=["assessments"])
 
 class ManualAssessmentEmail(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    toEmail: EmailStr
+    toEmail: str = Field(min_length=3, max_length=254, pattern=r"^[^\s<>,;@]+@[^\s<>,;@]+\.[^\s<>,;@]+$")
     toName: str = Field(default="", max_length=200)
     subject: str = Field(min_length=1, max_length=300, pattern=r"^[^\r\n]+$")
     htmlBody: str = Field(min_length=1, max_length=100000)

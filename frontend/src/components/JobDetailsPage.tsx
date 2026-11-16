@@ -362,7 +362,7 @@ export default function JobDetailsPage({
 
 
 
-  if (loading) {
+  if (loading && detail?.job.jobId !== jobId) {
     return (
       <div className="space-y-4" aria-label="Loading job details">
         <div className="h-8 w-64 animate-pulse rounded-lg bg-muted" />
@@ -395,7 +395,7 @@ export default function JobDetailsPage({
       <PAButton variant="secondary" onClick={onBack}>← Back to Jobs</PAButton>
 
       {/* ── Header ── */}
-      <div className="ehr-rise rounded-[1.25rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <div className="ehr-rise rounded-xl border border-border bg-card p-3 shadow-[var(--shadow-card)] sm:p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="eyebrow">Job details</div>
@@ -477,11 +477,11 @@ export default function JobDetailsPage({
         </dl>
       </div>
 
-      <JobHiringProgress jobId={job.jobId} pipeline={job.pipeline} onRefresh={()=>void load()}/>
+      <JobHiringProgress key={job.jobId} job={user && user.role!=="viewer"?job:undefined} onJobChanged={onChanged} jobId={job.jobId} pipeline={job.pipeline} onRefresh={()=>void load()}/>
 
       {/* ── Overview ── */}
-      <section aria-label="Job overview" className="ehr-rise ehr-rise-1 rounded-[1.25rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <h2 className="text-[0.875rem] font-semibold tracking-tight">Job overview</h2>
+      <details aria-label="Job overview" className="ehr-rise ehr-rise-1 rounded-[1.25rem] border border-border bg-card p-3 shadow-[var(--shadow-card)] sm:p-4">
+        <summary className="cursor-pointer text-[0.875rem] font-semibold tracking-tight">Job overview</summary>
         <dl className="mt-2 grid gap-x-10 md:grid-cols-2">
           <InfoRow label="Company Name" value={job.companyName || '—'} />
           <InfoRow label="Job ID" value={job.jobKey} mono />
@@ -504,11 +504,11 @@ export default function JobDetailsPage({
             </div>
           </div>
         )}
-      </section>
+      </details>
 
       {/* ── JD ── */}
-      <section aria-label="Job description" className="ehr-rise ehr-rise-2 rounded-[1.25rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <h2 className="text-[0.875rem] font-semibold tracking-tight">Job Description</h2>
+      <details aria-label="Job description" className="ehr-rise ehr-rise-2 rounded-[1.25rem] border border-border bg-card p-3 shadow-[var(--shadow-card)] sm:p-4">
+        <summary className="cursor-pointer text-[0.875rem] font-semibold tracking-tight">Job Description</summary>
         {job.jdHtml ? (
           <div
             className="ehr-richtext !min-h-0 mt-2 !p-0"
@@ -519,13 +519,13 @@ export default function JobDetailsPage({
             {job.jdText || job.description || 'No description.'}
           </p>
         )}
-      </section>
+      </details>
 
       {/* ── Applications ── */}
-      <section aria-label="Applications" className="ehr-rise ehr-rise-3 rounded-[1.25rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <h2 className="text-[0.875rem] font-semibold tracking-tight">
+      <details aria-label="Applications" className="ehr-rise ehr-rise-3 rounded-[1.25rem] border border-border bg-card p-3 shadow-[var(--shadow-card)] sm:p-4">
+        <summary className="cursor-pointer text-[0.875rem] font-semibold tracking-tight">
           Applications <span className="text-muted-foreground">({counts.total ?? applications.length})</span>
-        </h2>
+        </summary>
         {onShowApplications&&user?.role!=='viewer'&&<PAButton variant="secondary" className="mt-3" onClick={onShowApplications}>Show applications</PAButton>}
         {applications.length === 0 ? (
           <p className="mt-2 text-[0.8125rem] text-muted-foreground">
@@ -544,7 +544,7 @@ export default function JobDetailsPage({
           <span>{applicationOffset + 1}–{Math.min(applicationOffset+20,counts.total)} of {counts.total}</span>
           <PAButton variant="secondary" disabled={applicationOffset+20 >= counts.total} onClick={() => setApplicationOffset(v => v+20)}>Next applications</PAButton>
         </div>}
-      </section>
+      </details>
 
       {/* ── Activity ── */}
       <section aria-label="Activity" className="ehr-rise ehr-rise-4 rounded-[1.25rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">

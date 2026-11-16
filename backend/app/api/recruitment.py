@@ -25,6 +25,7 @@ from ..schemas.recruitment import (
     Schedule,
     Reschedule,
     Action,
+    InvitationAction,
     Review,
     ManagerialDraft,
     AccessProfile,
@@ -148,6 +149,11 @@ async def staff(
 
 @router.get("/applications")
 async def applications(
+    pipelineStage: Literal["linksSent", "assessmentsCompleted"] | None = None,
+    scoreField: Literal["ats", "assessment"] | None = None,
+    minimum: int = Query(0, ge=0, le=100),
+    maximum: int = Query(100, ge=0, le=100),
+    invitationStatus: str = Query("", max_length=50),
     jobId: str = Query("", max_length=100),
     stage: str = Query("", max_length=50),
     search: str = Query("", max_length=100),
@@ -170,6 +176,20 @@ async def applications(
     query = {"$and": [scope, filters]}
     fields = await fields_for(db, user)
     pipeline = [{"$match": query}]
+    if (scoreField or invitationStatus or pipelineStage) and "assessment" not in fields:
+        raise HTTPException(403, "Assessment access is required.")
+    if minimum > maximum:
+        raise HTTPException(422, "Invalid score range.")
+    if scoreField:
+        score = "$assessment.score" if scoreField == "assessment" else {"$ifNull": ["$matchScore", "$scoreBreakdown.ats"]}
+        pipeline.append({"$addFields": {"rangeScore": score}})
+        pipeline.append({"$match": {"rangeScore": {"$gte": minimum, "$lte": maximum}}})
+    if invitationStatus:
+        pipeline.append({"$match": {"$or": [{"assessment.state": invitationStatus}, {"assessment.status": invitationStatus}]}})
+    if pipelineStage:
+        from ..services.job_pipeline import scoped_history, application_conditions
+        pipeline.extend(scoped_history(user.org_id))
+        pipeline.append({"$match": {"$expr": application_conditions()[pipelineStage]}})
     if schedulingRound:
         pipeline.extend(service.pending_scheduling_pipeline(user.org_id, schedulingRound))
     pipeline.extend([
@@ -212,6 +232,13 @@ async def applications(
     items = []
     bookings=await service.active_bookings(db,user,[row['applicationId'] for row in rows])
     latest=await service.latest_interviews(db,user,[row['applicationId'] for row in rows])
+    delivery = {}
+    if "assessment" in fields and rows:
+        query = {"orgId": user.org_id, "kind": "assessment_invite", "entityType": "application",
+                 "entityKey": {"$in": [row["applicationId"] for row in rows]}}
+        async for msg in db["email_outbox"].find(query, {"entityKey":1,"status":1,"sentVia":1,"messageId":1}):
+            delivery[msg["entityKey"]] = {"status":msg.get("status"),"via":msg.get("sentVia"),
+                "retryId":msg["messageId"] if msg.get("status")=="failed" and "audit.view" in user.permissions else None}
     for row in rows:
         job = (
             await db["jobs"].find_one({"orgId": user.org_id, "jobId": row["jobId"]})
@@ -223,6 +250,7 @@ async def applications(
                 "candidate": project_candidate(row["candidateRows"], fields),
                 "jobTitle": job.get("title", "Job"),
                 "activeInterview": bookings.get(row['applicationId']),
+                "invitationDelivery": delivery.get(row["applicationId"]),
                 "latestInterview": latest.get(row['applicationId']),
             }
         )
@@ -609,7 +637,7 @@ async def review(
 @router.post("/interviews/{key}/send-invitation")
 async def invitation(
     key: str,
-    payload: Action,
+    payload: InvitationAction,
     user=Depends(require_permission("recruitment.manage")),
     db=Depends(database),
 ):
@@ -634,7 +662,8 @@ async def invitation(
                 "interviewId": key,
                 "revision": payload.expectedRevision,
             },
-            {"$set": {"candidateEmailRequested": True}},
+            {"$set": {"candidateEmailRequested": True, **({"candidateEmailTemplate": payload.emailTemplate}
+                if payload.emailTemplate and not row.get("candidateEmailQueued") else {})}},
         )
         await service.audit(
             db, user, "candidate_invitation_requested", key, {"reason": payload.reason}

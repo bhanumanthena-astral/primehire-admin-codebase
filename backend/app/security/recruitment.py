@@ -202,7 +202,7 @@ def project_application(app, fields):
         assessment = app.get("assessment") or {}
         result["assessment"] = {
             k: assessment[k]
-            for k in ["score", "status", "completedAt", "sentAt"]
+            for k in ["score", "status", "completedAt", "sentAt", "windowEnd"]
             if k in assessment
         }
         result["assessment"]["status"] = assessment.get("status") or assessment.get("state") or "Not invited"
@@ -218,5 +218,5 @@ def project_application(app, fields):
                 except OutboxCryptoError:
                     result['assessment']['passwordUnavailable'] = True
 
-        result["atsScore"] = app.get("matchScore")
+        result["atsScore"] = app.get("matchScore") if app.get("matchScore") is not None else (app.get("scoreBreakdown") or {}).get("ats")
     return clean(result)

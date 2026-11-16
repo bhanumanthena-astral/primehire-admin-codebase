@@ -44,8 +44,9 @@ describe('Bulk send assessments', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send assessments/ }));
     expect(await screen.findByRole('dialog', { name: /Confirm bulk send/ })).toBeInTheDocument();
     expect(screen.getByText(/Dry-run is ON/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Invitation template'), {target:{value:'tpl-invite'}});
     fireEvent.click(screen.getByRole('button', { name: /Confirm send/ }));
-    await waitFor(() => expect(sendAssessments).toHaveBeenCalledWith(['app1']));
+    await waitFor(() => expect(sendAssessments).toHaveBeenCalledWith(['app1'], false, expect.objectContaining({id:'tpl-invite'})));
     expect(await screen.findByText(/1\/1 queued/)).toBeInTheDocument();
   });
 });

@@ -771,6 +771,29 @@ async def job_applications(
     return {'items': items, 'total': await db['applications'].count_documents(query), 'skip': skip, 'limit': limit}
 
 
+@router.get("/jobs/{job_id}/ats-range-counts")
+async def job_ats_range_counts(
+    job_id: str, minimum: int = Query(0, ge=0, le=100), maximum: int = Query(100, ge=0, le=100),
+    current_user: CurrentUser = Depends(_JOB_READ), db: Any = Depends(get_db),
+):
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    if minimum > maximum:
+        raise HTTPException(422, "Invalid ATS range")
+    if current_user.role == "viewer" or "candidates.view" not in current_user.permissions:
+        raise HTTPException(403, "Candidate details require hiring access")
+    if not await job_repository(db, current_user).get_by_id(job_id, current_user.org_id):
+        raise HTTPException(404, "Job not found")
+    scope = {"orgId": current_user.org_id, "jobId": job_id}
+    bounds = {"$gte": minimum, "$lte": maximum}
+    within = await db["resume_intake_items"].count_documents({
+        **scope, "status": {"$ne": "deleted"}, "atsState": "done", "ats.overall": bounds})
+    legacy = await db["applications"].count_documents({
+        **scope, "intakeItemId": None, "$or": [{"matchScore": bounds},
+        {"matchScore": None, "scoreBreakdown.ats": bounds}]})
+    return {"within": within + legacy}
+
+
 @router.get("/jobs/{job_id}/pipeline-details")
 async def job_pipeline_details(
     job_id: str, stage: str = Query(..., pattern='^(resumesUploaded|atsTotal|linksSent|assessmentsCompleted|technical|managerial|hr)$'),

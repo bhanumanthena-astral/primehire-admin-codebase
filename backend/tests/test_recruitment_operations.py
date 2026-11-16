@@ -567,3 +567,28 @@ async def test_assessment_totals_keep_completions_after_candidate_advances(clien
     assert result['milestones']['ASSESSMENT_COMPLETED']==2
     assert result['stages']['ASSESSMENT_SENT']==1
     assert result['stages']['ROUND1_SCHEDULED']==1
+
+
+async def test_pipeline_candidate_invitation_waits_for_template_confirmation(client, db):
+    row = await create(client, deferCandidateInvitation=True)
+    query = {"entityKey": row["interviewId"], "kind": "recruit_candidate"}
+    await worker.tick(db)
+    assert not await db["recruit_email_outbox"].count_documents(query)
+    for _ in range(2):
+        response = await client.post(f'/api/recruitment/interviews/{row["interviewId"]}/send-invitation',
+            json={"expectedRevision": row["revision"], "reason": "Confirmed preview", "emailTemplate": "brief"},
+            headers=headers())
+        assert response.status_code == 200
+        await worker.tick(db)
+    assert await db["recruit_email_outbox"].count_documents(query) == 1
+    message = await db["recruit_email_outbox"].find_one(query)
+    assert "Contact your recruiter" not in worker.decrypt_recruitment_body(message["payloadEncrypted"])
+
+
+async def test_job_score_range_matches_zero_and_excludes_other_jobs(client, db):
+    await db.applications.update_one({"applicationId":"app0"},{"$set":{"assessment.score":0}})
+    await db.applications.update_one({"applicationId":"app1"},{"$set":{"assessment.score":0,"jobId":"another"}})
+    result = await client.get("/api/recruitment/applications",headers=headers(),params={
+        "jobId":"job","pipelineStage":"assessmentsCompleted","scoreField":"assessment","minimum":0,"maximum":0})
+    assert result.status_code == 200, result.text
+    assert result.json()["total"] == 1 and result.json()["items"][0]["applicationId"] == "app0"
