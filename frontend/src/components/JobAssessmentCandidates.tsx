@@ -31,7 +31,7 @@ export function JobAssessmentCandidates({job,onChooseAssessment,pipelineStage,on
   const searching=search.trim()!==query;
   const [range,setRange]=useState<number[]|null>(null);
   const [previewRow,setPreviewRow]=useState<Application|null>(null);
-  const [trackAll,setTrackAll]=useState(false);
+  const [trackAll,setTrackAll]=useState(true);
   const [retry,setRetry]=useState<{id:string;name:string}[]>([]);
   const [status,setStatus]=useState('');
   const filters=(range?'&scoreField=ats&minimum='+range[0]+'&maximum='+range[1]:'')+(status?'&invitationStatus='+status:'');
@@ -83,7 +83,7 @@ export function JobAssessmentCandidates({job,onChooseAssessment,pipelineStage,on
     </dl>}
     {embedded&&<JobScoreFilter label="ATS score range" range={range} count={total} busy={busy||loading} onChange={v=>{setRange(v);setPage(0)}} onClear={()=>setSelected([])}
       onSelect={canManage?async()=>{setBusy(true);try{const rows=await matchingApplications(range?listPath:listPath+'&scoreField=ats');setSelected(ids=>[...new Set([...ids,...rows.filter(r=>!['HIRED','REJECTED','WITHDRAWN'].includes(r.currentStage)).map(r=>r.applicationId)])])}catch(e){setError(e instanceof Error?e.message:'Selection failed')}finally{setBusy(false)}}:undefined}/>}
-    {pipelineStage&&<label><input type="checkbox" checked={trackAll} onChange={e=>{setTrackAll(e.target.checked);setPage(0);setSelected([])}}/> Include pending and failed invitations</label>}
+    {pipelineStage&&<label><input type="checkbox" checked={trackAll} onChange={e=>{setTrackAll(e.target.checked);setPage(0);setSelected([])}}/> Include candidates awaiting their first invitation</label>}
     {pipelineStage&&<label>Invitation status <select value={status} onChange={e=>{setStatus(e.target.value);if(['email_queued','link_created','failed'].includes(e.target.value))setTrackAll(true);setPage(0)}}><option value="">All statuses</option>{['link_created','email_queued','email_sent','failed','in_progress','report_pending','completed'].map(s=><option key={s} value={s}>{s.replaceAll('_',' ')}</option>)}</select></label>}
     {dryRun!==false&&<p className="rounded-xl border p-3 text-sm">{dryRun?'Email is in dry-run mode: invitation requests are recorded without delivery.':'Email delivery mode could not yet be verified.'}</p>}
     {!job.assessmentJobId&&<p className="rounded-xl border p-3 text-sm">Link a published assessment before generating candidate links. <Button variant="outline" className="ml-3" onClick={onChooseAssessment}>Choose assessment</Button></p>}

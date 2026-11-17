@@ -89,3 +89,14 @@ it('shows shortened link and password and copies their full values',async()=>{
  fireEvent.click(screen.getByRole('button',{name:'Copy password'}));await waitFor(()=>expect(writeText).toHaveBeenCalledWith(password));
  fireEvent.click(screen.getByRole('button',{name:'Copy link'}));await waitFor(()=>expect(writeText).toHaveBeenCalledWith(link));
 });
+
+it('includes candidates awaiting their first invitation in the assessment stage',async()=>{
+ const row={applicationId:'app-new',candidate:{name:'Awaiting invitation'},currentStage:'SHORTLISTED',atsScore:75};
+ vi.mocked(recruitmentRequest).mockResolvedValue({items:[row],total:1} as any);
+ render(<JobAssessmentCandidates job={job} pipelineStage="linksSent" embedded onChooseAssessment={vi.fn()}/>);
+ await screen.findByText('Awaiting invitation');
+ const calls=vi.mocked(recruitmentRequest).mock.calls.filter(([path])=>path.startsWith('/applications?'));
+ expect(calls.at(-1)?.[0]).not.toContain('pipelineStage=linksSent');
+ fireEvent.click(screen.getByRole('button',{name:'Select all in range'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Confirm / shortlist selected (1)'})).toBeEnabled());
+});

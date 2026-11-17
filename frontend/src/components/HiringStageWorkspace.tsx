@@ -43,12 +43,13 @@ export function HiringStageWorkspace({job,stage,onChanged,onJobChanged}:{
     <details><summary className="cursor-pointer text-sm font-semibold">Records counted in this stage</summary>
       <JobPipelineDetails jobId={job.jobId} stage={stage}/></details>
     {error&&<p role="alert">{error}</p>}
-    {intake&&(caps?.enabled?<ResumeIntakePage onChanged={onChanged} scopedJob={job} capabilities={caps} initialJobKey={job.jobKey} initialView={stage==='atsTotal'?'batches':'upload'}/>:<p role="status">{caps?'Resume intake is disabled.':'Loading resume intake…'}</p>)}
+
     {(intake||stage==='linksSent')&&<>
       {job.assessmentJobId&&<Button variant="outline" onClick={()=>setChoose(!choose)}>{choose?"Close assessment selection":"View linked assessment"}</Button>}
       {(!job.assessmentJobId||choose)&&<JobAssessmentAssignment job={job} onLinked={(id,round)=>{onJobChanged?.({...job,assessmentJobId:id,assessmentRoundType:round});setChoose(false);onChanged()}}/>}
       <JobAssessmentCandidates job={job} pipelineStage={stage==='linksSent'?'linksSent':undefined} onChooseAssessment={()=>setChoose(true)} onChanged={onChanged} embedded/>
     </>}
+    {intake&&(caps?.enabled?<ResumeIntakePage compact onChanged={onChanged} scopedJob={job} capabilities={caps} initialJobKey={job.jobKey} initialView={stage==='atsTotal'?'batches':'upload'}/>:<p role="status">{caps?'Resume intake is disabled.':'Loading resume intake…'}</p>)}
     {stage==='assessmentsCompleted'&&<JobCandidateReports key={revision} job={job} completedOnly onSchedule={row=>setQueue([row])} onScheduleSelected={setQueue}/>}
     {saved.length>0&&<p role="status">Schedule saved for {saved.join(', ')}.</p>}
     {target&&(!target.activeInterview||existing?.interviewId===target.activeInterview.interviewId)&&<ScheduleDialog deferInvitation key={target.applicationId} application={target} existing={target.activeInterview?existing:undefined}
