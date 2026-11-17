@@ -100,3 +100,19 @@ it('includes candidates awaiting their first invitation in the assessment stage'
  fireEvent.click(screen.getByRole('button',{name:'Select all in range'}));
  await waitFor(()=>expect(screen.getByRole('button',{name:'Confirm / shortlist selected (1)'})).toBeEnabled());
 });
+
+it('replaces the previous selection with only scored candidates inside the new range',async()=>{
+ const rows=[0,1,100,null].map((atsScore,i)=>({applicationId:String(i),candidate:{name:'Candidate '+i},currentStage:'PARSED',atsScore}));
+ vi.mocked(recruitmentRequest).mockResolvedValue({items:rows,total:rows.length} as any);
+ render(<JobAssessmentCandidates job={job} embedded onChooseAssessment={vi.fn()}/>);
+ await screen.findByText('Candidate 0');
+ const select=screen.getByRole('button',{name:'Select all in range'});
+ fireEvent.click(select);
+ await screen.findByRole('button',{name:'Confirm / shortlist selected (3)'});
+ fireEvent.keyDown(screen.getByRole('slider',{name:'Minimum ATS score range'}),{key:'ArrowRight'});
+ await waitFor(()=>expect(select).toBeEnabled());
+ fireEvent.click(select);
+ await screen.findByRole('button',{name:'Confirm / shortlist selected (2)'});
+ expect(screen.getByRole('checkbox',{name:'Select Candidate 1'})).toBeChecked();
+ expect(screen.getByRole('checkbox',{name:'Select Candidate 2'})).toBeChecked();
+});

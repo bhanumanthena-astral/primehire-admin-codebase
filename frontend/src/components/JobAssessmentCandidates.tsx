@@ -14,8 +14,9 @@ import {useAuth} from '../lib/authContext';
 import {authFetch} from '../lib/authFetch';
 import {useAssessmentRefresh} from './useAssessmentRefresh';
 import {assessmentScoreLabel,assessmentStatusLabel} from '../lib/assessmentProgress';
+const base=((import.meta as any).env?.VITE_API_URL||'').replace(/\/$/,'');
 async function whatsappRequest(jobId:string,body?:unknown,send=false){
- const base=((import.meta as any).env?.VITE_API_URL||'').replace(/\/$/,'');
+
  const response=await authFetch(`${base}/api/jobs/${encodeURIComponent(jobId)}/whatsapp${send?'/send':''}`,body===undefined?{}:{method:send?'POST':'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  const result=await response.json();if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'WhatsApp request failed');return result;
 }
@@ -41,7 +42,7 @@ export function JobAssessmentCandidates({job,onChooseAssessment,pipelineStage,on
     const controller=new AbortController();
     setWithin(null);
     const [minimum,maximum]=range??[0,100];
-    authFetch(`/api/jobs/${encodeURIComponent(job.jobId)}/ats-range-counts?minimum=${minimum}&maximum=${maximum}`,{signal:controller.signal})
+    authFetch(`${base}/api/jobs/${encodeURIComponent(job.jobId)}/ats-range-counts?minimum=${minimum}&maximum=${maximum}`,{signal:controller.signal})
       .then(async response=>{if(!response.ok)throw new Error('Could not load ATS range counts');return response.json()})
       .then(data=>{if(!controller.signal.aborted)setWithin(data.within)})
       .catch(e=>{if(!controller.signal.aborted)setError(e.message)});
@@ -81,8 +82,10 @@ export function JobAssessmentCandidates({job,onChooseAssessment,pipelineStage,on
     {embedded&&!pipelineStage&&job.pipeline&&<dl className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
       {Object.entries({'Uploaded':job.pipeline.resumesUploaded,'ATS scored':job.pipeline.atsScored,'In range':within,'Outside range':within===null?null:Math.max(0,job.pipeline.atsScored-within),'Awaiting score':Math.max(0,job.pipeline.resumesUploaded-job.pipeline.atsScored),'Selected profiles':selected.length}).map(([label,count])=><div key={label} className="rounded-lg border px-3 py-2"><dt className="text-xs">{label}</dt><dd className="font-semibold tabular-nums">{count??'—'}</dd></div>)}
     </dl>}
-    {embedded&&<JobScoreFilter label="ATS score range" range={range} count={total} busy={busy||loading} onChange={v=>{setRange(v);setPage(0)}} onClear={()=>setSelected([])}
-      onSelect={canManage?async()=>{setBusy(true);try{const rows=await matchingApplications(range?listPath:listPath+'&scoreField=ats');setSelected(ids=>[...new Set([...ids,...rows.filter(r=>!['HIRED','REJECTED','WITHDRAWN'].includes(r.currentStage)).map(r=>r.applicationId)])])}catch(e){setError(e instanceof Error?e.message:'Selection failed')}finally{setBusy(false)}}:undefined}/>}
+    {embedded&&<JobScoreFilter label="ATS score range" range={range} count={total} busy={busy||loading||searching} onChange={v=>{setRange(v);setPage(0);setSelected([])}} onClear={()=>setSelected([])}
+      onSelect={canManage?async()=>{setBusy(true);try{const rows=await matchingApplications(range?listPath:listPath+'&scoreField=ats');const [minimum,maximum]=range??[0,100];
+        setSelected(rows.filter(row=>typeof row.atsScore==='number' && row.atsScore>=minimum && row.atsScore<=maximum &&
+          !['HIRED','REJECTED','WITHDRAWN'].includes(row.currentStage)).map(row=>row.applicationId));}catch(e){setError(e instanceof Error?e.message:'Selection failed')}finally{setBusy(false)}}:undefined}/>}
     {pipelineStage&&<label><input type="checkbox" checked={trackAll} onChange={e=>{setTrackAll(e.target.checked);setPage(0);setSelected([])}}/> Include candidates awaiting their first invitation</label>}
     {pipelineStage&&<label>Invitation status <select value={status} onChange={e=>{setStatus(e.target.value);if(['email_queued','link_created','failed'].includes(e.target.value))setTrackAll(true);setPage(0)}}><option value="">All statuses</option>{['link_created','email_queued','email_sent','failed','in_progress','report_pending','completed'].map(s=><option key={s} value={s}>{s.replaceAll('_',' ')}</option>)}</select></label>}
     {dryRun!==false&&<p className="rounded-xl border p-3 text-sm">{dryRun?'Email is in dry-run mode: invitation requests are recorded without delivery.':'Email delivery mode could not yet be verified.'}</p>}
