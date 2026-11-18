@@ -127,7 +127,8 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
         chunkSize:Math.min(10,Math.floor(64/caps.limits.resumeMaxMb)),
         onAccepted:(received,count)=>{setUploadProgress(count);setBatches(prev=>[received,...prev.filter(p=>p.batchId!==received.batchId)]);setMessage(`${count} of ${files.length} files received. Accepted files remain queued if the upload is interrupted.`);}});
       setFiles([]);setArchive([]);resetUpload();setBatchPage(0);setBatches(prev=>[batch,...prev.filter(p=>p.batchId!==batch.batchId)]);setBatchId(batch.batchId);setPage(0);setStatus('');setScoreBand('');setSearch('');setView('batches');latestStatus.current='processing';
-      setMessage(`${files.length} file${files.length===1?'':'s'} received. Parsing continues on the server. Each small upload appears as a batch in Processing & review.`);changed();
+      if(scopedJob)setAllBatches(true);
+      setMessage(`${files.length} file${files.length===1?'':'s'} received. Parsing continues on the server. ${scopedJob?'All job resumes includes every upload batch.':'Each small upload appears as a batch in Processing & review.'}`);changed();
     } catch(e) {if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Upload failed. Your files remain selected for retry.');}
     finally{setUploading(false);}
   }
@@ -171,6 +172,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
       <PAButton variant={!allBatches?'primary':'secondary'} onClick={()=>setAllBatches(false)}>Upload batches</PAButton>
     </div>}
     {view==='batches'&&scopedJob&&allBatches&&<JobResumeList key={scopedJob.jobId} jobId={scopedJob.jobId} reload={reload}
+      preferenceKey={user?`elitehr:table-columns:resume-review:${user.orgId}:${user.userId}`:undefined}
       caps={caps} jobs={jobs} busy={busy} onOpen={id=>void open(id)}
       onRetry={item=>void action(()=>intakeMutate(`/items/${item.itemId}/retry`,{expectedRevision:item.revision}),'Retry queued.')}
       onDelete={item=>{setError('');setDeleteItem(item);setReason('');}} onChanged={changed}

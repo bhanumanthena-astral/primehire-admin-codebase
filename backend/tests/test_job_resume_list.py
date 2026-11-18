@@ -9,8 +9,8 @@ async def test_lists_all_967_resumes_across_batches(client, db):
         "rawText": "private resume text", "storageKey": "private/path", "confirmation": {"secret": True}}
         for i in range(967)]
     await db["resume_intake_items"].insert_many(rows + [
-        {**rows[0], "_id": "deleted", "status": "deleted"},
-        {**rows[0], "_id": "other-job", "jobId": "b"},
+        {**rows[0], "_id": "deleted", "batchId": "deleted-batch", "status": "deleted"},
+        {**rows[0], "_id": "other-job", "batchId": "other-batch", "jobId": "b"},
         {**rows[0], "_id": "other-org", "orgId": "other"}])
     url = "/api/resume-intake/jobs/a/items"
     first = await client.get(url, headers=headers())

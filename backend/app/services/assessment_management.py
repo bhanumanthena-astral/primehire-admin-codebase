@@ -31,25 +31,75 @@ async def audit(db, user, action, key, details=None):
 async def save(db, user, payload, key=None, source_group=None):
     repo = AssessmentManagementRepository(db, user)
     config = payload.config
+    is_super = user.role == 'super_admin'
     if key:
         previous = await repo.get(key)
-        if previous.get('publicationState') != 'draft':
+        phase = previous.get('publicationState', 'published')
+        if not is_super and phase != 'draft':
             raise HTTPException(409, 'Published questions are locked. Create a new draft to change the configuration.')
-        if key != config.jobId or previous['roundType'] != config.roundType:
+        if key != config.jobId:
+            raise HTTPException(422, 'Assessment ID cannot change during editing')
+        if not is_super and previous.get('roundType') != config.roundType:
             raise HTTPException(422, 'Assessment ID and round type cannot change during editing')
         if not payload.expectedRevision:
             raise HTTPException(422, 'The saved revision is required')
-        if await db['candidates'].find_one({'orgId': user.org_id, 'assessmentId': key}):
+        if not is_super and await db['candidates'].find_one({'orgId': user.org_id, 'assessmentId': key}):
             raise HTTPException(409, 'An assessment with candidate assignments cannot be edited')
         changes = config.model_dump(mode='json')
         changes.update(windowStart=config.startDate, windowEnd=config.endDate)
         changes['configHash'] = hashlib.sha256(json.dumps(config.model_dump(mode='json'), sort_keys=True).encode()).hexdigest()
-        row = await repo.update(key, payload.expectedRevision, changes)
+        if payload.isActive is not None:
+            changes['isActive'] = payload.isActive
+
+        if is_super and phase != 'draft':
+            archive = {field: previous.get(field) for field in AssessmentConfig.model_fields if field in previous}
+            archive.update(_revision=previous.get('revision', 1), _archivedAt=now().isoformat(), _archivedBy=user.user_id, _configHash=previous.get('configHash'))
+            await db['assessments'].update_one({'orgId': user.org_id, 'jobId': key}, {'$push': {'configVersions': archive}})
+
+            if config.endDate > now() and previous.get('isActive') is not False:
+                changes['isActive'] = True
+
+            locked = await repo.update(key, payload.expectedRevision, {'publicationState': 'updating_config'}, phase=phase)
+            try:
+                await create_upstream(config)
+            except HTTPException as error:
+                target_state = 'uncertain' if error.status_code == 504 else phase
+                await repo.update(key, locked['revision'], {
+                    'publicationState': target_state,
+                    'publishError': 'Config update: ' + str(error.detail)
+                }, phase='updating_config')
+                await audit(db, user, 'super_edit_sync_failed', config.jobId, {'uncertain': error.status_code == 504, 'revision': locked['revision']})
+                raise
+
+            changes['publicationState'] = 'published'
+            changes['publishError'] = None
+            row = await repo.update(key, locked['revision'], changes, phase='updating_config')
+            await audit(db, user, 'super_edited', config.jobId, {
+                'revision': row['revision'],
+                'questionCount': len(config.questions),
+                'previousRevision': previous.get('revision', 1)
+            })
+        else:
+            row = await repo.update(key, payload.expectedRevision, changes, phase=phase)
+            await audit(db, user, 'updated', config.jobId,
+                        {'revision': row['revision'], 'questionCount': len(config.questions)})
     else:
         row = await repo.create(config, source_group)
-    await audit(db, user, 'updated' if key else 'created', config.jobId,
-                {'revision': row['revision'], 'questionCount': len(config.questions)})
-    return public(row, True)
+        await audit(db, user, 'created', config.jobId,
+                    {'revision': row['revision'], 'questionCount': len(config.questions)})
+    return public(row, True, user_role=user.role)
+
+
+async def toggle_active(db, user, key):
+    repo = AssessmentManagementRepository(db, user)
+    row = await repo.get(key)
+    if user.role not in {'super_admin', 'admin'}:
+        raise HTTPException(403, 'You do not have permission to change this assessment')
+    new_active = not row.get('isActive', True)
+    phase = row.get('publicationState', 'published')
+    updated = await repo.update(key, row.get('revision', 1), {'isActive': new_active}, phase=phase)
+    await audit(db, user, 'active_toggled', key, {'isActive': new_active, 'revision': updated['revision']})
+    return public(updated, True, user_role=user.role)
 
 
 async def preview_csv(db, user, text):
@@ -180,7 +230,7 @@ async def publish(db, user, key, payload):
     repo = AssessmentManagementRepository(db, user)
     row = await repo.get(key)
     if row.get('publicationState') == 'published':
-        return public(row, True)  # Idempotent repeated confirmation; no upstream call.
+        return public(row, True, user_role=user.role)  # Idempotent repeated confirmation; no upstream call.
     if row.get('publicationState') != 'draft':
         raise HTTPException(409, 'Publication is already running or requires provider reconciliation. Do not create a duplicate.')
     config = AssessmentConfig.model_validate({field: row[field] for field in AssessmentConfig.model_fields})
@@ -195,7 +245,7 @@ async def publish(db, user, key, payload):
         raise
     row = await repo.update(key, row['revision'], {'publicationState': 'published', 'isActive': True, 'publishedAt': now(), 'publishError': None}, phase='publishing')
     await audit(db, user, 'published', key, {'revision': row['revision']})
-    return public(row, True)
+    return public(row, True, user_role=user.role)
 
 
 async def update_dates(db, user, key, payload):
@@ -224,4 +274,4 @@ async def update_dates(db, user, key, payload):
         'configHash': hashlib.sha256(json.dumps(config.model_dump(mode='json'), sort_keys=True).encode()).hexdigest()}
     row = await repo.update(key, locked['revision'], changes, phase='updating_dates')
     await audit(db, user, 'dates_updated', key, {'startDate': changes['startDate'], 'endDate': changes['endDate'], 'revision': row['revision']})
-    return public(row, True)
+    return public(row, True, user_role=user.role)

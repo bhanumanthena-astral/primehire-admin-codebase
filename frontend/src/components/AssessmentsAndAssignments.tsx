@@ -785,7 +785,7 @@ export default function AssessmentsAndAssignments({
     try{
       await assessmentRequest<ManagedAssessment>(editingAssessmentId?'/'+encodeURIComponent(editingAssessmentId):'',
         {config:formPreview,...(editingAssessmentId?{expectedRevision:draftRevision}:{})},editingAssessmentId?'PUT':'POST');
-      setFormPreview(null);setEditingAssessmentId(null);setCurrentView('LIST');toast.success('Assessment draft saved. Review its details before publishing.');
+      setFormPreview(null);setEditingAssessmentId(null);setCurrentView('LIST');toast.success(editingAssessmentId?'Assessment saved successfully.':'Assessment draft saved. Review its details before publishing.');
     }catch(error:any){setFormErrors(error.fields?.length?error.fields:[{field:'Assessment',reason:error.message}]);}
     finally{setIsSavingAssessment(false);}
   };
@@ -2044,7 +2044,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                     Round Type <span className="text-destructive">*</span>
                   </label>
                   <AppSelect
-                    disabled={currentView === 'EDIT'}
+                    disabled={currentView === 'EDIT' && !managementCaps?.publishedEditingSupported}
                     aria-label="Assessment round type"
                     value={formRoundType}
                     onValueChange={(e) => {
@@ -2062,7 +2062,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                       }
                     }}
                     className={`w-full text-xs rounded-md border border-border/70 bg-card p-2.5 text-foreground focus:outline-hidden font-bold ${
-                      currentView === 'EDIT' ? 'bg-muted text-muted-foreground cursor-not-allowed' : ''
+                      currentView === 'EDIT' && !managementCaps?.publishedEditingSupported ? 'bg-muted text-muted-foreground cursor-not-allowed' : ''
                     }`}
                   >
                     <option value="TECHNICAL">TECHNICAL (Coding & Technical Speech)</option>
@@ -2373,7 +2373,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
                         {currentView === 'EDIT' ? 'Saving Changes...' : 'Creating Assessment...'}
                       </>
                     ) : (
-                      managed?'Preview assessment draft':currentView === 'EDIT' ? 'Save Changes' : 'Create Assessment Profile'
+                      managed ? (editingAssessmentId ? 'Save changes' : 'Preview assessment draft') : (currentView === 'EDIT' ? 'Save Changes' : 'Create Assessment Profile')
                     )}
                   </Button>
                   <Button variant="ghost"
@@ -2392,7 +2392,7 @@ Duplicate User,curie@sorbonne.fr,+1-555-0000,2026-07-09T10:00:00Z,2026-07-09T12:
         </div>
       )}
 
-      {formPreview&&<Modal label="Preview assessment draft" onClose={()=>setFormPreview(null)} dismissible={!isSavingAssessment} className="max-w-3xl p-5 sm:p-6"><h2 className="mb-5 text-xl font-bold">Preview assessment draft</h2><AssessmentPreview config={formPreview}/>{!!formErrors.length&&<div role="alert" className="mt-4 rounded-xl border border-destructive/30 p-3 text-sm">{formErrors.map((error,index)=><p key={index}>{error.field}: {error.reason}</p>)}</div>}<p className="mt-5 text-sm text-muted-foreground">Confirming saves this draft. Publish it from assessment details when ready. No candidate invitation will be sent.</p><div className="mt-5 flex flex-wrap gap-2"><Button disabled={isSavingAssessment} onClick={()=>void saveManagedDraft()}>{isSavingAssessment?'Saving draft…':'Confirm and save draft'}</Button><Button variant="outline" disabled={isSavingAssessment} onClick={()=>setFormPreview(null)}>Back to editing</Button></div></Modal>}
+      {formPreview&&<Modal label={editingAssessmentId ? "Preview assessment changes" : "Preview assessment draft"} onClose={()=>setFormPreview(null)} dismissible={!isSavingAssessment} className="max-w-3xl p-5 sm:p-6"><h2 className="mb-5 text-xl font-bold">{editingAssessmentId ? "Preview assessment changes" : "Preview assessment draft"}</h2><AssessmentPreview config={formPreview}/>{!!formErrors.length&&<div role="alert" className="mt-4 rounded-xl border border-destructive/30 p-3 text-sm">{formErrors.map((error,index)=><p key={index}>{error.field}: {error.reason}</p>)}</div>}<p className="mt-5 text-sm text-muted-foreground">{editingAssessmentId ? "Confirming saves the assessment configuration. For published assessments, the provider will be synchronized automatically." : "Confirming saves this draft. Publish it from assessment details when ready. No candidate invitation will be sent."}</p><div className="mt-5 flex flex-wrap gap-2"><Button disabled={isSavingAssessment} onClick={()=>void saveManagedDraft()}>{isSavingAssessment ? 'Saving…' : (editingAssessmentId ? 'Save changes' : 'Confirm and save draft')}</Button><Button variant="outline" disabled={isSavingAssessment} onClick={()=>setFormPreview(null)}>Back to editing</Button></div></Modal>}
 
       {/* =========================================================================
           VIEW 3: ASSESSMENT DETAIL VIEW (WITH CANDIDATE MANAGEMENT SECTORS)

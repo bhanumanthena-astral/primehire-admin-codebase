@@ -67,6 +67,7 @@ class SaveDraft(BaseModel):
     model_config = ConfigDict(extra='forbid')
     config: AssessmentConfig
     expectedRevision: int | None = Field(default=None, ge=1)
+    isActive: bool | None = None
 
 
 class PublishDraft(BaseModel):

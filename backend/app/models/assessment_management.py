@@ -16,9 +16,10 @@ def scope(user):
     return base
 
 
-def public(row, can_manage):
+def public(row, can_manage, user_role=None):
     result = clean(row)
     phase = row.get('publicationState', 'published')
+    is_super = user_role == 'super_admin'
     status = 'Draft' if phase == 'draft' else 'Not available'
     if phase == 'published':
         if row.get('isActive') is False:
@@ -26,7 +27,9 @@ def public(row, can_manage):
         elif row.get('windowStart') and row.get('windowEnd'):
             status = 'Scheduled' if aware(row['windowStart']) > now() else 'Completed' if aware(row['windowEnd']) <= now() else 'Active'
     result.update(id=row['jobId'], status=status,
-        canEdit=can_manage and phase == 'draft', canEditDates=can_manage and phase == 'published', canPublish=can_manage and phase == 'draft',
+        canEdit=can_manage and (phase == 'draft' or is_super),
+        canEditDates=can_manage and phase == 'published',
+        canPublish=can_manage and phase == 'draft',
         revision=row.get('revision', 1), publicationState=phase)
     return result
 

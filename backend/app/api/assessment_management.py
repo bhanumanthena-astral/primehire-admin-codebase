@@ -42,7 +42,7 @@ async def writable(db, user, row=None):
 
 async def serialize(db, user, row):
     manage = await can_write(db, user) and (user.role in {'super_admin', 'admin'} or row.get('createdBy') == user.user_id)
-    result = public(row, manage)
+    result = public(row, manage, user_role=user.role)
     for field in ['createdBy', 'updatedBy']:
         actor = await db['users'].find_one({'orgId': user.org_id, 'userId': row.get(field)}, {'name': 1}) if row.get(field) else None
         result[field + 'Name'] = (actor or {}).get('name')
@@ -53,7 +53,7 @@ async def serialize(db, user, row):
 async def capabilities(user=Depends(require_permission('assessments.view')), db=Depends(database)):
     return {'enabled': True, 'canManage': await can_write(db, user),
         'roundTypes': ['BASIC', 'TECHNICAL', 'HR'], 'languages': ['ENGLISH', 'DUTCH'],
-        'publishedEditingSupported': False, 'maxCsvRows': 1000, 'maxCsvGroups': 100}
+        'publishedEditingSupported': user.role == 'super_admin', 'maxCsvRows': 1000, 'maxCsvGroups': 100}
 
 
 @router.get('')
@@ -142,3 +142,10 @@ async def edit_dates(key: str, payload: UpdateAssessmentDates, user=Depends(requ
     row = await AssessmentManagementRepository(db, user).get(key)
     await writable(db, user, row)
     return await service.update_dates(db, user, key, payload)
+
+
+@router.put('/{key}/toggle-active')
+async def toggle_active(key: str, user=Depends(require_permission('assessments.manage')), db=Depends(database)):
+    row = await AssessmentManagementRepository(db, user).get(key)
+    await writable(db, user, row)
+    return await service.toggle_active(db, user, key)

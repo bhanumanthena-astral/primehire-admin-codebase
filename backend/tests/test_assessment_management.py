@@ -191,15 +191,15 @@ async def test_publish_is_human_confirmed_single_call_and_locks_questions(module
     async def publish(value):calls.append(service.upstream_payload(value))
     monkeypatch.setattr(service,'create_upstream',publish)
     base='/api/assessment-management'
-    await module_client.post(base,json={'config':config()},headers=headers())
-    assert (await module_client.post(base+'/JOB-test/publish',json={'expectedRevision':1},headers=headers())).status_code==422
+    await module_client.post(base,json={'config':config()},headers=headers('admin'))
+    assert (await module_client.post(base+'/JOB-test/publish',json={'expectedRevision':1},headers=headers('admin'))).status_code==422
     body={'expectedRevision':1,'confirmed':True}
-    response=await module_client.post(base+'/JOB-test/publish',json=body,headers=headers())
+    response=await module_client.post(base+'/JOB-test/publish',json=body,headers=headers('admin'))
     assert response.status_code==200,response.text
     assert response.json()['publicationState']=='published' and not response.json()['canEdit']
-    assert (await module_client.post(base+'/JOB-test/publish',json=body,headers=headers())).status_code==200
+    assert (await module_client.post(base+'/JOB-test/publish',json=body,headers=headers('admin'))).status_code==200
     assert len(calls)==1 and calls[0]['questions'][0]['answer']=='A mapping from keys to values'
-    assert (await module_client.put(base+'/JOB-test',json={'config':config(),'expectedRevision':3},headers=headers())).status_code==409
+    assert (await module_client.put(base+'/JOB-test',json={'config':config(),'expectedRevision':3},headers=headers('admin'))).status_code==409
     assert await db['recruit_email_outbox'].count_documents({})==0
 
 
@@ -404,3 +404,117 @@ def test_technical_mcq_answer_maps_to_matching_option_id():
     payload=upstream_payload(AssessmentConfig.model_validate(value))
     assert payload['questions'][0]['correct_option_id']=='B'
     assert 'answer' not in payload['questions'][0]
+
+
+async def test_super_admin_can_edit_published_and_completed_assessments(module_client, db, monkeypatch):
+    from app.services import assessment_management as service
+    val = config('JOB-super-edit')
+    created = await module_client.post('/api/assessment-management', json={'config': val}, headers=headers('admin'))
+    assert created.status_code == 201
+
+    past_end = now() - timedelta(days=1)
+    past_start = now() - timedelta(days=3)
+    await db.assessments.update_one({'jobId': 'JOB-super-edit'}, {'$set': {
+        'publicationState': 'published', 'isActive': True, 'windowStart': past_start, 'windowEnd': past_end,
+        'startDate': past_start.isoformat(), 'endDate': past_end.isoformat()
+    }})
+    await db.candidates.insert_one({'orgId': 'default', 'assessmentId': 'JOB-super-edit', 'candidateId': 'candidate-prior-attempt', 'status': 'COMPLETED'})
+
+    admin_detail = (await module_client.get('/api/assessment-management/JOB-super-edit', headers=headers('admin'))).json()
+    assert admin_detail['status'] == 'Completed'
+    assert admin_detail['canEdit'] is False
+    assert admin_detail['canEditDates'] is True
+
+    admin_put = await module_client.put('/api/assessment-management/JOB-super-edit', json={
+        'config': val, 'expectedRevision': admin_detail['revision']
+    }, headers=headers('admin'))
+    assert admin_put.status_code == 409
+
+    super_detail = (await module_client.get('/api/assessment-management/JOB-super-edit', headers=headers('super_admin'))).json()
+    assert super_detail['status'] == 'Completed'
+    assert super_detail['canEdit'] is True
+
+    caps = (await module_client.get('/api/assessment-management/capabilities', headers=headers('super_admin'))).json()
+    assert caps['publishedEditingSupported'] is True
+    admin_caps = (await module_client.get('/api/assessment-management/capabilities', headers=headers('admin'))).json()
+    assert admin_caps['publishedEditingSupported'] is False
+
+    sync_calls = []
+    async def fake_upstream(cfg):
+        sync_calls.append(cfg.model_dump(mode='json'))
+    monkeypatch.setattr(service, 'create_upstream', fake_upstream)
+
+    future_start = now() - timedelta(hours=1)
+    future_end = now() + timedelta(days=5)
+    new_config = deepcopy(val)
+    new_config['jobTitle'] = 'Super Updated Title'
+    new_config['jobDescription'] = 'New super description'
+    new_config['startDate'] = future_start.isoformat()
+    new_config['endDate'] = future_end.isoformat()
+    new_config['questions'] = [
+        {'id': 'q_1', 'text': 'Modified question text', 'type': 'SPEAK_TO_ANSWER', 'maxDuration': 180, 'maxScore': 40.0, 'weightage': 40.0, 'referenceAnswer': 'New reference'},
+        {'id': 'q_new', 'text': 'Which cloud is Google Cloud?', 'type': 'MCQ', 'maxDuration': 60, 'maxScore': 60.0, 'weightage': 60.0, 'options': ['GCP', 'AWS'], 'correctOption': 'GCP', 'referenceAnswer': 'GCP'}
+    ]
+
+    put_res = await module_client.put('/api/assessment-management/JOB-super-edit', json={
+        'config': new_config, 'expectedRevision': super_detail['revision']
+    }, headers=headers('super_admin'))
+    assert put_res.status_code == 200, put_res.text
+    updated = put_res.json()
+    assert updated['jobTitle'] == 'Super Updated Title'
+    assert updated['status'] == 'Active'
+    assert len(updated['questions']) == 2
+    assert len(sync_calls) == 1
+    assert sync_calls[0]['jobTitle'] == 'Super Updated Title'
+
+    db_doc = await db.assessments.find_one({'jobId': 'JOB-super-edit'})
+    assert 'configVersions' in db_doc
+    assert len(db_doc['configVersions']) == 1
+    assert db_doc['configVersions'][0]['jobTitle'] == 'Synthetic Backend Assessment'
+    assert len(db_doc['configVersions'][0]['questions']) == 1
+
+    cand = await db.candidates.find_one({'candidateId': 'candidate-prior-attempt'})
+    assert cand is not None
+    assert cand['status'] == 'COMPLETED'
+    assert cand['assessmentId'] == 'JOB-super-edit'
+
+
+async def test_super_admin_can_edit_assessment_created_by_another_user(module_client, db, monkeypatch):
+    from app.services import assessment_management as service
+    async def noop_upstream(cfg): pass
+    monkeypatch.setattr(service, 'create_upstream', noop_upstream)
+    val = config('JOB-other-creator')
+    await db['users'].insert_one({'orgId': 'default', 'userId': 'user-alice', 'role': 'admin', 'isActive': True, 'name': 'Alice'})
+    created = await module_client.post('/api/assessment-management', json={'config': val}, headers=headers('admin', uid='user-alice'))
+    assert created.status_code == 201
+
+    super_detail = (await module_client.get('/api/assessment-management/JOB-other-creator', headers=headers('super_admin'))).json()
+    assert super_detail['canEdit'] is True
+    val['jobTitle'] = 'Edited By Super Admin Bob'
+    res = await module_client.put('/api/assessment-management/JOB-other-creator', json={
+        'config': val, 'expectedRevision': super_detail['revision']
+    }, headers=headers('super_admin'))
+    assert res.status_code == 200
+    assert res.json()['jobTitle'] == 'Edited By Super Admin Bob'
+
+
+async def test_super_admin_provider_sync_failure_preserves_configuration(module_client, db, monkeypatch):
+    from app.services import assessment_management as service
+    val = config('JOB-sync-fail')
+    await module_client.post('/api/assessment-management', json={'config': val}, headers=headers('super_admin'))
+    await db.assessments.update_one({'jobId': 'JOB-sync-fail'}, {'$set': {'publicationState': 'published', 'isActive': True}})
+
+    async def fail_upstream(cfg):
+        raise HTTPException(502, 'Provider rejected update')
+    monkeypatch.setattr(service, 'create_upstream', fail_upstream)
+
+    detail = (await module_client.get('/api/assessment-management/JOB-sync-fail', headers=headers('super_admin'))).json()
+    val['jobTitle'] = 'Attempted Title'
+    res = await module_client.put('/api/assessment-management/JOB-sync-fail', json={
+        'config': val, 'expectedRevision': detail['revision']
+    }, headers=headers('super_admin'))
+    assert res.status_code == 502
+
+    reloaded = (await module_client.get('/api/assessment-management/JOB-sync-fail', headers=headers('super_admin'))).json()
+    assert 'Config update: Provider rejected update' in reloaded['publishError']
+    assert reloaded['publicationState'] == 'published'
