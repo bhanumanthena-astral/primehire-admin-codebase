@@ -26,7 +26,7 @@ def public(row, can_manage):
         elif row.get('windowStart') and row.get('windowEnd'):
             status = 'Scheduled' if aware(row['windowStart']) > now() else 'Completed' if aware(row['windowEnd']) <= now() else 'Active'
     result.update(id=row['jobId'], status=status,
-        canEdit=can_manage and phase == 'draft', canPublish=can_manage and phase == 'draft',
+        canEdit=can_manage and phase == 'draft', canEditDates=can_manage and phase == 'published', canPublish=can_manage and phase == 'draft',
         revision=row.get('revision', 1), publicationState=phase)
     return result
 
@@ -60,8 +60,10 @@ class AssessmentManagementRepository:
         return row
 
     async def update(self, key, revision, changes, phase='draft'):
+        version = {'$in': [1, None]} if phase == 'published' and revision == 1 else revision
+        state = {'$in': ['published', None]} if phase == 'published' else phase
         row = await self.collection.find_one_and_update(
-            {'$and': [scope(self.user), {'jobId': key, 'revision': revision, 'publicationState': phase}]},
+            {'$and': [scope(self.user), {'jobId': key, 'revision': version, 'publicationState': state}]},
             {'$set': {**changes, 'updatedAt': now(), 'updatedBy': self.user.user_id}, '$inc': {'revision': 1}},
             return_document=ReturnDocument.AFTER)
         if not row:

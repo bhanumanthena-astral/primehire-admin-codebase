@@ -16,6 +16,7 @@ import hashlib
 import logging
 from typing import Any
 
+from ..security.resume_access import require_original_resume
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 
@@ -177,7 +178,7 @@ async def upload_resumes(
     files_docs = await file_repo.list_for_batch(batch["batchId"], current_user.org_id)
     return {
         "batch": ResumeBatchPublic(**_public_batch(updated)).model_dump(),
-        "files": [ResumeFilePublic(**_public_file(f)).model_dump() for f in files_docs],
+        "files": [ResumeFilePublic(**{**_public_file(f),**({"parsedJson":{}} if current_user.role=="recruiter" else {})}).model_dump() for f in files_docs],
     }
 
 
@@ -216,7 +217,7 @@ async def get_batch(
     files_docs = await file_repo.list_for_batch(batch_id, current_user.org_id)
     return {
         "batch": ResumeBatchPublic(**_public_batch(batch)).model_dump(),
-        "files": [ResumeFilePublic(**_public_file(f)).model_dump() for f in files_docs],
+        "files": [ResumeFilePublic(**{**_public_file(f),**({"parsedJson":{}} if current_user.role=="recruiter" else {})}).model_dump() for f in files_docs],
     }
 
 
@@ -226,6 +227,7 @@ async def download_file(
     current_user: CurrentUser = Depends(require_permission("resumes.upload")),
     db: Any = Depends(get_db),
 ) -> FileResponse:
+    require_original_resume(current_user)
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
     file_repo = ResumeFileRepository(db)

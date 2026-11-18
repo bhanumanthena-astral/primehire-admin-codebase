@@ -1,3 +1,4 @@
+import {sourceLabel} from '../lib/hiringWorkflow';
 import React, {useEffect, useState} from 'react';
 import {ArrowUpDown, ChevronDown, ChevronRight} from 'lucide-react';
 import {Button} from '@/components/ui/button';
@@ -8,7 +9,7 @@ import type {Capabilities, IntakeItem} from '../lib/resumeIntakeApi';
 import type {ResumeSelection} from './ResumeBulkSelection';
 import type {Job} from '../lib/hiringApi';
 import {IntakeStatus, readableStatus, ResumeProfileDialog} from './ResumeProfileDialog';
-const REVIEW_COLUMNS=[{key:'name',label:'Name',required:true},{key:'designation',label:'Current designation'},{key:'score',label:'ATS score'},...['Skills','Experience','Education','Keyword','Role'].map(label=>({key:label.toLowerCase(),label})),{key:'matched',label:'Matched skills'},{key:'missing',label:'Missing skills'},{key:'evaluation',label:'Evaluation'},{key:'notes',label:'Evaluation notes'},{key:'status',label:'Status / eligibility'}];
+const REVIEW_COLUMNS=[{key:'name',label:'Name',required:true},{key:'designation',label:'Current designation'},{key:'score',label:'ATS Score'},...['Skills','Experience','Education','Keyword','Role'].map(label=>({key:label.toLowerCase(),label:label==='Skills'?'Skill Score':label==='Keyword'?'Keyword Match':label})),{key:'source',label:'Application Source'},{key:'matched',label:'Matched skills'},{key:'missing',label:'Missing skills'},{key:'evaluation',label:'Evaluation'},{key:'notes',label:'Evaluation notes'},{key:'status',label:'Status / eligibility'}];
 const selectionLabels={within:'Within ATS range',below:'Below minimum · retained',above:'Above maximum · retained',pending:'ATS pending',score_failed:'ATS failed',range_required:'Choose ATS range',already_created:'Candidate already created'};
 function educationText(item:IntakeItem) {
   const education=Array.isArray(item.profile.education)?item.profile.education:[];
@@ -19,7 +20,7 @@ export function ResumeReviewTable({items,caps,jobs,busy,onOpen,onRetry,onDelete,
   const columns=useTableColumnSettings(REVIEW_COLUMNS,preferenceKey);
   const columnCount=columns.visible.length+2+(selection?1:0);
   const [expanded,setExpanded]=useState<string|null>(null);
-  const [sort,setSort]=useState<'name'|'score'>('name'),[descending,setDescending]=useState(false);
+  const [sort,setSort]=useState<string>('name'),[descending,setDescending]=useState(false);
   useEffect(()=>{if(expanded&&!items.some(item=>item.itemId===expanded))setExpanded(null);},[items,expanded]);
   const rows=[...items].sort((a,b)=>{
     if(sort==='score'){
@@ -27,11 +28,17 @@ export function ResumeReviewTable({items,caps,jobs,busy,onOpen,onRetry,onDelete,
       if(b.ats?.overall==null)return -1;
       return (a.ats.overall-b.ats.overall)*(descending?-1:1);
     }
+    if(['skills','experience','education','keyword','role'].includes(sort)){
+      const x=a.ats?.breakdown?.[sort],y=b.ats?.breakdown?.[sort];
+      if(x==null)return y==null?0:1;if(y==null)return -1;return (x-y)*(descending?-1:1);
+    }
     return (a.profile.name||a.fileName).localeCompare(b.profile.name||b.fileName,undefined,{numeric:true})*(descending?-1:1);
   });
-  function heading(key:'name'|'score',label:string){return <TableHead aria-sort={sort===key?(descending?'descending':'ascending'):'none'}><Button variant="ghost" size="sm" onClick={()=>{if(sort===key)setDescending(value=>!value);else{setSort(key);setDescending(key==='score');}}}>{label}<ArrowUpDown size={13}/></Button></TableHead>;}
+  function heading(key:string,label:string){return <TableHead aria-sort={sort===key?(descending?'descending':'ascending'):'none'}><Button variant="ghost" size="sm" onClick={()=>{if(sort===key)setDescending(value=>!value);else{setSort(key);setDescending(key==='score');}}}>{label}<ArrowUpDown size={13}/></Button></TableHead>;}
   function renderCell(item:IntakeItem,key:string){const open=expanded===item.itemId;switch(key){
     case 'name':return <TableCell className="min-w-48 max-w-72 whitespace-normal"><button className="cursor-pointer text-left font-semibold hover:underline" aria-expanded={open} onClick={()=>setExpanded(open?null:item.itemId)}>{item.profile.name||'Awaiting name extraction'}</button><p className="mt-1 max-w-64 truncate text-xs text-muted-foreground" title={item.fileName}>{item.fileName}</p>{item.error&&<p className="mt-1 text-xs text-destructive">{item.error}</p>}</TableCell>;
+    case 'source':return <TableCell>{sourceLabel(item.source)}</TableCell>;
+    case 'role':return <TableCell>{item.profile.role||jobs.find(job=>job.jobId===item.jobId)?.jobRole||'Not available'}<p className="text-xs text-muted-foreground">{item.ats?.breakdown?.role==null?'Role match not assessed':item.ats.breakdown.role+'/100'}</p></TableCell>;
     case 'designation':return <TableCell className="min-w-44 max-w-64 whitespace-normal text-xs">{item.profile.currentDesignation||'Not available'}</TableCell>;
     case 'score':return <TableCell className="tabular-nums"><p className="font-bold">{item.ats?`${item.ats.overall} / 100`:'Not scored'}</p><p className="mt-1 text-xs text-muted-foreground">{item.ats?.category||readableStatus(item.atsState||'pending')}</p>{item.atsStale&&<p className="mt-1 text-xs text-warning">Recalculate needed</p>}</TableCell>;
     case 'matched':return <TableCell className="min-w-56 max-w-72 whitespace-normal text-xs leading-relaxed">{item.ats?.matchedSkills?.join(', ')||'None confirmed'}</TableCell>;
@@ -46,7 +53,7 @@ export function ResumeReviewTable({items,caps,jobs,busy,onOpen,onRetry,onDelete,
           </TableCell>;
   }}
   return <div className="px-5 pb-5"><div className="mb-3 flex justify-end"><TableColumnSettings settings={columns}/></div><p className="mb-3 text-xs text-muted-foreground">Use Columns to choose and arrange the information you need. Sort by name or ATS score, or expand a row for resume versions and assignment controls.</p>
-    <Table aria-label="Resume and ATS review"><TableHeader><TableRow>{selection&&<TableHead className="w-10"><input type="checkbox" aria-label="Select all resumes on this page" disabled={busy||!rows.some(item=>item.status!=='deleted')} checked={rows.some(item=>item.status!=='deleted')&&rows.filter(item=>item.status!=='deleted').every(item=>selection.ids.has(item.itemId))} onChange={selection.togglePage}/></TableHead>}<TableHead className="w-10"><span className="sr-only">Details</span></TableHead>{columns.visible.map(column=><React.Fragment key={column.key}>{column.key==='name'||column.key==='score'?heading(column.key,column.label):<TableHead>{column.label}</TableHead>}</React.Fragment>)}<TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>
+    <Table aria-label="Resume and ATS review"><TableHeader><TableRow>{selection&&<TableHead className="w-10"><input type="checkbox" aria-label="Select all resumes on this page" disabled={busy||!rows.some(item=>item.status!=='deleted')} checked={rows.some(item=>item.status!=='deleted')&&rows.filter(item=>item.status!=='deleted').every(item=>selection.ids.has(item.itemId))} onChange={selection.togglePage}/></TableHead>}<TableHead className="w-10"><span className="sr-only">Details</span></TableHead>{columns.visible.map(column=><React.Fragment key={column.key}>{['name','score','skills','experience','education','keyword','role'].includes(column.key)?heading(column.key,column.label):<TableHead>{column.label}</TableHead>}</React.Fragment>)}<TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>
       {rows.map(item=>{const open=expanded===item.itemId;return <React.Fragment key={item.itemId}>
         <TableRow className={open?'bg-primary/10':undefined}>
           {selection&&<TableCell><input type="checkbox" aria-label={`Select resume ${item.fileName}`} disabled={busy||item.status==='deleted'} checked={selection.ids.has(item.itemId)} onChange={()=>selection.toggle(item)}/></TableCell>}

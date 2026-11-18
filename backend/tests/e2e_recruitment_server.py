@@ -42,6 +42,12 @@ settings.resume_ats_model = ""
 async def lifespan(app):
     async with base.lifespan(app):
         await upgrade(base.db)
+        await UserRepository(base.db).create({
+            "userId":"browser-guided-admin","orgId":"default","role":"admin",
+            "name":"Guided Admin","email":"guided-admin@example.com","isActive":True,
+            "passwordHash":hash_password("Browser-test-only-2026!"),
+        })
+
         await upgrade_talent(base.db)
         for role, name in [
             ("technical_interviewer", "Rahul Demo"),

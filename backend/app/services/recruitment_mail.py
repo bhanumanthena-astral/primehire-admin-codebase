@@ -34,7 +34,9 @@ def recipient_allowed(email):
     )
 
 
-async def send_via_zepto(to_email, to_name, subject, html_body):
+async def send_via_zepto(to_email, to_name, subject, html_body, *, configuration=None):
+    if configuration is not None:
+        return await email_send.send_via_zepto(to_email, to_name, subject, html_body, configuration=configuration)
     if not settings.recruitment_zeptomail_api_key:
         return await email_send.send_via_zepto(to_email, to_name, subject, html_body)
     payload = {

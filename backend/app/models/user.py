@@ -16,6 +16,9 @@ def to_public_user(doc: dict[str, Any]) -> dict[str, Any]:
     out = dict(doc)
     if "passwordSetupRequired" not in out or "passwordHash" in doc:
         out["passwordSetupRequired"] = not bool(doc.get("passwordHash"))
+    out.pop("adminPermissions", None)
+    out.pop("permissionRequests", None)
+    out.pop("permissionRevision", None)
     out.pop("_id", None)
     out.pop("passwordHash", None)
     mfa = out.get("mfa") or {}

@@ -1,3 +1,5 @@
+import {hiringTerm} from '../lib/hrTerminology';
+import {sourceLabel} from '../lib/hiringWorkflow';
 import {Progress} from '@/components/ui/progress';
 import {RadioGroup, RadioGroupItem} from '@/components/ui/radio-group';
 import {Button} from '@/components/ui/button';
@@ -13,6 +15,7 @@ import {acceptsResumes, hasJobAccess} from '../lib/jobAccess';
 import {Capabilities, IntakeItem, IntakeBatch, BatchPage, CandidateRow, Limits, intakeGet, intakeMutate, intakeUpload, intakeDownload} from '../lib/resumeIntakeApi';
 import {ResumeBulkSelection} from './ResumeBulkSelection';
 import {ResumeReviewTable} from './ResumeReviewTable';
+import {JobResumeList} from './JobResumeList';
 import {ResumeAtsRange} from './ResumeAtsRange';
 import {uploadResumeSelection} from '../lib/resumeBulkUpload';
 import {ResumeFilePicker} from './ResumeFilePicker';
@@ -21,7 +24,7 @@ import {EmptyNote, PAButton, SectionHeader} from './ui/primitives';
 import {Modal} from './ui/Modal';
 
 const MODES = [{key:'single',label:'Single resume',icon:FileText},{key:'files',label:'Multiple resumes',icon:Upload},{key:'zip',label:'ZIP archive',icon:Archive},{key:'excel',label:'Excel import',icon:FileSpreadsheet}];
-const SOURCE = ['local','linkedin','naukri','referral','email','other'];
+const SOURCE = ['local','linkedin','naukri','indeed','wellfound','career_portal','referral','agency','email','other','unknown'];
 const STATUS = ['uploaded','queued','processing','review_required','duplicate_suspected','confirming','completed','duplicate','failed','rejected','unsupported_format','scan_required','virus_detected','password_protected','ocr_required','conversion_required','confirmation_paused','deleted'];
 const label = (value:string) => value.replaceAll('_',' ').replace(/^./, s=>s.toUpperCase());
 
@@ -35,6 +38,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
   const [uploading,setUploading] = useState(false); const [uploadProgress,setUploadProgress] = useState(0); const [busy,setBusy] = useState(false); const [error,setError] = useState(''); const [message,setMessage] = useState('');
   const [batches,setBatches] = useState<IntakeBatch[]>([]); const [batchPage,setBatchPage] = useState(0); const [moreBatches,setMoreBatches] = useState(false); const [batchId,setBatchId] = useState('');
   const [showAllResumes,setShowAllResumes]=useState(false);
+  const [allBatches,setAllBatches]=useState(!!scopedJob);
   const [data,setData] = useState<BatchPage|null>(null); const [page,setPage] = useState(0); const [status,setStatus] = useState(''); const [search,setSearch] = useState(''); const [loading,setLoading] = useState(false); const [reload,setReload] = useState(0);
   useEffect(()=>setShowAllResumes(false),[batchId,page]);
   const [scoreBand,setScoreBand] = useState(''); const [creationOpen,setCreationOpen] = useState(false);
@@ -79,7 +83,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
     return()=>controller.abort();
   },[batchPage,reload]);
   useEffect(()=>{
-    if(!batchId)return;
+    if(!batchId||(scopedJob&&allBatches))return;
     const controller=new AbortController();let inFlight=false;
     setLoading(true);
     async function refresh() {
@@ -94,7 +98,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
     const delay=setTimeout(()=>void refresh(),200);
     const timer=setInterval(()=>{if((latestStatus.current==='processing'||creationOpen)&&document.visibilityState==='visible')void refresh();},3000+Math.random()*500);
     return()=>{controller.abort();clearTimeout(delay);clearInterval(timer);};
-  },[batchId,page,status,scoreBand,search,reload,creationOpen]);
+  },[batchId,page,status,scoreBand,search,reload,creationOpen,allBatches,scopedJob]);
   useEffect(()=>{
     if(view!=='candidates'||!jobId)return;
     const controller=new AbortController();setLoading(true);
@@ -138,7 +142,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
     </div>
     {error&&<p role="alert" className="break-words rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-xs text-destructive">{error}</p>}
     {message&&<p role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs">{message}</p>}
-    {caps.canAdmin&&caps.workerReady===false&&<p role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs">Processing is waiting for a resume worker. Uploads remain safely queued until a worker connects.</p>}
+    {caps.canAdmin&&caps.workerReady===false&&<p role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs">{hiringTerm('Processing is waiting for a resume worker. Uploads remain safely queued until a worker connects.',user?.role)}</p>}
     {caps.canAdmin&&caps.workerReady&&caps.scannerReady===false&&<p role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs">The malware scanner is unavailable. Files remain blocked until scanning succeeds; retry them after the scanner reconnects.</p>}
     {(view==='upload'||view==='candidates')&&<section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
       <div className="grid gap-3 sm:grid-cols-2"><label className="flex flex-col gap-2 text-xs font-bold">Find a job<Input aria-label="Find a job" value={jobSearch} disabled={uploading||!!scopedJob} onChange={e=>{setJobSearch(e.target.value);setJobPage(0);}} className="ehr-input p-3 font-normal" placeholder="Search by title, role or company"/></label>
@@ -155,14 +159,23 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
         {mode==='zip'&&<p className="text-xs leading-relaxed text-muted-foreground">Up to {caps.limits.zipMaxFiles} resumes. Unsafe paths, nested archives and unsupported entries are rejected individually. Valid resumes are kept.</p>}
         {mode==='excel'&&<div className="space-y-4 rounded-xl border border-border p-4"><p className="text-xs leading-relaxed text-muted-foreground">Use the prescribed template, up to {caps.limits.excelMaxRows.toLocaleString()} rows. Candidate name and email or phone are required. Optionally link resumes by file name from a ZIP.</p><PAButton type="button" variant="secondary" onClick={()=>void action(()=>intakeDownload('/template','primehire-candidate-template.xlsx'))}><Download size={14}/>Download Excel template</PAButton><details><summary className="cursor-pointer text-xs font-bold">Attach a resume ZIP (optional)</summary><div className="mt-3"><ResumeFilePicker files={archive} onChange={next=>{setArchive(next);resetUpload();}} maxFiles={1} maxMb={caps.limits.zipMaxMb} accept=".zip" formatLabel="ZIP" noun="resume ZIP" inputLabel="Resume archive files" uploading={uploading} disabled={!eligible}/></div></details></div>}
       </div><aside className="rounded-2xl border border-border bg-background/50 p-5"><h3 className="text-sm font-bold">Upload summary</h3><p className="mt-4 text-xs font-semibold">{selectedJob?.title||'Choose an open job'}</p><p className="mt-2 text-xs text-muted-foreground">{files.length} selected · {label(mode)} · {label(source)}</p>
-        <label className="mt-5 flex flex-col gap-2 text-xs font-semibold">Upload source<AppSelect value={source} disabled={uploading} onValueChange={e=>{setSource(e);resetUpload();}} className="ehr-input p-3">{SOURCE.map(value=><option key={value} value={value}>{value==='linkedin'?'LinkedIn':value==='naukri'?'Naukri':label(value)}</option>)}</AppSelect></label>
+        <label className="mt-5 flex flex-col gap-2 text-xs font-semibold">Upload source<AppSelect value={source} disabled={uploading} onValueChange={e=>{setSource(e);resetUpload();}} className="ehr-input p-3">{SOURCE.map(value=><option key={value} value={value}>{sourceLabel(value)}</option>)}</AppSelect></label>
         <label className="mt-5 flex items-start gap-3 text-xs leading-relaxed"><Checkbox  checked={consent} disabled={uploading} onCheckedChange={e=>setConsent(e)} aria-label="Candidate consent confirmed" className="mt-1 shrink-0 accent-amber-600"/><span>I confirm candidates consented to processing their information for this hiring workflow.</span></label>
         <PAButton type="submit" disabled={uploading||!eligible||!consent||!files.length} className="mt-5 w-full py-3">{uploading?<Loader2 className="animate-spin" size={16}/>:<Upload size={16}/>} {uploading?`Uploading ${uploadProgress} / ${files.length}…`:'Upload resumes'}</PAButton>
         <p className="mt-3 text-[0.6875rem] leading-relaxed text-muted-foreground">{uploading?'Keep this page open until the upload is received.':!eligible?'Only open jobs with upload access accept new resumes.':'Files are securely queued, then reviewed before creating candidate applications.'}</p>
         <div className="mt-5 flex gap-2 border-t border-border pt-4 text-[0.6875rem] leading-relaxed text-muted-foreground"><ShieldCheck size={16} className="shrink-0"/><span>Security scanning is required. Scanned resumes that need OCR or conversion remain clearly identifiable for retry.</span></div>
       </aside></div>
     </form>}
-    {view==='batches'&&<div className="space-y-5">
+    {view==='batches'&&scopedJob&&<div className="flex gap-2">
+      <PAButton variant={allBatches?'primary':'secondary'} onClick={()=>setAllBatches(true)}>All job resumes</PAButton>
+      <PAButton variant={!allBatches?'primary':'secondary'} onClick={()=>setAllBatches(false)}>Upload batches</PAButton>
+    </div>}
+    {view==='batches'&&scopedJob&&allBatches&&<JobResumeList key={scopedJob.jobId} jobId={scopedJob.jobId} reload={reload}
+      caps={caps} jobs={jobs} busy={busy} onOpen={id=>void open(id)}
+      onRetry={item=>void action(()=>intakeMutate(`/items/${item.itemId}/retry`,{expectedRevision:item.revision}),'Retry queued.')}
+      onDelete={item=>{setError('');setDeleteItem(item);setReason('');}} onChanged={changed}
+      onAssociated={id=>{setBatchId(id);setAllBatches(false);setPage(0);setStatus('');setScoreBand('');changed();}}/>}
+    {view==='batches'&&(!scopedJob||!allBatches)&&<div className="space-y-5">
       <section className="rounded-2xl border border-border bg-card p-5"><div className="flex flex-wrap items-end gap-3"><label className="flex min-w-0 flex-1 flex-col gap-2 text-xs font-bold">Upload batch<AppSelect value={batchId} onValueChange={e=>{setBatchId(e);setData(null);setPage(0);setStatus('');setScoreBand('');}} aria-label="Upload batch" className="ehr-input min-w-0 p-3 font-normal"><option value="">Choose a batch</option>{batches.map(batch=><option key={batch.batchId} value={batch.batchId}>{batch.jobTitle} · {label(batch.mode)} · {new Date(batch.createdAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</option>)}</AppSelect></label><PAButton type="button" variant="secondary" onClick={changed}><RefreshCw size={15}/>Refresh</PAButton></div>
       <div className="mt-3 flex justify-end gap-2"><PAButton variant="secondary" disabled={!batchPage} onClick={()=>setBatchPage(n=>n-1)}>Previous batches</PAButton><PAButton variant="secondary" disabled={!moreBatches} onClick={()=>setBatchPage(n=>n+1)}>More batches</PAButton></div></section>
       {!batchId&&<EmptyNote>No uploads yet. Start with a resume, ZIP or Excel import.</EmptyNote>}
@@ -175,7 +188,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
         {data.batch.importComplete && completed > 0 && <ResumeAtsRange batch={{...data.batch,canSetAtsRange:!!data.batch.canSetAtsRange&&caps.canUpload}} onSaved={()=>{latestStatus.current='processing';changed();}}/>}
         <div className="px-5 pt-2"><label className="flex flex-col gap-2 text-xs font-bold">ATS eligibility<AppSelect aria-label="ATS eligibility" value={scoreBand} disabled={!data.batch.atsRange} onValueChange={value=>{setScoreBand(value);setPage(0);}} className="ehr-input p-3 font-normal"><option value="">All resumes, including outside the range</option><option value="within">Within selected range</option><option value="below">Below selected minimum</option><option value="above">Above selected maximum</option><option value="pending">Awaiting a current score</option></AppSelect></label></div>
         {caps.canUpload&&<p className="px-5 pb-2 text-xs leading-relaxed text-muted-foreground">Create profiles in ATS range processes this entire upload across all pages, using the saved range. No individual confirmation is needed for valid profiles. Extracted names are accepted without individual review. Missing contacts and identity conflicts remain for review.</p>}
-        <div className="grid gap-3 p-5 sm:grid-cols-2"><label className="flex flex-col gap-2 text-xs font-bold">Find a resume or candidate<Input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} className="ehr-input p-3 font-normal"/></label><label className="flex flex-col gap-2 text-xs font-bold">Processing status<AppSelect value={status} onValueChange={e=>{setStatus(e);setPage(0);}} aria-label="Processing status" className="ehr-input p-3 font-normal"><option value="">All statuses</option>{STATUS.map(value=><option key={value} value={value}>{label(value)}</option>)}</AppSelect></label></div>
+        <div className="grid gap-3 p-5 sm:grid-cols-2"><label className="flex flex-col gap-2 text-xs font-bold">Find a resume or candidate<Input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} className="ehr-input p-3 font-normal"/></label><label className="flex flex-col gap-2 text-xs font-bold">Processing status<AppSelect value={status} onValueChange={e=>{setStatus(e);setPage(0);}} aria-label="Processing status" className="ehr-input p-3 font-normal"><option value="">All statuses</option>{STATUS.map(value=><option key={value} value={value}>{hiringTerm(label(value),user?.role)}</option>)}</AppSelect></label></div>
         {loading&&<p role="status" className="px-5 pb-3 text-xs text-muted-foreground">Refreshing results…</p>}
         <ResumeBulkSelection key={`${batchId}:${status}:${scoreBand}:${search}`} batchId={batchId} query={new URLSearchParams({...status?{status}:{},...scoreBand?{scoreBand}:{},q:search}).toString()} items={data.items} total={data.total} enabled={caps.canAdmin&&!busy} onChanged={changed}>{selection=><ResumeReviewTable preferenceKey={user?`elitehr:table-columns:resume-review:${user.orgId}:${user.userId}`:undefined} selection={selection} items={compact&&!showAllResumes?data.items.slice(0,4):data.items} caps={caps} jobs={jobs} busy={busy} onOpen={id=>void open(id)} onRetry={item=>void action(()=>intakeMutate(`/items/${item.itemId}/retry`,{expectedRevision:item.revision}),'Retry queued.')} onDelete={item=>{setError('');setDeleteItem(item);setReason('');}} onChanged={changed} onAssociated={id=>{setBatchId(id);setPage(0);setStatus('');setScoreBand('');changed();}}/>}</ResumeBulkSelection>{compact&&data.items.length>4&&<button type="button" className="m-4 rounded border px-4 py-2 text-sm" onClick={()=>setShowAllResumes(value=>!value)}>{showAllResumes?"Show less":"Show more resumes ("+(data.items.length-4)+")"}</button>}
 

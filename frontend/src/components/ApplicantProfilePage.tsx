@@ -1,3 +1,5 @@
+import {ApplicationEmailStatus} from './ApplicationEmailStatus';
+import {RejectionPreview} from './RejectionPreview';
 import {Button} from '@/components/ui/button';
 import {AppSelect} from '@/src/components/ui/AppSelect';
 import {Input} from '@/components/ui/input';
@@ -28,6 +30,7 @@ export default function ApplicantProfilePage({
   applicantId: string;
   onBack: () => void;
 }) {
+  const [rejectionReady,setRejectionReady]=useState<Record<string,boolean>>({});
   const [applicant, setApplicant] = useState<Applicant | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
@@ -249,14 +252,16 @@ export default function ApplicantProfilePage({
                   aria-label="Stage change reason"
                 />
               </label>
+              {toStage[a.applicationId]==='REJECTED'&&<RejectionPreview applicationId={a.applicationId} onReady={ready=>setRejectionReady(previous=>({...previous,[a.applicationId]:ready}))}/>}
               <Button variant="ghost"
                 type="submit"
-                disabled={acting}
+                disabled={acting||toStage[a.applicationId]==='REJECTED'&&!rejectionReady[a.applicationId]}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
                 Apply
               </Button>
             </form>
+            {a.currentStage==='REJECTED'&&<ApplicationEmailStatus applicationId={a.applicationId}/>}
           </div>
         );
       })}

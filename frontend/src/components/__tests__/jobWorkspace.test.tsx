@@ -9,7 +9,7 @@ vi.mock('../JobDetailsPage',()=>({default:({onUpload,onShowApplications}:any)=><
 vi.mock('../JobApplicationsPage',()=>({JobApplicationsPage:({job,onBack}:any)=><section><p>Applications scope: {job.jobId}</p><button onClick={onBack}>Back to job</button></section>}));
 vi.mock('../ResumeIntakePage',()=>({default:({scopedJob}:any)=><p>Resume scope: {scopedJob.jobId}</p>}));
 vi.mock('../recruitment/RecruitmentWorkspace',()=>({RecruitmentWorkspace:({scopedJobId}:any)=><p>Schedule scope: {scopedJobId}</p>}));
-vi.mock('../../lib/authContext',()=>({useAuth:()=>({user:{role:'admin'}})}));
+vi.mock('../../lib/authContext',()=>({useAuth:()=>({user:{role:'super_admin'}})}));
 vi.mock('../../lib/hiringApi',()=>({fetchJobDetail:vi.fn(),sendAssessments:vi.fn(),transitionApplication:vi.fn(),syncJobAssessmentResults:vi.fn(),fetchEmailMode:()=>Promise.resolve({dryRun:true})}));
 vi.mock('../../lib/resumeIntakeApi',()=>({intakeGet:()=>Promise.resolve({enabled:true})}));
 vi.mock('../../lib/recruitmentApi',async original=>({...await original<any>(),recruitmentRequest:vi.fn()}));
@@ -19,12 +19,12 @@ it('searches names and emails across pages, resets selections and retains the fi
  vi.mocked(recruitmentRequest).mockImplementation(async path=>({items:path.includes('&search=')?[]:rows,total:path.includes('&search=')?0:51}) as any);
  render(<JobAssessmentCandidates job={job} onChooseAssessment={vi.fn()}/>);
  await screen.findByText('Zoe');fireEvent.click(screen.getByRole('button',{name:'Next page'}));
- await waitFor(()=>expect(recruitmentRequest).toHaveBeenCalledWith('/applications?jobId=job-a&skip=50&limit=50',undefined,'GET',expect.any(AbortSignal)));
+ await waitFor(()=>expect(recruitmentRequest).toHaveBeenCalledWith('/applications?jobId=job-a&skip=50&limit=50&invitationCandidates=true&includeInvitedCandidates=false&sortBy=name&descending=false',undefined,'GET',expect.any(AbortSignal)));
  await screen.findByText('Zoe');fireEvent.click(screen.getByRole('checkbox',{name:'Select Zoe'}));
  expect(screen.getByRole('button',{name:'Confirm / shortlist selected (1)'})).toBeEnabled();
  fireEvent.change(screen.getByRole('searchbox',{name:'Search candidates by name or email'}),{target:{value:' alex+test@example.test '}});
  expect(screen.getByRole('button',{name:'Confirm / shortlist selected (0)'})).toBeDisabled();
- const filtered='/applications?jobId=job-a&skip=0&limit=50&search=alex%2Btest%40example.test';
+ const filtered='/applications?jobId=job-a&skip=0&limit=50&invitationCandidates=true&includeInvitedCandidates=false&sortBy=name&descending=false&search=alex%2Btest%40example.test';
  await waitFor(()=>expect(recruitmentRequest).toHaveBeenCalledWith(filtered,undefined,'GET',expect.any(AbortSignal)));
  expect(await screen.findByText('No candidates match this name or email.')).toBeVisible();
  fireEvent.click(screen.getByRole('button',{name:'Refresh results'}));
@@ -46,10 +46,10 @@ it('shows scores, selects explicit candidates and queues invitations after confi
  render(<JobWorkspace jobId="job-a" onBack={()=>{}} onChanged={()=>{}} onDeleted={()=>{}} renderAssessments={(_,open)=><button onClick={()=>open?.({id:"assessment-a",jobTitle:"Engineer"} as any)}>View table</button>}/>);await screen.findByRole('heading',{name:'Engineer'});
  fireEvent.click(screen.getByRole('button',{name:'3. Assessments'}));fireEvent.click(await screen.findByRole('button',{name:'View table'}));await screen.findByText('Zoe');expect(screen.getByText('85')).toBeInTheDocument();expect(screen.getByText('75')).toBeInTheDocument();
  expect(vi.mocked(recruitmentRequest).mock.calls[0][0]).toContain('jobId=job-a');
- fireEvent.click(screen.getByRole('checkbox',{name:'Select Zoe'}));fireEvent.click(screen.getByRole('button',{name:'Send email invitations'}));expect(sendAssessments).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('checkbox',{name:'Select Amy'}));fireEvent.click(screen.getByRole('button',{name:'Send email invitations'}));expect(sendAssessments).not.toHaveBeenCalled();
  expect(screen.getByRole('button',{name:'Confirm action'})).toBeDisabled();
  fireEvent.change(screen.getByLabelText('Invitation template'),{target:{value:'tpl-invite'}});
- fireEvent.click(screen.getByRole('button',{name:'Confirm action'}));await waitFor(()=>expect(sendAssessments).toHaveBeenCalledWith(['app-a'],false,expect.objectContaining({id:'tpl-invite'})));
+ fireEvent.click(screen.getByRole('button',{name:'Confirm action'}));await waitFor(()=>expect(sendAssessments).toHaveBeenCalledWith(['app-b'],false,expect.objectContaining({id:'tpl-invite'})));
  fireEvent.click(screen.getByRole('button',{name:'WhatsApp · paid add-on'}));expect(await screen.findByText('WhatsApp invitations cost extra')).toBeInTheDocument();expect(screen.getByRole('button',{name:'Manager enablement unavailable until pricing is configured'})).toBeDisabled();
 });
 
@@ -65,9 +65,9 @@ it('generates links separately without requesting email delivery',async()=>{
  render(<JobWorkspace jobId="job-a" onBack={()=>{}} onChanged={()=>{}} onDeleted={()=>{}} renderAssessments={(_,open)=><button onClick={()=>open?.({id:"assessment-a",jobTitle:"Engineer"} as any)}>View table</button>}/>);
  await screen.findByRole('heading',{name:'Engineer'});
  fireEvent.click(screen.getByRole('button',{name:'3. Assessments'}));fireEvent.click(await screen.findByRole('button',{name:'View table'}));await screen.findByText('Zoe');
- fireEvent.click(screen.getByRole('checkbox',{name:'Select Zoe'}));fireEvent.click(screen.getByRole('button',{name:'Generate links'}));
+ fireEvent.click(screen.getByRole('checkbox',{name:'Select Amy'}));fireEvent.click(screen.getByRole('button',{name:'Generate links'}));
  expect(await screen.findByText('Generate assessment links without sending?')).toBeVisible();
- fireEvent.click(screen.getByRole('button',{name:'Confirm action'}));await waitFor(()=>expect(sendAssessments).toHaveBeenCalledWith(['app-a'],true));
+ fireEvent.click(screen.getByRole('button',{name:'Confirm action'}));await waitFor(()=>expect(sendAssessments).toHaveBeenCalledWith(['app-b'],true));
 });
 
 it('routes an unlinked job to assessment selection',async()=>{
@@ -115,4 +115,28 @@ it('replaces the previous selection with only scored candidates inside the new r
  await screen.findByRole('button',{name:'Confirm / shortlist selected (2)'});
  expect(screen.getByRole('checkbox',{name:'Select Candidate 1'})).toBeChecked();
  expect(screen.getByRole('checkbox',{name:'Select Candidate 2'})).toBeChecked();
+});
+
+it('hides invited candidates by default and never selects them when included',async()=>{
+ let count=10;
+ const rows=()=>Array.from({length:count},(_,i)=>({applicationId:'app-'+i,candidate:{name:'Person '+i},currentStage:'SHORTLISTED',atsScore:80,invitation:{status:i<5?'invited':'not_invited',canInvite:i>=5,sentAt:i<5?'2026-11-01T10:00:00Z':undefined}}));
+ vi.mocked(recruitmentRequest).mockImplementation(async path=>{
+  const all=path.includes('includeInvitedCandidates=true');const items=rows().filter((_,i)=>all||i>=5);
+  return {items,total:items.length,eligibleTotal:count-5} as any;
+ });
+ render(<JobAssessmentCandidates job={job} pipelineStage="linksSent" embedded onChooseAssessment={vi.fn()}/>);
+ await screen.findByText('Person 5');
+ const toggle=screen.getByRole('switch',{name:'Include Invited Candidates'});
+ expect(toggle).not.toBeChecked();expect(screen.queryByText('Person 0')).not.toBeInTheDocument();
+ expect(screen.getByText(/5 candidates.*5 eligible/)).toBeVisible();
+ count=13;fireEvent.click(screen.getByRole('button',{name:'Refresh results'}));
+ expect(await screen.findByText('Person 12')).toBeVisible();expect(screen.getByText(/8 candidates.*8 eligible/)).toBeVisible();
+ fireEvent.click(toggle);expect(await screen.findByText('Person 0')).toBeVisible();
+ expect(screen.getByText(/13 candidates.*8 eligible/)).toBeVisible();
+ expect(screen.getByRole('checkbox',{name:'Select Person 0'})).toHaveAttribute('aria-disabled','true');
+ fireEvent.click(screen.getByRole('checkbox',{name:'Select candidates on this page'}));
+ expect(screen.getByRole('button',{name:'Confirm / shortlist selected (8)'})).toBeEnabled();
+ expect(sendAssessments).not.toHaveBeenCalled();
+ fireEvent.click(toggle);await waitFor(()=>expect(screen.queryByText('Person 0')).not.toBeInTheDocument());
+ expect(screen.getByRole('button',{name:'Confirm / shortlist selected (0)'})).toBeDisabled();
 });

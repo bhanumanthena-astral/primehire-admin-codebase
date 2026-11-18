@@ -1,3 +1,5 @@
+import {hiringNavigation} from './lib/hrTerminology';
+import {AdminHome} from './components/AdminHome';
 import {Dialog, DialogContent} from '@/components/ui/dialog';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -135,14 +137,14 @@ function AdminDashboard() {
 
   const canManageUsers = user?.role === 'super_admin' || user?.role === 'admin';
   useEffect(()=>{const handler=()=>{if(canManageUsers)setActiveTab('users');};window.addEventListener('elite:manage-team',handler);return()=>window.removeEventListener('elite:manage-team',handler);},[canManageUsers]);
-  const availableTabs = [
+  const availableTabs = hiringNavigation([
     ...(['super_admin','admin','recruiter','hr'].includes(user?.role||'')?[{id:'recruitment',label:'Recruitment Tracker',short:'Recruitment',icon:Users}]:[]),
     ...MODULE_TABS.filter(t=>t.id==='resumes'?hasJobAccess(user,'upload')||(resumeV2&&hasJobAccess(user,'view')):t.id==='jobs'?hasJobAccess(user,'view'):true).filter(t => user?.role === 'viewer' ? t.id === 'jobs'||resumeV2&&t.id==='resumes'||assessmentV2&&t.id==='assessments'||candidateV2&&t.id==='candidates' : ['recruiter','hr'].includes(user?.role || '') ? ['jobs', 'resumes','reports',...(assessmentV2?['assessments']:[]),...(candidateV2?['candidates']:[])].includes(t.id) : true),
     ...(canManageUsers
       ? [{ id: 'users', label: 'Team & Access', short: 'Team', icon: Shield, desc: 'Manage users, roles & invites' },
          { id: 'diagnostics', label: 'Diagnostics', short: 'Ops', icon: SlidersHorizontal, desc: 'Outbox & worker health' }]
       : []),
-  ];
+  ],user?.role);
   useEffect(() => {
     if (user?.role === 'viewer' && activeTab !== 'jobs' && !(resumeV2&&activeTab==='resumes') && !(assessmentV2&&activeTab==='assessments') && !(candidateV2&&activeTab==='candidates')) setActiveTab('jobs');
     if (['recruiter','hr'].includes(user?.role || '') && !['jobs', 'resumes','recruitment','reports',...(assessmentV2?['assessments']:[]),...(candidateV2?['candidates']:[])].includes(activeTab)) setActiveTab('jobs');
@@ -338,6 +340,7 @@ function AdminDashboard() {
   const hasActiveFilters = filterRound !== 'ALL' || filterStatus !== 'ALL' || searchQuery;
 
   const tabCount = (id: string): number | null => {
+    if(user?.role==='admin'&&['jobs','assessments'].includes(id))return null;
     if (id === 'candidates') return candidateV2?null:candidates.length;
     if (id === 'assessments' || id === 'jobs') return assessments.length;
     if (id === 'templates') return templates.length;
@@ -488,7 +491,7 @@ function AdminDashboard() {
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
               <span className="truncate font-bold text-foreground">{activeMeta?.label ?? 'Overview'}</span>
             </nav>
-            <div className="relative ml-auto min-w-0 flex-1 max-w-[220px] sm:max-w-[260px]">
+            {user?.role!=='admin'&&<div className="relative ml-auto min-w-0 flex-1 max-w-[220px] sm:max-w-[260px]">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
               <Input
                 type="text"
@@ -507,7 +510,7 @@ function AdminDashboard() {
                   <X className="h-3.5 w-3.5" />
                 </Button>
               )}
-            </div>
+            </div>}
             <ProfileLink/><ModeToggle />
             <div className="hidden items-center gap-2 md:flex" aria-label="Signed in user">
               <StaticTeamAvatar accountId={user?.userId} role={avatarRole(user?.role||'admin')} portrait className="workspace-account-picture"/>
@@ -524,7 +527,7 @@ function AdminDashboard() {
         </header>
 
         {/* slim filter toolbar */}
-        {!['jobs','resumes','users','diagnostics','recruitment',...(candidateV2?['candidates']:[])].includes(activeTab) && (
+        {!(user?.role==='admin'&&activeTab==='dashboard')&&!['jobs','resumes','users','diagnostics','recruitment',...(candidateV2?['candidates']:[])].includes(activeTab) && (
         <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 inline-flex items-center gap-1.5 text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-muted-foreground">
@@ -590,8 +593,7 @@ function AdminDashboard() {
           <FreeTierAlert/>
           {activeTab === 'reports' && <ReportsWorkspace/>}
           {activeTab === 'recruitment' && <RecruitmentWorkspace externalSearch={searchQuery} onSearchChange={setSearchQuery}/>}
-          {activeTab === 'dashboard' && (
-            <Dashboard
+          {activeTab === 'dashboard' && (user?.role==='admin'?<AdminHome onNavigate={setActiveTab}/>:<Dashboard
               assessments={assessments}
               candidates={candidates}
               filterRound={filterRound}

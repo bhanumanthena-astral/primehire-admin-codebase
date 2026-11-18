@@ -107,7 +107,7 @@ async def application_rows(db, user, key, skip=0, limit=20):
     rows = await db['applications'].find(query).sort([('createdAt',-1),('applicationId',1)]).skip(skip).limit(limit).to_list(limit)
     jobs = {row['jobId']:row async for row in db['jobs'].find({'orgId':user.org_id,'jobId':{'$in':[r['jobId'] for r in rows]}},{'jobId':1,'title':1}).limit(limit)}
     return {'items':[{'applicationId':r['applicationId'],'jobId':r['jobId'],'jobTitle':jobs.get(r['jobId'],{}).get('title'),
-        'stage':r.get('currentStage'),'applicationDate':r.get('createdAt')} for r in rows], 'total':await db['applications'].count_documents(query)}
+        'source':r.get('applicationSource','unknown'),'stage':r.get('currentStage'),'applicationDate':r.get('createdAt')} for r in rows], 'total':await db['applications'].count_documents(query)}
 
 
 def assignment_public(row, manage=False):
@@ -164,7 +164,7 @@ async def update_profile(db, user, key, payload):
         query = {'orgId':user.org_id,'applicantId':key,'updatedAt':payload.expectedUpdatedAt}
         query['$or'] = [{'profileRevision':payload.expectedRevision}] + ([{'profileRevision':{'$exists':False}}] if payload.expectedRevision==0 else [])
         updated = await db['applicants'].find_one_and_update(query,{'$set':{'name':data['name'],
-            'email':data['email'] or f'phone-only-{key}@placeholder.local','phone':data['phone'],
+            'email':data['email'] or f'phone-only-{key}@placeholder.local','normalizedEmail':data['email'].strip().lower(),'phone':data['phone'],
             'phoneDigits':phone_digits_variants(data['phone']),'profile':merged,'updatedAt':now(),'updatedBy':user.user_id},
             '$inc':{'profileRevision':1}},return_document=ReturnDocument.AFTER)
         if not updated: raise HTTPException(409,'Candidate changed; refresh before saving')

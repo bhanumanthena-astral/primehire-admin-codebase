@@ -1,0 +1,21 @@
+import {fireEvent,render,screen} from '@testing-library/react';
+import {expect,it,vi} from 'vitest';
+import {InteractiveStoredReport,storedPercentage} from '../report/InteractiveStoredReport';
+vi.mock('../report/StoredReportEvidence',()=>({StoredReportEvidence:()=>null,QuestionVideo:()=>null,metricValue:(m:any)=>String(m.value??'Unavailable')}));
+it('switches views and components while keeping source scales and transcripts',()=>{
+ const metric={label:'Technical',value:0,maximum:100,grade:null,applicable:true};
+ const content:any={schemaSupported:true,overview:metric,feedback:[metric],skillProfile:[metric,{...metric,label:'Reasoning',value:80}],communication:[{...metric,label:'Fluency',value:70}],questions:[{reference:'q',question:'Explain indexes',score:0,maximum:10,transcript:'An index speeds up reads.',strengths:[],areasForImprovement:[],recommendations:[]}],aiSummary:null};
+ render(<InteractiveStoredReport content={content} metadata={{jobTitle:'Engineer',candidateName:'Asha',roundType:'TECHNICAL',reportId:'r',version:1} as any}/>);
+ expect(screen.getAllByRole('button',{name:'Technical 0'})[0]).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Next component'}));
+ expect(screen.getByRole('heading',{name:'Reasoning'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:/HR readiness/}));
+ expect(screen.getByRole('heading',{name:'Fluency'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:/Question by question/}));
+ expect(screen.getByRole('heading',{name:'Explain indexes'})).toBeVisible();
+ expect(screen.getAllByText('An index speeds up reads.')[0]).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Not scored'}));
+ expect(screen.getByText('No questions match this filter.')).toBeVisible();
+ expect(storedPercentage({...metric,maximum:null})).toBeNull();
+ expect(storedPercentage(metric)).toBe(0);
+});

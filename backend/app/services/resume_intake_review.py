@@ -7,7 +7,7 @@ from ..models.resume_intake import IntakeRepository, fenced_claim, now, digest
 from ..models.jobs import BackgroundJobRepository
 from ..schemas.resume_intake import CandidateProfile, REVIEWABLE
 from ..security.deps import CurrentUser
-from ..security.roles import get_permissions_for_role
+from ..security.roles import effective_permissions
 from .resume_intake import item_for, job_for, get_limits, matches, audit
 from .resume_intake_ats import score
 from .resume_intake_llm import evaluate
@@ -116,7 +116,7 @@ async def confirm(db, user, item_id, request=None, *, enqueue_only=False):
         stamp = now()
         profile = CandidateProfile.model_validate(context["profile"]).model_dump(mode="json")
         person = {"_id": candidate_id, "applicantId": candidate_id, "orgId": user.org_id,
-            "name": profile["name"], "email": profile["email"] or f"phone-only-{candidate_id}@placeholder.local",
+            "name": profile["name"], "normalizedEmail": profile["email"].strip().lower(), "email": profile["email"] or f"phone-only-{candidate_id}@placeholder.local",
             "phone": profile["phone"], "phoneDigits": phone_digits_variants(profile["phone"]), "profile": profile,
             "resume": {"fileId": item.get("fileId", ""), "fileName": item["fileName"], "parsedJson": profile},
             "consent": {"given": True, "source": item["source"], "givenAt": stamp}, "tags": [],
@@ -192,7 +192,7 @@ async def resume_confirmation(db, job):
     if not actor:
         await IntakeRepository(db).patch_item(item["_id"], job["orgId"], {"status": "confirmation_paused", "error": "Reviewer account is unavailable. An authorized reviewer can resume confirmation."}, item["revision"])
         return {"blocked": "confirmation actor unavailable"}
-    user = CurrentUser(actor_id, job["orgId"], actor["role"], get_permissions_for_role(actor["role"]), "")
+    user = CurrentUser(actor_id, job["orgId"], actor["role"], await effective_permissions(db, actor), "")
     if "resumes.upload" not in user.permissions:
         await IntakeRepository(db).patch_item(item["_id"], job["orgId"], {"status": "confirmation_paused", "error": "Reviewer permission changed. An authorized reviewer can resume confirmation."}, item["revision"])
         return {"blocked": "confirmation permission changed"}

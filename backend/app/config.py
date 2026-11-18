@@ -1,7 +1,7 @@
 """PrimeHire application backend (FastAPI + MongoDB Atlas)."""
 
 from pathlib import Path
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,10 +15,22 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=_BACKEND_DIR / ".env", extra="ignore")
 
+    hiring_report_base_url: str = "http://localhost:3000"
     app_name: str = "primehire-backend"
     # local | development | test | staging | production (alias APP_ENV accepted)
     env: str = "local"
     debug: bool = False
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def _parse_debug(cls, v):
+        if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ("true", "1", "yes", "on", "t", "dev", "development"):
+                return True
+            if v_clean in ("false", "0", "no", "off", "f", "release", "prod", "production", ""):
+                return False
+        return bool(v)
     google_oauth_enabled: bool = False
     google_client_id: str = Field(default="", repr=False)
     google_client_secret: str = Field(default="", repr=False)

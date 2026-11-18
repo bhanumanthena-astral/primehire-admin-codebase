@@ -22,6 +22,26 @@ beforeEach(()=>{
   });
 });
 
+it('extends an expired published assessment using the date-only editor',async()=>{
+  const expired={...record,publicationState:'published',status:'Completed',canEdit:false,canPublish:false,canEditDates:true,
+    startDate:'2025-01-01T00:00:00Z',endDate:'2025-01-31T00:00:00Z'};
+  vi.mocked(assessmentRequest).mockImplementation(async(path,body)=>{
+    if(path?.startsWith('?'))return {items:[expired],total:1} as any;
+    if(path?.endsWith('/dates'))return {...expired,...body as object,status:'Active',revision:3} as any;
+    return expired as any;
+  });
+  render(<AssessmentLibrary canManage onNew={vi.fn()} onEdit={vi.fn()} onAssignments={vi.fn()} onPublished={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Edit dates'}));
+  const dialog=await screen.findByRole('dialog',{name:'Edit assessment dates'});
+  fireEvent.change(within(dialog).getByLabelText('End date (IST)'),{target:{value:'2029-01-31T18:00'}});
+  fireEvent.click(within(dialog).getByRole('button',{name:'Save dates'}));
+  await screen.findByText('Assessment dates updated successfully.');
+  expect(assessmentRequest).toHaveBeenCalledWith('/JOB-test/dates',{
+    expectedRevision:1,startDate:'2025-01-01T00:00:00.000Z',endDate:'2029-01-31T12:30:00.000Z',
+  },'PUT');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
 describe('Assessment Management additions',()=>{
   it('opens the job candidate invitation table from a published assessment action',async()=>{
     const published={...record,publicationState:'published',status:'Active',canEdit:false,canPublish:false};

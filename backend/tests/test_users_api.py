@@ -132,3 +132,35 @@ async def test_user_directory_lists_only_active_for_job_creators(client, mock_db
     _, iv = await _make_user_and_token(mock_db, role="technical_interviewer",
                                        email="iv@example.com")
     assert client.get("/api/users/directory", headers=iv).status_code == 403
+
+@pytest.mark.asyncio
+async def test_company_permission_request_and_tenant_boundary(client, mock_db):
+    _, root = await _make_user_and_token(mock_db)
+    company = client.post("/api/companies", headers=root, json={"name": "Acme"}).json()
+    org = company["orgId"]
+    payload = {"email": "admin@acme.test", "name": "Pat", "role": "admin", "orgId": org,
+               "adminPermissions": ["jobs.view"]}
+    assert client.post("/api/users", headers=root, json={**payload, "adminPermissions": ["roles.assign_admin"]}).status_code == 422
+    created = client.post("/api/users", headers=root, json=payload)
+    assert created.status_code == 201, created.text
+    uid = created.json()["user"]["userId"]
+    admin = {"Authorization": "Bearer " + create_access_token(user_id=uid, org_id=org, role="admin", session_id="acme")}
+    own = client.get("/api/companies", headers=admin).json()
+    assert [c["orgId"] for c in own["companies"]] == [org]
+    assert own["granted"] == ["jobs.view"]
+    assert client.get("/api/users", headers=admin).status_code == 403
+    assert client.post("/api/companies", headers=admin, json={"name":"Other"}).status_code == 403
+    for permission in ("users.manage", "whatsapp.campaign"):
+        assert client.post("/api/companies/requests/"+permission, headers=admin).status_code == 200
+    tree = client.get("/api/companies", headers=root).json()["companies"]
+    member = next(c for c in tree if c["orgId"] == org)["members"][0]
+    assert member["userId"] == uid and "users.manage" in member["permissionRequests"]
+    path = f"/api/companies/{org}/requests/{uid}/users.manage"
+    assert client.put(path, headers=admin, json={"approve":True}).status_code == 403
+    assert client.put(path.replace(org, "other"), headers=root, json={"approve":True}).status_code == 409
+    assert client.put(path, headers=root, json={"approve":True}).status_code == 200
+    assert client.put(path, headers=root, json={"approve":True}).status_code == 409
+    assert [u["userId"] for u in client.get("/api/users", headers=admin).json()] == [uid]
+    assert client.put(path.replace("users.manage","whatsapp.campaign"), headers=root, json={"approve":False}).status_code == 200
+    state = client.get("/api/companies", headers=admin).json()
+    assert state["pending"] == [] and "whatsapp.campaign" not in state["granted"]

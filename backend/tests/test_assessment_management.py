@@ -26,6 +26,49 @@ def config(key='JOB-test'):
             'maxScore':10,'weightage':100,'referenceAnswer':'A mapping from keys to values'}]}
 
 
+async def test_extend_expired_published_assessment_dates(module_client, db, monkeypatch):
+    from app.services import assessment_management as service
+    value=config();value.update(startDate=(now()-timedelta(days=3)).isoformat(),endDate=(now()-timedelta(days=1)).isoformat())
+    created=await module_client.post('/api/assessment-management',json={'config':value},headers=headers('admin'))
+    assert created.status_code==201,created.text
+    await db.assessments.update_one({'jobId':'JOB-test'},{'$set':{'publicationState':'published','isActive':True}})
+    await db.candidates.insert_one({'orgId':'default','assessmentId':'JOB-test','candidateId':'keep-me'})
+    calls=[]
+    async def update_provider(config):calls.append(config.model_dump(mode='json'))
+    monkeypatch.setattr(service,'create_upstream',update_provider)
+    detail=(await module_client.get('/api/assessment-management/JOB-test',headers=headers('admin'))).json()
+    assert detail['canEditDates'] and not detail['canEdit']
+    request={'expectedRevision':detail['revision'],'startDate':value['startDate'],'endDate':(now()+timedelta(days=7)).isoformat()}
+    result=await module_client.put('/api/assessment-management/JOB-test/dates',json=request,headers=headers('admin'))
+    assert result.status_code==200,result.text
+    assert result.json()['status']=='Active' and result.json()['publicationState']=='published'
+    assert calls[0]['jobId']=='JOB-test' and calls[0]['questions'][0]['text']==value['questions'][0]['text']
+    assert result.json()['questions']==created.json()['questions']
+    assert calls[0]['endDate'].replace('Z','+00:00')==result.json()['endDate'].replace('Z','+00:00')
+    assert await db.candidates.count_documents({'candidateId':'keep-me'})==1
+    assert (await module_client.put('/api/assessment-management/JOB-test/dates',json=request,headers=headers('admin'))).status_code==409
+    assert len(calls)==1
+    assert (await module_client.put('/api/assessment-management/JOB-test/dates',json=request,headers=headers('viewer'))).status_code==403
+    await db.users.insert_one({'userId':'other-admin','orgId':'other','role':'admin','isActive':True})
+    assert (await module_client.put('/api/assessment-management/JOB-test/dates',json=request,headers=headers('admin',uid='other-admin',org='other'))).status_code==404
+
+
+async def test_date_update_provider_failure_preserves_dates(module_client, db, monkeypatch):
+    from app.services import assessment_management as service
+    value=config()
+    await module_client.post('/api/assessment-management',json={'config':value},headers=headers('admin'))
+    await db.assessments.update_one({'jobId':'JOB-test'},{'$set':{'publicationState':'published','isActive':True}})
+    async def refused(config):raise HTTPException(502,'Provider refused date update')
+    monkeypatch.setattr(service,'create_upstream',refused)
+    request={'expectedRevision':1,'startDate':value['startDate'],'endDate':(now()+timedelta(days=10)).isoformat()}
+    result=await module_client.put('/api/assessment-management/JOB-test/dates',json=request,headers=headers('admin'))
+    assert result.status_code==502
+    saved=await db.assessments.find_one({'jobId':'JOB-test'})
+    assert saved['endDate'].replace('Z','+00:00')==value['endDate'].replace('Z','+00:00') and saved['publicationState']=='published'
+    request.update(expectedRevision=saved['revision'],endDate=(now()-timedelta(days=1)).isoformat())
+    assert (await module_client.put('/api/assessment-management/JOB-test/dates',json=request,headers=headers('admin'))).status_code==422
+
+
 def csv_text(rows=None, headers=None):
     columns=headers or HEADERS+OPTIONAL
     output=io.StringIO();writer=csv.writer(output);writer.writerow(columns)

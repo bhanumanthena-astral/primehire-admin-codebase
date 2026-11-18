@@ -1,3 +1,4 @@
+import {workflowRequest,templatePreview,type HiringTemplate} from '../../lib/hiringWorkflow';
 import React, { useEffect, useRef, useState } from "react";
 import { CalendarPlus, Loader2 } from "lucide-react";
 import {toast} from 'sonner';
@@ -57,6 +58,11 @@ export function ScheduleDialog({
   const [end, setEnd] = useState(existing ? localTime(existing.endsAt) : "");
   const [meeting, setMeeting] = useState(existing?.meetingLink || "");
   const [location, setLocation] = useState(existing?.location || "");
+  const [sendReminder,setSendReminder]=useState((existing as any)?.sendReminder??true);
+  const [reminderTemplates,setReminderTemplates]=useState<HiringTemplate[]>([]);
+  const [candidateReminderTemplateId,setCandidateReminderTemplateId]=useState((existing as any)?.candidateReminderTemplateId||'');
+  const [companyReminderTemplateId,setCompanyReminderTemplateId]=useState((existing as any)?.companyReminderTemplateId||'');
+  useEffect(()=>{void workflowRequest('/settings').then(value=>setReminderTemplates(value.templates)).catch(e=>setError(e.message));},[]);
   const [reminder, setReminder] = useState(String(existing?.reminderMinutes ?? ""));
   const [booking,setBooking]=useState<Interview|null>(null);
   const [emailTemplate, setEmailTemplate] = useState("");
@@ -126,6 +132,7 @@ export function ScheduleDialog({
         endsAt: new Date(`${end}+05:30`).toISOString(),
         meetingLink: meeting,
         location,
+        sendReminder,candidateReminderTemplateId:candidateReminderTemplateId||null,companyReminderTemplateId:companyReminderTemplateId||null,
         reminderMinutes: reminder ? Number(reminder) : null,
         emailTemplate:emailTemplate||"standard",
         deferCandidateInvitation:deferInvitation,
@@ -219,11 +226,11 @@ export function ScheduleDialog({
               <option value="hr">HR</option>
             </AppSelect>
           </label>
-          <label className="space-y-2 text-sm font-medium">
-            Email reminder (minutes before)
-            <Input type="number" min={5} max={120} placeholder="Use admin setting"
-              aria-label="Interview reminder" value={reminder} onChange={e => setReminder(e.target.value)} />
-          </label>
+          <fieldset className="space-y-3 rounded-xl border p-3"><label className="flex gap-2"><input type="checkbox" checked={sendReminder} onChange={e=>setSendReminder(e.target.checked)}/>Send Reminder</label>
+          {sendReminder&&<><label className="block">Reminder time<select className="block w-full rounded border bg-background p-2" aria-label="Interview reminder" value={reminder} onChange={e=>setReminder(e.target.value)}>
+          <option value="">Use admin setting</option>{[[15,'15 minutes before'],[30,'30 minutes before'],[60,'1 hour before'],[1440,'24 hours before']].map(([minutes,label])=><option key={minutes} value={minutes}>{label}</option>)}</select></label>
+          {[['candidate_reminder','Candidate Reminder Template',candidateReminderTemplateId,setCandidateReminderTemplateId],['company_reminder','Company-Side Reminder Template',companyReminderTemplateId,setCompanyReminderTemplateId]].map(([category,label,value,setter])=><label key={String(category)} className="block">{String(label)}<select aria-label={String(label)} className="block w-full rounded border bg-background p-2" value={String(value)} onChange={e=>(setter as (value:string)=>void)(e.target.value)}><option value="">Use existing standard reminder</option>{reminderTemplates.filter(t=>t.category===category).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>{reminderTemplates.find(t=>t.id===value)&&<details><summary>Preview reminder</summary><p>{templatePreview(reminderTemplates.find(t=>t.id===value)?.subject||'',{candidate_name:application.candidate.name,start_time:start,job_title:application.jobTitle||'Selected opening'})}</p><p className="whitespace-pre-wrap">{templatePreview(reminderTemplates.find(t=>t.id===value)?.body||'',{candidate_name:application.candidate.name,start_time:start,job_title:application.jobTitle||'Selected opening'})}</p></details>}</label>)}</>}
+          </fieldset>
           {!deferInvitation&&<label className="space-y-2 text-sm font-medium">
             Interview email template
             <select required className="block w-full rounded border bg-background p-2" value={emailTemplate}

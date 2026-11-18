@@ -43,18 +43,27 @@ class ManualAssessmentEmail(BaseModel):
 async def send_manual_assessment_email(
     payload: ManualAssessmentEmail,
     user: CurrentUser = Depends(require_permission("applications.transition")),
+    db=Depends(get_db),
 ):
     from ..config import settings
     from ..services import email_send
 
     if user.impersonating:
         raise HTTPException(403, "Sending email while impersonating is disabled.")
-    if settings.email_dry_run or not settings.zeptomail_api_key:
+    if settings.email_dry_run:
         raise HTTPException(503, "Live assessment email is disabled.")
     if not email_send.recipient_allowed(payload.toEmail):
         raise HTTPException(403, "Recipient is outside the test allowlist.")
+    from ..services.company_settings import mail_configuration, CompanyMailError
     try:
-        await email_send.send_via_zepto(payload.toEmail, payload.toName, payload.subject, payload.htmlBody)
+        configuration = await mail_configuration(db, user.org_id)
+        if configuration is None and not settings.zeptomail_api_key:
+            raise CompanyMailError("Live assessment email is disabled.")
+    except CompanyMailError as exc:
+        raise HTTPException(503, str(exc)) from None
+    try:
+        options = {"configuration": configuration} if configuration else {}
+        await email_send.send_via_zepto(payload.toEmail, payload.toName, payload.subject, payload.htmlBody, **options)
     except email_send.EmailSendError:
         raise HTTPException(502, "Email provider could not accept the message.") from None
     return {"success": True}
@@ -254,7 +263,7 @@ async def whatsapp_capabilities(job_id: str, user=Depends(require_permission("jo
     config = configuration()
     approval = row.get("whatsappApproval") or {}
     return {**config, "enabled": bool(approval.get("enabled") and approval.get("price") == config["price"] and approval.get("currency") == config["currency"]),
-        "canApprove": user.role in {"super_admin", "admin", "hr"} and not user.impersonating}
+        "canApprove": (user.role != "admin" or "whatsapp.campaign" in user.permissions) and user.role in {"super_admin", "admin", "hr"} and not user.impersonating}
 
 
 @router.put("/jobs/{job_id}/whatsapp")
@@ -262,6 +271,8 @@ async def approve_whatsapp(job_id: str, payload: WhatsAppApproval, user=Depends(
     from ..services.whatsapp_invites import configuration
     from ..models.recruitment import now
     await whatsapp_job(db, user, job_id)
+    if user.role == "admin" and "whatsapp.campaign" not in user.permissions:
+        raise HTTPException(403, "Request WhatsApp campaign access from your super admin")
     if user.impersonating or user.role not in {"super_admin", "admin", "hr"}:
         raise HTTPException(403, "A manager must approve WhatsApp costs")
     config = configuration()
@@ -277,6 +288,8 @@ async def approve_whatsapp(job_id: str, payload: WhatsAppApproval, user=Depends(
 async def send_whatsapp(job_id: str, payload: WhatsAppSend, user=Depends(require_permission("jobs.view")), db=Depends(get_db)):
     from ..services.whatsapp_invites import queue
     row = await whatsapp_job(db, user, job_id)
+    if user.role == "admin" and "whatsapp.campaign" not in user.permissions:
+        raise HTTPException(403, "Request WhatsApp campaign access from your super admin")
     if user.impersonating or user.role not in {"super_admin", "admin", "hr", "recruiter"} or user.role not in {"super_admin", "admin"} and user.user_id not in {row.get("createdBy"), row.get("assigneeUserId")}:
         raise HTTPException(403, "Only this job's creator, assignee or administrator can send WhatsApp invitations")
     if not payload.recipientConsentConfirmed or not payload.applicationIds:

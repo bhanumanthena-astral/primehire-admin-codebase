@@ -77,25 +77,32 @@ async def _request_assessment_send(
         return {"result": "failed", "reason": "Application not found."}
     if app_doc.get("currentStage") != Stage.SHORTLISTED.value:
         return {"result": "skipped", "reason": f"Stage is {app_doc.get('currentStage')}, not SHORTLISTED."}
-    state = (app_doc.get("assessment") or {}).get("state", "none")
-    if state in {"email_queued", "email_sent"} or (generate_only and (app_doc.get('assessment') or {}).get('link')):
-        return {"result": "skipped", "reason": f"Assessment already {state}."}
     jobs = JobRepository(db)
     job = await jobs.get_by_id(app_doc["jobId"], org_id)
     if not job or not job.get("assessmentJobId"):
         return {"result": "skipped", "reason": "Job has no linked assessment."}
     assessment = app_doc.get('assessment') or {}
+    if assessment.get('assessmentId') and assessment['assessmentId'] != job['assessmentJobId']:
+        # Preserve the prior assessment rather than reusing its provider link.
+        await db['applications'].update_one({'orgId':org_id,'applicationId':application_id},
+            {'$push':{'assessmentHistory':assessment},'$set':{'assessment':{}}})
+        assessment = {}
+    state = assessment.get("state", "none")
+    if state in {"send_requested", "upstream_pending"}:
+        return {"result": "accepted", "reason": "Invitation request is already pending."}
+    if state in {"email_queued", "email_sent"} or (generate_only and assessment.get('link')):
+        return {"result": "skipped", "reason": f"Assessment already {state}."}
     provider_id = assessment.get('providerCandidateId') or str(uuid.uuid5(uuid.NAMESPACE_URL,
         f"primehire-assessment:{org_id}:{application_id}:{job['assessmentJobId']}"))
     await _set_assessment(db, org_id, application_id, {"state": "send_requested", "error": None,
-        "providerCandidateId": provider_id})
+        "providerCandidateId": provider_id, "assessmentId": job["assessmentJobId"]})
     queue = BackgroundJobRepository(db)
-    intent = {"applicationId": application_id, "actorUserId": actor_user_id, "generateOnly": generate_only, "template": template}
+    intent = {"applicationId": application_id, "actorUserId": actor_user_id, "generateOnly": generate_only, "template": template, "assessmentId": job["assessmentJobId"]}
     queued = await queue.enqueue(
         org_id=org_id, kind="assessment_send", entity_type="application",
         entity_key=application_id,
         payload=intent,
-        dedupe_key=f"assessment_generate:application:{application_id}" if generate_only else None,
+        dedupe_key=f"assessment_generate:application:{application_id}:assessment:{job['assessmentJobId']}" if generate_only else None,
     )
     # Explicit retries can revive a finished/dead request after a provider/parser
     # failure; a running or pending request is left alone.
@@ -140,6 +147,9 @@ async def _handle_assessment_send(db: Any, job: dict[str, Any]) -> dict[str, Any
     if not job_doc or not job_doc.get("assessmentJobId"):
         await _set_assessment(db, org_id, application_id, {"state": "failed", "error": "Job has no linked assessment."})
         return {"failed": "no assessment linked"}
+
+    if payload.get("assessmentId") and payload["assessmentId"] != job_doc["assessmentJobId"]:
+        return {"skipped": "job assessment changed"}
 
     # Step 1: upstream interview (skipped when a link already exists).
     if not assessment.get("link"):
@@ -229,7 +239,7 @@ async def _handle_assessment_send(db: Any, job: dict[str, Any]) -> dict[str, Any
         db, org_id=org_id, application_id=application_id,
         to_email=email, to_name=(applicant or {}).get("name") or "Candidate",
         link=link, password=password, job_title=job_doc.get("title", ""),
-        window_text=window_text, template=payload.get("template"),
+        window_text=window_text, template=payload.get("template"), assessment_id=job_doc["assessmentJobId"],
         context={"start_time": assessment.get("windowStart"), "end_time": assessment.get("windowEnd"),
                  "round_type": job_doc.get("assessmentRoundType") or "Technical"},
     )
@@ -360,7 +370,12 @@ async def process_requested_assessments(db, org_id, application_ids, *, generate
     prefix='assessment_generate' if generate_only else 'assessment_sync'
     async def run(key):
         async with gate:
-            job=await db['background_jobs'].find_one({'orgId':org_id,'dedupeKey':f'{prefix}:application:{key}'})
+            dedupe=f'{prefix}:application:{key}'
+            if generate_only:
+                application=await db['applications'].find_one({'orgId':org_id,'applicationId':key})
+                assessment_id=((application or {}).get('assessment') or {}).get('assessmentId')
+                if assessment_id:dedupe+=f':assessment:{assessment_id}'
+            job=await db['background_jobs'].find_one({'orgId':org_id,'dedupeKey':dedupe})
             if not job:return None
             return await run_once(db,kinds=[kind],job_id=job['jobId'])
     return await asyncio.gather(*(run(key) for key in dict.fromkeys(application_ids)))

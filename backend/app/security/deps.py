@@ -15,7 +15,7 @@ import jwt
 
 from ..config import settings
 from ..db.mongodb import get_database
-from .roles import Role, get_permissions_for_role
+from .roles import Role, get_permissions_for_role, user_permissions
 from .tokens import decode_access_token
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ async def get_current_user(
         for attempt in range(2):
             try:
                 # Check user status if record exists
-                user = await db["users"].find_one({"userId": user_id, "orgId":org_id})
+                user = await db["users"].find_one({"userId": impersonating or user_id, "orgId":org_id})
                 if user is not None and not user.get("isActive", True):
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -124,7 +124,22 @@ async def get_current_user(
                 logger.error('Authorization check failed: %s', type(error).__name__)
                 raise HTTPException(status_code=503, detail="Authorization service temporarily unavailable. Please retry shortly.", headers={"Retry-After": "1"}) from None
 
-    perms = get_permissions_for_role(role)
+    if role == "admin" and user is None:
+        if db is None:
+            raise HTTPException(503, "Company administrator access is unavailable")
+        raise HTTPException(401, "Administrator account no longer exists")
+    if user and user.get("role", role) != role:
+        raise HTTPException(401, "Account role changed. Sign in again.")
+    perms = user_permissions(user) if user and "role" in user else get_permissions_for_role(role)
+    if role != "super_admin":
+        if db is None:
+            raise HTTPException(503, "Company permissions are unavailable")
+        try:
+            company_policy = await db["company_settings"].find_one({"_id": org_id}, {"enabledPermissions": 1}) or {}
+            if "enabledPermissions" in company_policy:
+                perms = perms.intersection(company_policy["enabledPermissions"])
+        except Exception:
+            raise HTTPException(503, "Company permissions are temporarily unavailable") from None
     if user and user.get('jobAccess') is not None and role not in {'super_admin','admin'}:
         from .job_permissions import job_access
         access = job_access(role, user['jobAccess'])

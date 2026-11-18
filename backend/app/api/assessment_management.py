@@ -8,7 +8,7 @@ from ..security.deps import get_db, require_permission
 from ..security.rate_limit import limiter
 from ..models.assessment_management import AssessmentManagementRepository, scope, public
 from ..models.recruitment import now
-from ..schemas.assessment_management import SaveDraft, PublishDraft, CsvText, ConfirmCsv
+from ..schemas.assessment_management import SaveDraft, PublishDraft, CsvText, ConfirmCsv, UpdateAssessmentDates
 from ..services import assessment_management as service
 
 router = APIRouter(prefix='/api/assessment-management', tags=['assessment-management'])
@@ -135,3 +135,10 @@ async def publish(key: str, payload: PublishDraft, user=Depends(require_permissi
     row = await AssessmentManagementRepository(db, user).get(key)
     await writable(db, user, row)
     return await service.publish(db, user, key, payload)
+
+
+@router.put('/{key}/dates')
+async def edit_dates(key: str, payload: UpdateAssessmentDates, user=Depends(require_permission('assessments.manage')), db=Depends(database)):
+    row = await AssessmentManagementRepository(db, user).get(key)
+    await writable(db, user, row)
+    return await service.update_dates(db, user, key, payload)

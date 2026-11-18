@@ -1,3 +1,4 @@
+import {IntakeIdentityReview} from './IntakeIdentityReview';
 import {Textarea} from '@/components/ui/textarea';
 import {Input} from '@/components/ui/input';
 import {AppSelect} from '@/src/components/ui/AppSelect';
@@ -146,6 +147,7 @@ export function ResumeProfileDialog({item: initial, caps, jobs, onClose, onChang
   const content=<>
     {!embedded&&<>
     <div className="mb-5 pr-8"><p className="eyebrow">Candidate profile</p><h2 className="mt-1 text-xl font-bold">{profile.name || 'Review extracted information'}</h2><p className="mt-1 break-words text-xs text-muted-foreground">{item.fileName}</p><div className="mt-3"><IntakeStatus status={item.status}/></div></div>
+    <IntakeIdentityReview key={item.itemId} item={item} onUpdated={patch=>{setItem(previous=>({...previous,...patch}));onChanged();}}/>
     {waiting && <p role="status" className="mb-4 flex items-center gap-2 rounded-xl bg-primary/10 p-3 text-xs"><Loader2 size={15} className="animate-spin"/>Processing continues on the server. This view updates automatically.</p>}
     {!!item.warnings?.length && <ul className="mb-4 space-y-1 rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">{item.warnings.map(warning=><li key={warning}>{warning}</li>)}</ul>}
     {item.error && <p className="mb-4 rounded-xl bg-muted p-3 text-xs">{item.error}</p>}

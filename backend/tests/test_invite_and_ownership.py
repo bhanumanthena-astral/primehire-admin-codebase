@@ -92,7 +92,8 @@ def test_invite_throttles_and_management_requires_admin(client):
 
 def test_regular_admin_cannot_take_over_pending_super_admin(client):
     user, token = invite(client, 'pending-admin@example.test', 'super_admin')
-    response = client.post(f"/api/users/{user['userId']}/invite",headers=auth_headers(role='admin'))
+    from tests.conftest import ensure_actor
+    response = client.post(f"/api/users/{user['userId']}/invite",headers=ensure_actor(client,'admin'))
     assert response.status_code == 403
     assert setup(client,token).status_code == 200
 

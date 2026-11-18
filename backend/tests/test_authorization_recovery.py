@@ -11,7 +11,7 @@ def credentials():
     return HTTPAuthorizationCredentials(scheme='Bearer',credentials=create_access_token(user_id='test-user',org_id='default',role='admin',session_id='test-session'))
 
 def database(users,sessions):
-    return {'users':type('Collection',(),{'find_one':users})(),'sessions':type('Collection',(),{'find_one':sessions})()}
+    return {'company_settings':type('Collection',(),{'find_one':AsyncMock(return_value=None)})(),'users':type('Collection',(),{'find_one':users})(),'sessions':type('Collection',(),{'find_one':sessions})()}
 
 async def test_transient_user_read_retries_then_authorizes():
     users=AsyncMock(side_effect=[AutoReconnect('temporary'),{'isActive':True}]);sessions=AsyncMock(return_value={'revokedAt':None})

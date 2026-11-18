@@ -153,7 +153,8 @@ def test_leadership_role_permissions_and_api_guards(db):
                 assert client.get(path, headers=headers).status_code == 403, path
             assert client.get('/api/leadership/dashboard?days=365', headers=headers).status_code == 422
             assert client.get('/api/leadership/dashboard?jobId=%24ne', headers=headers).status_code == 422
-            invitation = client.post('/api/users', headers=auth_headers(role='admin'), json={'email':'leader@example.test', 'name':'Leader', 'role':'leadership'})
+            from tests.conftest import ensure_actor
+            invitation = client.post('/api/users', headers=ensure_actor(client,'admin'), json={'email':'leader@example.test', 'name':'Leader', 'role':'leadership'})
             assert invitation.status_code == 201, invitation.text
             assert invitation.json()['user']['role'] == 'leadership'
     finally:

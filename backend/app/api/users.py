@@ -16,14 +16,24 @@ from ..models.user import (
     utcnow,
 )
 from ..schemas.user import UserCreate, UserUpdate, UserPublic, UserRole
-from ..security.deps import CurrentUser, require_permission
 from ..security.passwords import hash_password
-from ..security.roles import Role
+from ..security.roles import Role, get_permissions_for_role
+from ..models.organization import OrganizationRepository
 from ..security.tokens import generate_opaque_token, hash_token, INVITE_TOKEN_LIFETIME
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+def require_delegable_role(actor: CurrentUser, role: str):
+    if actor.is_super_admin:
+        return
+    needed = get_permissions_for_role(role)
+    if role in {"hr", "recruiter"}:
+        needed = needed | {"whatsapp.campaign"}
+    if not needed.issubset(actor.permissions):
+        raise HTTPException(403, "Ask the super admin to assign this role")
 
 
 @router.get("", response_model=list[UserPublic])
@@ -50,6 +60,9 @@ async def create_user(
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
+    if current_user.impersonating:
+        raise HTTPException(403, "View-as sessions are read-only")
+
     # Only super_admin (possessing roles.assign_admin) can create admin or super_admin
     if payload.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
         if "roles.assign_admin" not in current_user.permissions:
@@ -63,6 +76,18 @@ async def create_user(
     if current_user.is_super_admin and payload.orgId:
         org_id = payload.orgId
 
+    if payload.orgId and payload.orgId != current_user.org_id:
+        if not current_user.is_super_admin:
+            raise HTTPException(403, "Cannot invite into another company")
+        if not await OrganizationRepository(db).get_by_org_id(org_id):
+            raise HTTPException(404, "Company not found")
+    if payload.adminPermissions is not None:
+        if not current_user.is_super_admin or payload.role != UserRole.ADMIN:
+            raise HTTPException(403, "Only a super admin can assign company admin permissions")
+        if set(payload.adminPermissions) - get_permissions_for_role("admin"):
+            raise HTTPException(422, "Unknown company admin permission")
+
+    require_delegable_role(current_user, payload.role.value)
     existing = await repo.get_by_email(payload.email, org_id=org_id)
     if existing:
         raise HTTPException(
@@ -78,6 +103,9 @@ async def create_user(
         "isActive": True,
         "jobAccess": payload.jobAccess,
     }
+
+    if payload.role == UserRole.ADMIN:
+        doc["adminPermissions"] = sorted(set(payload.adminPermissions or []))
 
     if payload.password:
         try:
@@ -117,6 +145,7 @@ async def reissue_invite(user_id: str, current_user: CurrentUser = Depends(requi
         raise HTTPException(status_code=404, detail="User not found")
     if user.get("role") in {"admin", "super_admin"} and "roles.assign_admin" not in current_user.permissions:
         raise HTTPException(status_code=403, detail="Forbidden: requires 'roles.assign_admin' to invite administrator users")
+    require_delegable_role(current_user, user["role"])
     if not user.get("isActive") or user.get("passwordHash"):
         raise HTTPException(status_code=409, detail="Invitations require an active account awaiting password setup")
     await db["invitations"].update_many({"userId":user_id, "orgId":current_user.org_id, "kind":"invite", "usedAt":None}, {"$set":{"usedAt":utcnow()}})
@@ -187,6 +216,8 @@ async def update_user(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if target["role"] in {"admin", "super_admin"} and not current_user.is_super_admin and (payload.role or payload.isActive is not None):
+        raise HTTPException(403, "Only a super admin can manage administrators")
     updates: dict[str, Any] = {}
     if payload.name is not None:
         updates["name"] = payload.name
@@ -203,6 +234,10 @@ async def update_user(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Forbidden: requires 'roles.assign_admin' to assign admin roles",
                 )
+        require_delegable_role(current_user, payload.role.value)
+        if target["role"] != payload.role.value:
+            updates["permissionRequests"] = []
+            updates["adminPermissions"] = [] if payload.role == UserRole.ADMIN else None
         updates["role"] = payload.role.value
 
     updated = await repo.update(user_id, updates)

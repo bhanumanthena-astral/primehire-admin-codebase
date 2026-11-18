@@ -1,3 +1,4 @@
+import {HiringTemplateSettings} from './HiringTemplateSettings';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Textarea} from '@/components/ui/textarea';
@@ -103,6 +104,7 @@ export default function MailTemplates({ templates, onSaveTemplate }: MailTemplat
 
   return (
     <div className="space-y-6 text-foreground font-sans">
+      <HiringTemplateSettings/>
       <SectionHeader
         eyebrow="Communication templates"
         title="Mail Templates & Customizer"

@@ -1,3 +1,5 @@
+import {TraitManager} from '../TraitManager';
+import {RejectionPreview} from '../RejectionPreview';
 import {PreviousRoundReport} from '../report/PreviousRoundReport';
 import {InterviewCalendarStatus} from './InterviewCalendarStatus';
 import {ReviewSubmissionSuccess} from './ReviewSubmissionSuccess';
@@ -39,7 +41,7 @@ function ReviewCard({ review }: { review: any }) {
         <h5 className="mb-3 text-sm font-semibold">Interview ratings</h5>
         {Object.keys(review.scorecard || {}).length ? <dl className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))]">
           {Object.entries(review.scorecard).map(([key, value]) => <div key={key} className="rounded-xl border border-primary/25 bg-[var(--primary-soft)] p-4">
-            <dt className="text-sm font-semibold">{ratingLabel(key)}</dt>
+            <dt className="text-sm font-semibold">{review.traitSnapshot?.traits?.find((trait:any)=>trait.id===key)?.name||ratingLabel(key)}</dt>
             <dd className="mt-2 text-3xl font-semibold tabular-nums text-accent">{String(value)}<span className="ml-1 text-sm font-medium text-muted-foreground">/ 5</span></dd>
             <RatingScale value={Number(value)}/>
           </div>)}
@@ -182,7 +184,10 @@ export function InterviewReviewPage({
   useEffect(() => {
     setRow(initial);
   }, [initial.interviewId]);
-  const criteria =
+  const [rejectionReady,setRejectionReady]=useState(false);
+  const traitConfig=(row as any).traitConfig;
+  const traitLabels=Object.fromEntries((traitConfig?.traits||[]).map((t:any)=>[t.id,t.name]));
+  const criteria = traitConfig ? traitConfig.traits.filter((t:any)=>t.active).map((t:any)=>t.id) :
     row.round === "technical"
       ? ["technicalDepth", "problemSolving", "communication"]
       : row.round === "managerial"
@@ -211,6 +216,7 @@ export function InterviewReviewPage({
           concerns,
           comments,
           ...(row.round === "managerial" ? { notes } : {}),
+          traitRevision:traitConfig?.revision,
           scorecard: Object.fromEntries(
             criteria.map((key) => [key, scorecard[key] || 3]),
           ),
@@ -310,6 +316,7 @@ export function InterviewReviewPage({
         ))}
       </div>
       <div className="space-y-6 px-4 py-6 sm:px-8">
+        {traitConfig&&<TraitManager interviewId={row.interviewId} readOnly={!row.canEditTraits} key={row.interviewId+traitConfig.revision} jobId={row.jobId} round={row.round} configuration={traitConfig} onSaved={config=>{setRow({...row,traitConfig:config} as any);setScorecard({});setEvaluationDirty(true);}}/>}
         {error && (
           <p
             role="alert"
@@ -476,14 +483,15 @@ export function InterviewReviewPage({
                 <fieldset className="rounded-2xl border border-primary/25 bg-[var(--primary-soft)] p-4 sm:p-5">
                   <legend className="px-2 text-base font-semibold">Your ratings</legend>
                   <p className="mb-4 text-sm text-muted-foreground">Rate each area out of 5, then add the evidence and your recommendation below.</p>
-                  <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr))]">
-                  {criteria.map((c) => (
+
+                    <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr))]">
+                  {criteria.map((c:string) => (
                     <label key={c} className="flex min-w-0 flex-col rounded-xl border border-primary/20 bg-card p-4 text-sm font-semibold">
-                      <span className="block min-h-10 leading-5">{ratingLabel(c)}</span>
+                      <span className="block min-h-10 leading-5">{traitLabels[c]||ratingLabel(c)}</span>
                       <span aria-hidden="true" className="mt-2 block text-3xl font-semibold tabular-nums text-accent">{scorecard[c] || 3}<span className="ml-1 text-sm text-muted-foreground">/ 5</span></span>
                       <RatingScale value={scorecard[c] || 3}/>
                       <AppSelect
-                        aria-label={`${ratingLabel(c)} rating`}
+                        aria-label={`${traitLabels[c]||ratingLabel(c)} rating`}
                         className="mt-4 w-full"
                         value={String(scorecard[c] || 3)}
                         onValueChange={(v) =>
@@ -791,6 +799,7 @@ export function InterviewReviewPage({
                 className="space-y-3 rounded-xl border border-border p-4"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if(action==="confirm-rejection"&&!rejectionReady)return;
                   void run(
                     async () => {
                       await recruitmentRequest(
@@ -801,10 +810,11 @@ export function InterviewReviewPage({
                     },
                     action === "send-invitation"
                       ? "Invitation request recorded. Check delivery status below."
-                      : "Action recorded.",
+                      : action==="confirm-rejection"?"Candidate rejected. Rejection email queued.":"Action recorded.",
                   );
                 }}
               >
+                {action==="confirm-rejection"&&<RejectionPreview applicationId={row.applicationId} onReady={setRejectionReady}/>}
                 <h4 className="font-semibold">
                   {action === "cancel"
                     ? "Cancel this interview?"
@@ -824,7 +834,7 @@ export function InterviewReviewPage({
                   />
                 </label>
                 <div className="flex gap-2">
-                  <Button disabled={busy} type="submit">
+                  <Button disabled={busy||action==="confirm-rejection"&&!rejectionReady} type="submit">
                     Confirm
                   </Button>
                   <Button

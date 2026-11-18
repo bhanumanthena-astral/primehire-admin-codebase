@@ -57,11 +57,12 @@ def test_publish_hold_resume_and_conflict(client):
 def test_viewer_and_recruiter_permissions(client):
     admin = auth_headers()
     job = post_job(client, admin, admin, 'COMPLETE-2')
-    viewer = auth_headers(role='viewer', user_id=job['assigneeUserId'])
-    recruiter = auth_headers(role='recruiter', user_id=job['assigneeUserId'])
+    from tests.conftest import ensure_actor
+    viewer = ensure_actor(client,'viewer',job['assigneeUserId'])
     assert client.get('/api/jobs', headers=viewer).status_code == 200
     assert client.get(f'/api/jobs/{job["jobId"]}/detail', headers=viewer).json()['applications'] == []
     assert client.post(f'/api/jobs/{job["jobId"]}/lifecycle', json={'status':'OPEN'}, headers=viewer).status_code == 403
+    recruiter = ensure_actor(client,'recruiter',job['assigneeUserId'])
     assert client.post(f'/api/jobs/{job["jobId"]}/lifecycle', json={'status':'OPEN'}, headers=recruiter).status_code == 403
     assert client.get('/api/jobs', headers=auth_headers(org_id='other')).json() == []
 

@@ -16,6 +16,7 @@ from .api.reports import router as reports_router
 from .api.directory import router as directory_router
 from .api.candidates import router as candidates_router
 from .api.auth import router as auth_router
+from .api.companies import router as companies_router
 from .api.users import router as users_router
 from .api.leadership import router as leadership_router
 from .api.hiring import router as hiring_router
@@ -109,6 +110,8 @@ async def lifespan(_app: FastAPI):
                 await upgrade_candidates(db)
                 from migrations.reporting_v2 import upgrade as upgrade_reports
                 await upgrade_reports(db)
+                from migrations.hiring_workflow_v1 import upgrade as upgrade_hiring_workflow
+                await upgrade_hiring_workflow(db)
             if settings.resume_module_v2_enabled:
                 from migrations.resume_intake_v2 import upgrade
                 await upgrade(db)
@@ -184,6 +187,9 @@ app.include_router(candidates_router, prefix="/api")
 app.include_router(auth_router)
 from .api.google import router as google_router
 app.include_router(google_router)
+app.include_router(companies_router)
+from .api.hiring_workflow import router as hiring_workflow_router
+app.include_router(hiring_workflow_router)
 app.include_router(users_router)
 app.include_router(leadership_router)
 app.include_router(hiring_router)

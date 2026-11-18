@@ -12,6 +12,9 @@ def job_access(role, configured=None):
 
 
 async def require_job_access(db, user, action, job=None):
+    permission = {'view': 'jobs.view', 'create': 'jobs.manage', 'edit': 'jobs.manage', 'upload': 'resumes.upload'}.get(action)
+    if user.role != 'super_admin' and permission and permission not in user.permissions:
+        raise HTTPException(403, 'This job activity is disabled for your account or company')
     if user.role in {'super_admin','admin'}:
         return
     record = await db['users'].find_one({'userId':user.user_id,'orgId':user.org_id})

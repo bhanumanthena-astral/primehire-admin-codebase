@@ -3,6 +3,7 @@
 import hashlib
 import uuid
 from datetime import timedelta
+from .hiring_workflow import traits as configured_traits
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 from ..models.recruitment import RecruitmentRepository, lease, now, aware, clean
@@ -245,13 +246,28 @@ async def schedule(db, user, payload, *, existing=None):
             raise HTTPException(409, availability['message'])
         values = payload.model_dump(exclude={"overrideReason", "expectedRevision", "deferCandidateInvitation"})
         revision = (existing["revision"] + 1) if existing else 1
-        minutes = payload.reminderMinutes
+        send_reminder=payload.sendReminder if not existing or 'sendReminder' in payload.model_fields_set else existing.get('sendReminder',True)
+        minutes = payload.reminderMinutes if not existing or 'reminderMinutes' in payload.model_fields_set else existing.get('reminderMinutes')
         if minutes is None:
             from ..models.organization import OrganizationRepository
             org = await OrganizationRepository(db).get_by_org_id(user.org_id)
             minutes = ((org or {}).get("settings") or {}).get("reminderLeadMinutes", 15)
-        values.update(
-            reminderMinutes=minutes,
+        if send_reminder and payload.startsAt-timedelta(minutes=minutes)<=now():
+            raise HTTPException(422,"The reminder time is already past. Choose a shorter reminder or turn reminders off.")
+        from .hiring_workflow import preferences
+        templates=(await preferences(db,user.org_id))['templates']
+        selected_templates={}
+        for field,category in [('candidateReminderTemplateId','candidate_reminder'),('companyReminderTemplateId','company_reminder')]:
+            identifier=getattr(payload,field) if not existing or field in payload.model_fields_set else existing.get(field)
+            values[field]=identifier
+            template=next((t for t in templates if t['id']==identifier and t['category']==category),None)
+            if template is None and identifier and existing and existing.get(field)==identifier:
+                template=existing.get(field.replace('Id',''))
+            if identifier and template is None:raise HTTPException(422,"Select a matching reminder template")
+            selected_templates[field.replace('Id','')]=template
+        from .job_timezone import org_timezone
+        values.update(timezone=await org_timezone(db,user.org_id),**selected_templates,
+            sendReminder=send_reminder,reminderMinutes=minutes,
             orgId=user.org_id,
             interviewId=key,
             jobId=app["jobId"],
@@ -270,7 +286,7 @@ async def schedule(db, user, payload, *, existing=None):
             candidateEmailTemplate=payload.emailTemplate,
             assignmentEmailQueued=False,
             candidateEmailQueued=False,
-            reminderQueued=False,
+            reminderQueued=not send_reminder,
             jobTitle=job.get("title", "Job"),
             scheduleRevision=(
                 (existing.get("scheduleRevision", 1) + 1) if existing else 1
@@ -413,6 +429,10 @@ async def detail(db, user, key):
             "status",
             "revision",
             "reminderMinutes",
+            "sendReminder",
+            "candidateReminderTemplateId",
+            "companyReminderTemplateId",
+            "timezone",
             "emailTemplate",
             "createdAt",
             "updatedAt",
@@ -443,12 +463,17 @@ async def detail(db, user, key):
             ]
         },
         canManage=user.role in MANAGERS,
+        canEditTraits=row["status"] == "scheduled" and (
+            (user.role in MANAGERS and "recruitment.manage" in user.permissions)
+            or (row["interviewerId"] == user.user_id and "recruitment.review" in user.permissions)
+        ),
         canReview=row["interviewerId"] == user.user_id and row["status"] == "scheduled",
         canReveal="contact" in fields,
         canDownload="resume" in fields
         and bool(candidate.get("resume", {}).get("fileId")),
         canCompensate="compensation" in fields and row["round"] == "hr",
         serverTime=now(),
+        traitConfig=await configured_traits(db,user.org_id,row['jobId'],row['round'],row['interviewerId']),
     )
     if "compensation" in fields:
         result["compensation"] = row.get("compensation")
@@ -472,6 +497,9 @@ async def detail(db, user, key):
     result["review"] = clean(
         await db["recruit_reviews"].find_one({"orgId": user.org_id, "interviewId": key})
     )
+    if result["review"] and result["review"].get("traitSnapshot"):
+        result["traitConfig"] = result["review"]["traitSnapshot"]
+        result["canEditTraits"] = False
     if row["round"] == "hr" and "previousReviews" in fields and (
         row["interviewerId"] == user.user_id or user.role in MANAGERS
     ):
@@ -564,11 +592,17 @@ async def submit_review(db, user, key, payload):
                 )
             if row["round"] == "hr" and payload.decision == "reject":
                 targets.append("REJECTED")
+            from .hiring_workflow import traits
+            configuration=await traits(db,user.org_id,row['jobId'],row['round'],row['interviewerId'])
+            if payload.traitRevision is not None and payload.traitRevision!=configuration['revision']:raise HTTPException(409,'Evaluation traits changed. Refresh before submitting.')
+            active={t['id'] for t in configuration['traits'] if t['active']}
+            if set(payload.scorecard)-active:raise HTTPException(422,"The evaluation traits changed. Refresh before submitting.")
             review = {
                 **payload.model_dump(exclude={"expectedRevision"}),
                 "orgId": user.org_id,
                 "interviewId": key,
                 "applicationId": row["applicationId"],
+                "traitSnapshot": configuration,
                 "reviewId": key,
                 "round": row["round"],
                 "reviewerId": user.user_id,
@@ -662,6 +696,8 @@ async def finalize_review(db, review):
     await db["recruit_reviews"].update_one(
         {"orgId": org, "interviewId": key}, {"$set": {"applied": True}}
     )
+    from .hiring_workflow import notify_hr_handoff
+    await notify_hr_handoff(db,org,row['applicationId'])
 
 
 async def cancel(db, user, key, payload):

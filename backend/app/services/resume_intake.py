@@ -106,14 +106,14 @@ async def enqueue_item(db, item):
         dedupe_key=f"{item['orgId']}:resume_intake_parse:{item['_id']}:{generation}")
 
 
-async def add_item(db, batch, row, *, profile=None, source_file=None, error=None, warnings=None):
+async def add_item(db, batch, row, *, profile=None, source_file=None, error=None, warnings=None, source=None):
     item_id = hashlib.sha256(f"{batch['_id']}:{row}".encode()).hexdigest()
     doc = {"_id": item_id, "orgId": batch["orgId"], "batchId": batch["_id"], "jobId": batch["jobId"],
         "rowNumber": row, "fileName": (source_file or {}).get("fileName", f"Excel row {row}"),
         "status": error[0] if error else "queued" if source_file else "review_required",
         "error": error[1] if error else None, "profile": profile or CandidateProfile().model_dump(mode="json"),
         "warnings": warnings or [], "confidence": {}, "revision": batch.get("retryGeneration", 0) + 1, "generation": 0,
-        "createdAt": now(), "updatedAt": now(), "source": batch["source"],
+        "createdAt": now(), "updatedAt": now(), "source": source or batch["source"],
         "createdBy": batch["createdBy"], "retentionUntil": batch["retentionUntil"]}
     if source_file:
         doc.update(source_file)
@@ -213,7 +213,7 @@ async def matches(db, org, profile):
     email, phone = profile.get("email", ""), profile.get("phone", "")
     filters = []
     if email:
-        filters.append({"email": email.lower()})
+        filters.extend([{"email":email.strip().lower()},{"normalizedEmail":email.strip().lower()}])
     if phone:
         from .pii import phone_digits_variants
         filters.append({"phoneDigits": {"$in": phone_digits_variants(phone)}})

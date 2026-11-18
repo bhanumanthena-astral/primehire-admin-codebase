@@ -270,6 +270,8 @@ async def test_review_crash_journal_replays_once(client, db, monkeypatch):
 
 
 async def test_rejection_and_hold_follow_up(client, db):
+    await db.hiring_preferences.insert_one({'_id':'default','revision':1,'defaultRejectionId':'reject',
+        'templates':[{'id':'reject','name':'Approved rejection','category':'rejection','subject':'Application update','body':'Thank you {{candidate_name}}.'}]})
     row = await create(client)
     result = await review(client, db, row, "reject")
     assert result.status_code == 200

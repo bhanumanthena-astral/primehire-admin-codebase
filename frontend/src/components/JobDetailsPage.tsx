@@ -1,3 +1,4 @@
+import {AdminHiringProgress} from './AdminHiringProgress';
 import {Button} from '@/components/ui/button';
 import {JobStatusControl} from './JobStatusControl';
 import {JobAccessModal} from './JobAccessControls';
@@ -410,7 +411,7 @@ export default function JobDetailsPage({
               </span>
             </div>
           </div>
-          {acceptsResumes(job)&&hasJobAccess(user,'upload',job)&&<PAButton onClick={()=>onUpload?.(job)}>Upload resumes</PAButton>}
+          {acceptsResumes(job)&&hasJobAccess(user,'upload',job)&&<PAButton onClick={()=>{if(user?.role==="admin"){window.dispatchEvent(new Event("admin-upload-resumes"));document.querySelector('[aria-label="Guided hiring workflow"]')?.scrollIntoView({behavior:"smooth"})}else onUpload?.(job)}}>Upload resumes</PAButton>}
           {canManage && (
             <div className="flex flex-wrap items-center gap-1.5">
               {isJobAdmin(user)&&<JobStatusControl compact job={job} busy={busy} canRestoreArchived={canRestoreArchived} onChange={status=>{
@@ -477,7 +478,7 @@ export default function JobDetailsPage({
         </dl>
       </div>
 
-      <JobHiringProgress key={job.jobId} job={user && user.role!=="viewer"?job:undefined} onJobChanged={onChanged} jobId={job.jobId} pipeline={job.pipeline} onRefresh={()=>void load()}/>
+      {user?.role==="admin"?<AdminHiringProgress key={job.jobId} job={job} onChanged={()=>void load()} onJobChanged={onChanged}/>:(<JobHiringProgress key={job.jobId} job={user && user.role!=="viewer"?job:undefined} onJobChanged={onChanged} jobId={job.jobId} pipeline={job.pipeline} onRefresh={()=>void load()}/>)}
 
       {/* ── Overview ── */}
       <details aria-label="Job overview" className="ehr-rise ehr-rise-1 rounded-[1.25rem] border border-border bg-card p-3 shadow-[var(--shadow-card)] sm:p-4">

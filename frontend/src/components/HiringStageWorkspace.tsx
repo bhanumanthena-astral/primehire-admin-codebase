@@ -1,3 +1,4 @@
+import {Modal} from './ui/Modal';
 import {Button} from '@/components/ui/button';
 import {useEffect, useState} from 'react';
 import type {Job} from '../lib/hiringApi';
@@ -12,8 +13,8 @@ import {JobCandidateReports} from './JobCandidateReports';
 import {RecruitmentWorkspace} from './recruitment/RecruitmentWorkspace';
 import {ScheduleDialog} from './recruitment/ScheduleDialog';
 
-export function HiringStageWorkspace({job,stage,onChanged,onJobChanged}:{
-  job:Job; stage:HiringStage; onChanged:()=>void; onJobChanged?:(job:Job)=>void;
+export function HiringStageWorkspace({job,stage,onChanged,onJobChanged,guided=false}:{
+  guided?:boolean; job:Job; stage:HiringStage; onChanged:()=>void; onJobChanged?:(job:Job)=>void;
 }) {
   const intake = stage==='resumesUploaded'||stage==='atsTotal';
   const [caps,setCaps]=useState<Capabilities|null>(null);
@@ -40,13 +41,13 @@ export function HiringStageWorkspace({job,stage,onChanged,onJobChanged}:{
     return ()=>controller.abort();
   },[target]);
   return <div className="space-y-4 p-3 sm:p-4">
-    <details><summary className="cursor-pointer text-sm font-semibold">Records counted in this stage</summary>
-      <JobPipelineDetails jobId={job.jobId} stage={stage}/></details>
+    {!guided&&<details><summary className="cursor-pointer text-sm font-semibold">Records counted in this stage</summary>
+      <JobPipelineDetails jobId={job.jobId} stage={stage}/></details>}
     {error&&<p role="alert">{error}</p>}
 
-    {(intake||stage==='linksSent')&&<>
-      {job.assessmentJobId&&<Button variant="outline" onClick={()=>setChoose(!choose)}>{choose?"Close assessment selection":"View linked assessment"}</Button>}
-      {(!job.assessmentJobId||choose)&&<JobAssessmentAssignment job={job} onLinked={(id,round)=>{onJobChanged?.({...job,assessmentJobId:id,assessmentRoundType:round});setChoose(false);onChanged()}}/>}
+    {((intake&&(!guided||stage==='atsTotal'))||stage==='linksSent')&&<>
+      {(job.assessmentJobId||guided)&&<Button variant="outline" onClick={()=>setChoose(!choose)}>{choose?"Close assessment selection":"View linked assessment"}</Button>}
+      {(!guided&&!job.assessmentJobId||choose)&&<>{guided?<Modal label="Choose assessment" onClose={()=>setChoose(false)}><JobAssessmentAssignment job={job} onLinked={(id,round)=>{onJobChanged?.({...job,assessmentJobId:id,assessmentRoundType:round});setChoose(false);onChanged()}}/></Modal>:<JobAssessmentAssignment job={job} onLinked={(id,round)=>{onJobChanged?.({...job,assessmentJobId:id,assessmentRoundType:round});setChoose(false);onChanged()}}/>}</>}
       <JobAssessmentCandidates job={job} pipelineStage={stage==='linksSent'?'linksSent':undefined} onChooseAssessment={()=>setChoose(true)} onChanged={onChanged} embedded/>
     </>}
     {intake&&(caps?.enabled?<ResumeIntakePage compact onChanged={onChanged} scopedJob={job} capabilities={caps} initialJobKey={job.jobKey} initialView={stage==='atsTotal'?'batches':'upload'}/>:<p role="status">{caps?'Resume intake is disabled.':'Loading resume intake…'}</p>)}

@@ -25,8 +25,10 @@ it('opens exactly the selected report and preserves zero without inventing a max
  setup();renderWorkspace();await screen.findByText('Asha Rao');
  fireEvent.click(screen.getByRole('button',{name:'View report'}));
  await screen.findByRole('heading',{name:'Asha Rao · TECHNICAL report'});
+ expect(screen.getByRole('navigation',{name:'Report views'})).toBeVisible();
  expect(screen.getByText('Source question · 0',{exact:false})).toBeInTheDocument();
  expect(screen.queryByText('0 / 100')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByText('Stored evidence and question recordings'));
  expect(screen.getByText('Proctoring data unavailable.')).toBeVisible();
  expect(screen.queryByRole('button',{name:'Export this version'})).not.toBeInTheDocument();
 });

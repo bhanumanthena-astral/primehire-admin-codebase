@@ -3,18 +3,18 @@ from fastapi import HTTPException
 from ..models.resume_intake import IntakeRepository
 from ..schemas.resume_intake import ReviewRequest
 from ..security.deps import CurrentUser
-from ..security.roles import get_permissions_for_role
+from ..security.roles import effective_permissions
 from .resume_intake_review import confirm
 
 
 async def prepare_bulk(db, job):
     payload, org = job["payload"], job["orgId"]
     actor = await db["users"].find_one({"orgId": org, "userId": payload["actorUserId"], "isActive": True})
-    if not actor or "resumes.upload" not in get_permissions_for_role(actor["role"]):
+    if not actor or "resumes.upload" not in await effective_permissions(db, actor):
         await db["resume_intake_batches"].update_one({"_id": payload["batchId"], "orgId": org},
             {"$set": {"bulkApprovalRunning": False, "error": "Bulk reviewer is unavailable. An authorized reviewer can approve again."}})
         return {"blocked": "approval actor unavailable"}
-    user = CurrentUser(actor["userId"], org, actor["role"], get_permissions_for_role(actor["role"]), "")
+    user = CurrentUser(actor["userId"], org, actor["role"], await effective_permissions(db, actor), "")
     batch=await IntakeRepository(db).get_batch(payload['batchId'],org)
     if not batch or not batch.get('atsRange') or payload.get('atsRangeRevision')!=batch.get('atsRangeRevision',0):
         await db['resume_intake_batches'].update_one({'_id':payload['batchId'],'orgId':org},{'$set':{

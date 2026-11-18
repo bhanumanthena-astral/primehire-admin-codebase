@@ -4,6 +4,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
+from ..security.resume_access import require_original_resume
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pymongo import ReturnDocument
 from ..security.deps import require_permission, get_db
@@ -154,9 +155,14 @@ async def applications(
     minimum: int = Query(0, ge=0, le=100),
     maximum: int = Query(100, ge=0, le=100),
     invitationStatus: str = Query("", max_length=50),
+    invitationCandidates: bool = False,
+    includeInvitedCandidates: bool = False,
+    sortBy: Literal["name", "ats", "stage", "status", "score"] | None = None,
+    descending: bool = False,
     jobId: str = Query("", max_length=100),
     stage: str = Query("", max_length=50),
     search: str = Query("", max_length=100),
+    applicationSource: str = Query("",max_length=50),
     schedulingRound: Literal["technical", "managerial", "hr"] | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
@@ -173,10 +179,12 @@ async def applications(
         if stage not in {s.value for s in Stage}:
             raise HTTPException(422, "Invalid recruitment stage")
         filters["currentStage"] = stage
+    if applicationSource:
+        filters["applicationSource"]={"$in":[None,"","unknown"]} if applicationSource=="unknown" else applicationSource
     query = {"$and": [scope, filters]}
     fields = await fields_for(db, user)
     pipeline = [{"$match": query}]
-    if (scoreField or invitationStatus or pipelineStage) and "assessment" not in fields:
+    if (scoreField or invitationStatus or pipelineStage or invitationCandidates) and "assessment" not in fields:
         raise HTTPException(403, "Assessment access is required.")
     if minimum > maximum:
         raise HTTPException(422, "Invalid score range.")
@@ -184,7 +192,19 @@ async def applications(
         score = "$assessment.score" if scoreField == "assessment" else {"$ifNull": ["$matchScore", "$scoreBreakdown.ats"]}
         pipeline.append({"$addFields": {"rangeScore": score}})
         pipeline.append({"$match": {"rangeScore": {"$gte": minimum, "$lte": maximum}}})
-    if invitationStatus:
+    if invitationCandidates:
+        if not jobId:
+            raise HTTPException(422, "A job is required for invitation selection")
+        job = await db["jobs"].find_one({"orgId": user.org_id, "jobId": jobId})
+        if not job:
+            raise HTTPException(404, "Job not found")
+        from ..services.assessment_invitation import invitation_pipeline
+        pipeline.extend(invitation_pipeline(user.org_id, job.get("assessmentJobId")))
+        if not includeInvitedCandidates:
+            pipeline.append({"$match": {"invitationState": {"$in": ["not_invited", "failed"]}}})
+    if invitationStatus and invitationCandidates and invitationStatus in {"not_invited", "pending", "invited", "failed"}:
+        pipeline.append({"$match": {"invitationState": invitationStatus}})
+    elif invitationStatus:
         pipeline.append({"$match": {"$or": [{"assessment.state": invitationStatus}, {"assessment.status": invitationStatus}]}})
     if pipelineStage:
         from ..services.job_pipeline import scoped_history, application_conditions
@@ -214,6 +234,10 @@ async def applications(
                 }
             }
         )
+    sort_fields = {"name": "candidateRows.name", "ats": "_sortScore", "stage": "currentStage", "status": "invitationState" if invitationCandidates else "assessment.state", "score": "assessment.score"}
+    if sortBy == "ats":
+        pipeline.append({"$addFields": {"_sortScore": {"$ifNull": ["$matchScore", "$scoreBreakdown.ats"]}}})
+    ordering = {sort_fields[sortBy]: -1 if descending else 1, "applicationId": 1} if sortBy else {"createdAt": -1, "applicationId": 1}
     counts = (
         await db["applications"].aggregate(pipeline + [{"$count": "total"}]).to_list(1)
     )
@@ -222,13 +246,14 @@ async def applications(
         .aggregate(
             pipeline
             + [
-                {"$sort": {"createdAt": -1, "applicationId": 1}},
+                {"$sort": ordering},
                 {"$skip": skip},
                 {"$limit": limit},
             ]
         )
         .to_list(limit)
     )
+    eligible_counts = await db["applications"].aggregate(pipeline + [{"$match": {"canInvite": True}}, {"$count": "total"}]).to_list(1) if invitationCandidates else counts
     items = []
     bookings=await service.active_bookings(db,user,[row['applicationId'] for row in rows])
     latest=await service.latest_interviews(db,user,[row['applicationId'] for row in rows])
@@ -252,9 +277,18 @@ async def applications(
                 "activeInterview": bookings.get(row['applicationId']),
                 "invitationDelivery": delivery.get(row["applicationId"]),
                 "latestInterview": latest.get(row['applicationId']),
+                **({"invitation": {
+                    "status": row["invitationState"], "canInvite": row["canInvite"],
+                    "assessmentId": job.get("assessmentJobId"),
+                    "sentAt": next((msg.get("sentAt") for msg in row["_invitationMessages"] if msg.get("status") == "sent" and msg.get("sentVia") != "dry_run"), None) or row["_currentAssessment"].get("sentAt"),
+                    "requestedAt": row["_currentAssessment"].get("updatedAt"),
+                }, "invitationDelivery": next(({
+                    "status": msg.get("status"), "via": msg.get("sentVia"),
+                    "retryId": msg["messageId"] if msg.get("status") == "failed" and "audit.view" in user.permissions else None,
+                } for msg in row["_invitationMessages"]), None)} if invitationCandidates else {}),
             }
         )
-    return {"items": items, "total": counts[0]["total"] if counts else 0}
+    return {"items": items, "total": counts[0]["total"] if counts else 0, "eligibleTotal": eligible_counts[0]["total"] if eligible_counts else 0}
 
 
 @router.get("/tracker")
@@ -805,6 +839,7 @@ async def reveal(
 async def resume(
     key: str, user=Depends(require_permission("recruitment.view")), db=Depends(database)
 ):
+    require_original_resume(user)
     row = await RecruitmentRepository(db, user.org_id).interview(key)
     await interview_allowed(db, user, row)
     if "resume" not in await fields_for(db, user):

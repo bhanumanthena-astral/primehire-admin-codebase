@@ -16,6 +16,8 @@ export type Person = {
   [key: string]: any;
 };
 export type Application = {
+  applicationSource?:string;
+  invitation?: {status:'not_invited'|'pending'|'invited'|'failed';canInvite:boolean;assessmentId?:string;sentAt?:string;requestedAt?:string};
   invitationDelivery?: {status:string;via?:string;retryId?:string}|null;
   atsScore?: number | null;
   applicationId: string;
@@ -56,6 +58,7 @@ export type Interview = {
   jobTitle: string;
   canManage: boolean;
   canReview: boolean;
+  canEditTraits?: boolean;
   canReveal: boolean;
   canDownload: boolean;
   canCompensate: boolean;
@@ -73,6 +76,7 @@ export type Capabilities = {
   enabled: boolean;
   canManage: boolean;
   canReview: boolean;
+  canEditTraits?: boolean;
   canAdmin: boolean;
   workerReady: boolean;
   emailDryRun: boolean;

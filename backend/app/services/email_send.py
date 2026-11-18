@@ -23,6 +23,7 @@ import httpx
 from ..config import settings
 from ..models.outbox import EmailOutboxRepository
 from .outbox_crypto import decrypt_body, encrypt_body, OutboxCryptoError
+from .company_settings import mail_configuration, company_sender_name, CompanyMailError
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +56,12 @@ def render_assessment_invite(
     window_text: str,
     template: dict | None = None,
     context: dict | None = None,
+    company_name: str | None = None,
 ) -> dict[str, str]:
+    company_name = company_name or settings.email_from_name
     if template:
         values = {**(context or {}), "candidate_name": candidate_name, "job_title": job_title,
-                  "company": settings.email_from_name, "link": link, "password": password}
+                  "company": company_name, "link": link, "password": password}
         def fill(text, fields):
             return re.sub(r"{{(\w+)}}", lambda match: str(fields.get(match[1]) or ""), text)
         body = template["body"]
@@ -81,7 +84,7 @@ def render_assessment_invite(
         f"<p>Start here: <a href=\"{link}\">{link}</a></p>"
         f"{access}"
         f"<p>{window_text}</p>"
-        f"<p>Good luck,<br>{settings.email_from_name}</p>"
+        f"<p>Good luck,<br>{escape(company_name)}</p>"
     )
     return {"subject": subject, "html": html}
 
@@ -99,15 +102,17 @@ async def queue_assessment_invite(
     window_text: str,
     template: dict | None = None,
     context: dict | None = None,
+    assessment_id: str | None = None,
 ) -> dict[str, Any]:
     """Render + encrypt + enqueue (idempotent on dedupe). Never sends here."""
     rendered = render_assessment_invite(
         candidate_name=to_name, link=link, password=password,
         job_title=job_title, window_text=window_text, template=template, context=context,
+        company_name=await company_sender_name(db, org_id),
     )
     body = json.dumps({"to": to_email, "subject": rendered["subject"], "html": rendered["html"]})
     repo = EmailOutboxRepository(db)
-    return await repo.enqueue(
+    message = await repo.enqueue(
         org_id=org_id,
         kind="assessment_invite",
         entity_type="application",
@@ -116,8 +121,12 @@ async def queue_assessment_invite(
         to_name=to_name,
         subject=rendered["subject"],
         payload_encrypted=encrypt_body(body),
-        dedupe_key=f"assessment_invite:application:{application_id}",
+        dedupe_key=f"assessment_invite:application:{application_id}" + (f":assessment:{assessment_id}" if assessment_id else ""),
     )
+    if assessment_id:
+        await repo.coll.update_one({"orgId":org_id,"messageId":message["messageId"]}, {"$set":{"assessmentId":assessment_id}})
+        message["assessmentId"] = assessment_id
+    return message
 
 
 async def queue_job_assignment(
@@ -143,13 +152,14 @@ async def queue_job_assignment(
     configured — callers treat notification as best-effort and must not
     fail the job write.
     """
+    company_name = await company_sender_name(db, org_id)
     subject = f"You have been assigned a job — {job_title} ({job_key})"
     html = (
         f"<p>Dear {to_name},</p>"
         f"<p>You have been assigned as the owner of <strong>{job_title}</strong> "
         f"({job_key}).</p>"
         f"<p>Please review the requisition and its applications.</p>"
-        f"<p>Good luck,<br>{settings.email_from_name}</p>"
+        f"<p>Good luck,<br>{escape(company_name)}</p>"
     )
     body = json.dumps({"to": to_email, "subject": subject, "html": html})
     repo = EmailOutboxRepository(db)
@@ -200,12 +210,13 @@ async def queue_job_closed(
     """Notify the job's owner that the job auto-closed (outbox, idempotent
     on job_id). Mirrors queue_job_assignment; delivery via the same
     email_send worker path and EMAIL_DRY_RUN gate."""
+    company_name = await company_sender_name(db, org_id)
     subject = f"Job closed automatically — {job_title} ({job_key})"
     html = (
         f"<p>Dear {to_name},</p>"
         f"<p>The job <strong>{job_title}</strong> ({job_key}) has been closed "
         f"automatically because its closing date/time was reached.</p>"
-        f"<p>Good luck,<br>{settings.email_from_name}</p>"
+        f"<p>Good luck,<br>{escape(company_name)}</p>"
     )
     body = json.dumps({"to": to_email, "subject": subject, "html": html})
     repo = EmailOutboxRepository(db)
@@ -237,11 +248,11 @@ async def queue_job_closed(
     return msg
 
 
-async def send_via_zepto(to_email: str, to_name: str, subject: str, html_body: str) -> str:
+async def send_via_zepto(to_email: str, to_name: str, subject: str, html_body: str, *, configuration=None) -> str:
     """POST to ZeptoMail. Returns upstream id. Retries 3×, never logs PII."""
     payload = {
-        "from": {"address": settings.email_from_address.strip(),
-                 "name": settings.email_from_name.strip()},
+        "from": {"address": (configuration.from_address if configuration else settings.email_from_address).strip(),
+                 "name": (configuration.from_name if configuration else settings.email_from_name).strip()},
         "to": [{"email_address": {"address": to_email.strip(), "name": (to_name or "").strip()}}],
         "subject": subject,
         "htmlbody": html_body,
@@ -255,7 +266,7 @@ async def send_via_zepto(to_email: str, to_name: str, subject: str, html_body: s
                     json=payload,
                     # Same convention as the working Express relay (server.ts).
                     headers={"Accept": "application/json", "Content-Type": "application/json",
-                             "Authorization": settings.zeptomail_api_key.strip()},
+                             "Authorization": (configuration.api_key if configuration else settings.zeptomail_api_key).strip()},
                 )
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             last_error = type(exc).__name__
@@ -270,9 +281,13 @@ async def send_via_zepto(to_email: str, to_name: str, subject: str, html_body: s
                 return "sent"
         last_error = f"http_{resp.status_code}"
         if resp.status_code in (401, 403):
-            raise EmailSendError("Email provider rejected the credentials.")
+            error = EmailSendError("Email provider rejected the credentials.")
+            error.status_code = resp.status_code
+            raise error
         if 400 <= resp.status_code < 500:
-            raise EmailSendError(f"Email provider refused the message ({resp.status_code}).")
+            error = EmailSendError(f"Email provider refused the message ({resp.status_code}).")
+            error.status_code = resp.status_code
+            raise error
         await _sleep_backoff(attempt)
     raise EmailSendError(f"Email provider unavailable ({last_error}).")
 
@@ -318,11 +333,13 @@ async def process_email_job(db: Any, job: dict[str, Any]) -> dict[str, Any]:
         return {"refused": "allowlist"}
 
     try:
+        configuration = await mail_configuration(db, org_id)
+        options = {"configuration": configuration} if configuration else {}
         upstream_id = await send_via_zepto(
             to_email, str(msg.get("toName", "")), str(msg.get("subject", "")),
-            str(body.get("html", "")))
-    except EmailSendError as exc:
-        status = await repo.mark_failed(message_id, org_id, str(exc), retryable=True,
+            str(body.get("html", "")), **options)
+    except (EmailSendError, CompanyMailError) as exc:
+        status = await repo.mark_failed(message_id, org_id, str(exc), retryable=not isinstance(exc, CompanyMailError),
                                          max_attempts=int(msg.get("maxAttempts", 5)))
         return {"failed": str(exc), "status": status}
     await repo.mark_sent(message_id, org_id, via="zepto", wipe=True)

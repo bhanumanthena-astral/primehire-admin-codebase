@@ -196,7 +196,7 @@ class SettingsUpdate(Contract):
     settings: IntakeSettings
 
 
-SOURCES = frozenset({"local", "linkedin", "naukri", "referral", "email", "other"})
+SOURCES = frozenset({"local", "linkedin", "naukri", "referral", "email", "other", "indeed", "wellfound", "career_portal", "agency", "unknown"})
 REVIEWABLE = frozenset({"review_required", "duplicate_suspected", "completed", "duplicate"})
 RETRYABLE = frozenset({"failed", "scan_required", "ocr_required", "conversion_required", "confirming", "confirmation_paused"})
 STATUSES = frozenset({"uploaded", "queued", "processing", "review_required", "duplicate_suspected",

@@ -1,3 +1,4 @@
+import {normalizeMcq,type McqResult} from './mcqReport';
 export interface Grade {
   letter: string;
   color: string;
@@ -50,6 +51,7 @@ export function formatDate(dateStr: string | null | undefined): string {
 }
 
 export interface NormalizedQuestion {
+  mcq?: McqResult;
   key: string;
   index: number;
   question: string;
@@ -96,6 +98,9 @@ export interface NormalizedReport {
 
 export function normalizeReport(raw: any): NormalizedReport | null {
   if (!raw) return null;
+  if(raw.data && typeof raw.data==='object'){
+    raw={...raw,...raw.data,assessmentQuestions:raw.assessmentQuestions??raw.data.assessmentQuestions};
+  }
 
   // Accept both snake_case (raw backend JSON) and camelCase (app API proxy).
   const details = raw?.interview_details || raw?.interviewDetails || {};
@@ -160,6 +165,7 @@ export function normalizeReport(raw: any): NormalizedReport | null {
     const obtained = q.obtained_score ?? q.obtainedScore ?? null;
     const pct = obtained !== undefined && obtained !== null && maxScore ? Math.round((obtained / maxScore) * 100) : null;
     return {
+      mcq: String(q.type??'').toUpperCase()==='MCQ'?normalizeMcq(q,raw?.assessment?.questions??raw?.assessmentQuestions??[]):undefined,
       key: String(q.id || q._id || q.video_id || q.videoId || idx),
       index: idx + 1,
       question: q.question || '',

@@ -94,7 +94,7 @@ async def import_batch(db, job):
                                     source = await source_from_entry(archive, info, limits, org)
                                 except security.IntakeError as exc:
                                     error = (exc.code, exc.message)
-                        item = await add_item(db, batch, number, profile=row.get("profile"), source_file=source, warnings=warnings, error=error)
+                        item = await add_item(db, batch, number, profile=row.get("profile"), source=row.get("source"), source_file=source, warnings=warnings, error=error)
                         if not source and not error:
                             duplicates = await matches(db,org,row.get('profile',{}))
                             await repo.items.update_one({"_id": item["_id"], "orgId": org}, {"$set": {"scanStatus": "clean", "profileOnly": True,

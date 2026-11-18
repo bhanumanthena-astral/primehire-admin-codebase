@@ -196,3 +196,32 @@ async def publish(db, user, key, payload):
     row = await repo.update(key, row['revision'], {'publicationState': 'published', 'isActive': True, 'publishedAt': now(), 'publishError': None}, phase='publishing')
     await audit(db, user, 'published', key, {'revision': row['revision']})
     return public(row, True)
+
+
+async def update_dates(db, user, key, payload):
+    repo = AssessmentManagementRepository(db, user)
+    previous = await repo.get(key)
+    if previous.get('publicationState', 'published') != 'published':
+        raise HTTPException(409, 'Only published assessments can use Edit dates. Edit draft dates in the draft editor.')
+    if payload.endDate <= now():
+        raise HTTPException(422, 'Choose a future assessment deadline')
+    values = {field: previous[field] for field in AssessmentConfig.model_fields}
+    values.update(startDate=payload.startDate, endDate=payload.endDate)
+    config = AssessmentConfig.model_validate(values)
+    # Resubmit through the configured save endpoint, preserving the assessment ID.
+    locked = await repo.update(key, payload.expectedRevision, {'publicationState': 'updating_dates'}, phase='published')
+    try:
+        await create_upstream(config)
+    except HTTPException as error:
+        await repo.update(key, locked['revision'], {
+            'publicationState': 'uncertain' if error.status_code == 504 else 'published',
+            'publishError': 'Date update: ' + str(error.detail)}, phase='updating_dates')
+        await audit(db, user, 'date_update_failed', key, {'uncertain': error.status_code == 504})
+        raise
+    changes = {'startDate': config.startDate.isoformat(), 'endDate': config.endDate.isoformat(),
+        'windowStart': config.startDate, 'windowEnd': config.endDate,
+        'publicationState': 'published', 'publishError': None,
+        'configHash': hashlib.sha256(json.dumps(config.model_dump(mode='json'), sort_keys=True).encode()).hexdigest()}
+    row = await repo.update(key, locked['revision'], changes, phase='updating_dates')
+    await audit(db, user, 'dates_updated', key, {'startDate': changes['startDate'], 'endDate': changes['endDate'], 'revision': row['revision']})
+    return public(row, True)

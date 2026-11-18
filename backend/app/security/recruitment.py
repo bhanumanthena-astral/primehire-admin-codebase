@@ -131,6 +131,8 @@ async def visible_query(db, user):
 
 
 async def fields_for(db, user):
+    if user.role == "recruiter":
+        return (DEFAULT_FIELDS | {"previousReviews", "compensation", "contact"}) - {"resume"}
     if user.role in MANAGERS:
         return DEFAULT_FIELDS | {"previousReviews", "compensation", "contact"}
     profile = await db["recruit_profiles"].find_one(
@@ -193,6 +195,7 @@ def project_application(app, fields):
         "applicantId",
         "jobId",
         "currentStage",
+        "applicationSource",
         "stageEnteredAt",
         "createdAt",
         "updatedAt",

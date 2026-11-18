@@ -82,13 +82,14 @@ router = APIRouter(prefix="/api", tags=["hiring"])
 ALLOWED_REVEAL_FIELDS = frozenset({"email", "phone"})
 
 
-def _masked_applicant(doc: dict[str, Any]) -> dict[str, Any]:
+def _masked_applicant(doc: dict[str, Any], *, original_allowed=True) -> dict[str, Any]:
     """Mask contact PII by default; full values only via the audited reveal."""
     # Persisted candidates carry additive intake/profile metadata that is not
     # part of this legacy public contract. Project it before strict validation.
     out = {key: value for key, value in doc.items() if key in ApplicantPublic.model_fields}
     if isinstance(out.get('retentionUntil'), datetime):
         out['retentionUntil'] = out['retentionUntil'].isoformat()
+    if not original_allowed:out["resume"] = {}
     out["email"] = mask_email(str(doc.get("email") or ""))
     out["phone"] = mask_phone(str(doc.get("phone") or ""))
     return out
@@ -743,7 +744,7 @@ async def set_job_lifecycle(
 
 @router.get("/jobs/{job_id}/applications")
 async def job_applications(
-    job_id: str, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
+    job_id: str, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100), source: str = Query("",max_length=50),
     current_user: CurrentUser = Depends(_JOB_READ), db: Any = Depends(get_db),
 ):
     if db is None:
@@ -755,6 +756,7 @@ async def job_applications(
         raise HTTPException(403, "Candidate details require hiring access")
     from ..services.job_applications import assessment_result, interview_round
     query = {'orgId': current_user.org_id, 'jobId': job_id}
+    if source:query['applicationSource']={'$in':[None,'','unknown']} if source=='unknown' else source
     rows = await db['applications'].find(query).sort([('createdAt', -1), ('applicationId', 1)]).skip(skip).limit(limit).to_list(limit)
     people = {p['applicantId']: p async for p in db['applicants'].find({'orgId': current_user.org_id,
         'applicantId': {'$in': [row['applicantId'] for row in rows]}}, {'applicantId': 1, 'name': 1, 'email': 1, 'phone': 1, 'profile': 1})}
@@ -766,6 +768,7 @@ async def job_applications(
         items.append({'applicationId': row['applicationId'], 'name': person.get('name') or profile.get('name') or 'Unknown applicant',
             'email': '' if email.endswith('@placeholder.local') else email,
             'phone': profile.get('phone') or person.get('phone') or '',
+            'source':row.get('applicationSource','unknown'),
             'status': str(row.get('status') or 'active').replace('_', ' ').title(),
             'round': interview_round(row), 'assessment': assessment_result(row)})
     return {'items': items, 'total': await db['applications'].count_documents(query), 'skip': skip, 'limit': limit}
@@ -1199,7 +1202,7 @@ async def get_applicant(
     doc = await repo.get_by_id(applicant_id, current_user.org_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Applicant not found")
-    return ApplicantPublic(**_masked_applicant(doc))
+    return ApplicantPublic(**_masked_applicant(doc,original_allowed=current_user.role!="recruiter"))
 
 
 @router.get("/applicants", response_model=list[ApplicantPublic])
@@ -1235,7 +1238,7 @@ async def list_applicants(
                       "lowConfidence": bool((a0.get("scoreBreakdown") or {}).get("lowConfidence", False)),
                       "assessment": {"state": a0_assessment.get("state", "none"),
                                      "error": a0_assessment.get("error")}}
-        masked = _masked_applicant(d)
+        masked = _masked_applicant(d,original_allowed=current_user.role!="recruiter")
         masked["latestApplication"] = latest
         out.append(ApplicantPublic(**masked))
     return out
@@ -1265,7 +1268,7 @@ async def get_applicant_profile(
             timeline.append({**entry, "applicationId": app_doc["applicationId"]})
     timeline.sort(key=lambda e: str(e.get("transitionAt", "")))
     return {
-        "applicant": ApplicantPublic(**_masked_applicant(doc)).model_dump(),
+        "applicant": ApplicantPublic(**_masked_applicant(doc,original_allowed=current_user.role!="recruiter")).model_dump(),
         "applications": [_public_application(a).model_dump() for a in apps],
         "timeline": timeline,
     }

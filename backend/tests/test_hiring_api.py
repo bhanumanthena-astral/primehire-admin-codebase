@@ -772,5 +772,6 @@ def test_pipeline_details_access_and_validation(client):
     assert client.get(url, params={'stage':'technical'}, headers=_sa_headers('unrelated')).status_code == 404
     assert client.post(f"/api/jobs/{job['jobId']}/lifecycle", json={'status':'OPEN'}, headers=headers).status_code == 200
     assert client.get(url, params={'stage':'technical'}, headers=auth_headers(role='viewer')).status_code == 404
-    viewer_headers = auth_headers(role='viewer', user_id=uid)
+    from tests.conftest import ensure_actor
+    viewer_headers = ensure_actor(client,'viewer',uid)
     assert client.get(url, params={'stage':'technical'}, headers=viewer_headers).status_code == 403

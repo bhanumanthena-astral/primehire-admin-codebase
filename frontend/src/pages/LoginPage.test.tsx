@@ -27,7 +27,7 @@ it('signs in with the existing auth service and redirects to the workspace',asyn
   fireEvent.change(screen.getByPlaceholderText('Passcode'),{target:{value:'Synthetic-passcode'}});
   fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
   expect(await screen.findByRole('heading',{name:'Workspace home'})).toBeVisible();
-  expect(login).toHaveBeenCalledWith('synthetic@example.test','Synthetic-passcode');
+  expect(login).toHaveBeenCalledWith('synthetic@example.test','Synthetic-passcode',undefined);
 });
 it('retains MFA verification and displays server errors without losing the input',async()=>{
   login.mockResolvedValue({mfaRequired:true,mfaToken:'synthetic-token'});

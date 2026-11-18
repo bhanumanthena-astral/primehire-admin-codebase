@@ -238,6 +238,24 @@ async def detail(db,user,key,version=None):
     metadata=public_metadata(row,series,app)
     versions=[public_metadata(item,series,app) async for item in db.report_versions.find({'orgId':user.org_id,'reportId':key},{'content':0,'source':0}).sort('version',-1).limit(200)]
     content=dict(row['content']);content.pop('media',None)
+    # Reconstruct additive answer fields for reports captured before MCQ review.
+    source_content=presentation(row.get('source'),row.get('roundType',metadata['roundType']))
+    source_questions=source_content.get('questions',[])
+    enriched=[]
+    for question in content.get('questions',[]):
+        matches=[q for q in source_questions if question.get('id') is not None and q.get('id')==question['id']]
+        if not matches:
+            text=' '.join((question.get('question') or '').split()).casefold()
+            matches=[q for q in source_questions if text and ' '.join((q.get('question') or '').split()).casefold()==text]
+        extra={key:matches[0][key] for key in ['type','mcqInput'] if key in matches[0]} if len(matches)==1 else {}
+        enriched.append({**question,**extra})
+    content['questions']=enriched
+    assessment_id=(app.get('assessment') or {}).get('assessmentId')
+    assessment_job=await db.jobs.find_one({'orgId':user.org_id,'jobId':app['jobId']}) or {}
+    assessment_id=assessment_id or assessment_job.get('assessmentJobId')
+    original=await db.assessments.find_one({'orgId':user.org_id,'jobId':assessment_id}) if assessment_id else None
+    content['assessmentQuestions']=[{key:q.get(key) for key in ['id','questionId','question_id','text','question','options','correctOption','correct_option']}
+        for q in (original or {}).get('questions',[]) if isinstance(q,dict)]
     if metadata['status'] in {'Not Started','Processing','Failed'}:content=None
     if content:content=project_management_profile(content)
     await audit(db,user,'viewed',key,{'version':selected,'applicationId':app['applicationId']})

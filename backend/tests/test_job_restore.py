@@ -33,6 +33,8 @@ def test_super_admin_can_restore_archived_job_and_audit(client,mock_db):
 
 def test_archived_restore_does_not_grant_admin_or_staff_extra_access(client):
     job=archived(client)
+    from tests.conftest import ensure_actor
+    ensure_actor(client,'admin')
     for role in ['admin','hr','recruiter','technical_interviewer','managerial_interviewer','viewer']:
         response=client.post(f"/api/jobs/{job['jobId']}/reopen",headers=auth_headers(role=role),json=future())
         assert response.status_code==403,(role,response.text)

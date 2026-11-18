@@ -11,6 +11,7 @@ from ..models.outbox import EmailOutboxRepository
 from ..models.recruitment import RecruitmentRepository, lease, now, aware
 from .outbox_crypto import encrypt_body, decrypt_body
 from .recruitment_mail import send_via_zepto, recipient_allowed, EmailSendError, dry_run
+from .company_settings import mail_configuration, company_sender_name, CompanyMailError
 from .recruitment import finish_pending, finalize_review
 
 logger = logging.getLogger(__name__)
@@ -35,15 +36,15 @@ class RecruitmentOutbox(EmailOutboxRepository):
         self.coll = db["recruit_email_outbox"]
 
 
-def invitation_html(row, name, purpose):
+def invitation_html(row, name, purpose, sender_name=None):
     stamp = (
         aware(row["startsAt"])
-        .astimezone(ZoneInfo("Asia/Kolkata"))
+        .astimezone(ZoneInfo(row.get("timezone") or "Asia/Kolkata"))
         .strftime("%d %B %Y, %I:%M %p IST")
     )
     end = (
         aware(row["endsAt"])
-        .astimezone(ZoneInfo("Asia/Kolkata"))
+        .astimezone(ZoneInfo(row.get("timezone") or "Asia/Kolkata"))
         .strftime("%I:%M %p IST")
     )
     candidate = purpose in {"candidate", "candidate_reminder"}
@@ -65,7 +66,7 @@ def invitation_html(row, name, purpose):
         if row.get("meetingLink")
         else ""
     )
-    return f'<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;padding:28px"><h1>{heading}</h1><p>Dear {escape(name)},</p><p>{intro}</p><h2>{escape(row.get("jobTitle","Job"))}</h2><p><strong>{escape(row["round"].title())} interview</strong><br>{stamp} – {end}</p>{link}<p>{escape(row.get("location", ""))}</p>{closing}<p>Regards,<br>{escape(settings.email_from_name or "Recruitment team")}</p></div>'
+    return f'<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;padding:28px"><h1>{heading}</h1><p>Dear {escape(name)},</p><p>{intro}</p><h2>{escape(row.get("jobTitle","Job"))}</h2><p><strong>{escape(row["round"].title())} interview</strong><br>{stamp} – {end}</p>{link}<p>{escape(row.get("location", ""))}</p>{closing}<p>Regards,<br>{escape(sender_name or settings.email_from_name or "Recruitment team")}</p></div>'
 
 
 async def enqueue_email(db, row, purpose):
@@ -90,10 +91,16 @@ async def enqueue_email(db, row, purpose):
         "Interview rescheduled" if row.get("scheduleRevision", 1) > 1 else "Interview invitation"
     )
     subject = f'{event} — {row["round"].title()} — {row.get("jobTitle", "Job")}'
-    rendered = invitation_html(row, recipient.get("name", "Candidate"), purpose)
+    rendered = invitation_html(row, recipient.get("name", "Candidate"), purpose,
+                               sender_name=await company_sender_name(db, row["orgId"]))
     if not is_candidate:
         candidate = await db["applicants"].find_one({"orgId": row["orgId"], "applicantId": row["applicantId"]}, {"name": 1}) or {}
         rendered = rendered.replace("<h2>", f'<p><strong>Candidate:</strong> {escape(candidate.get("name", "Candidate"))}</p><h2>', 1)
+    template=row.get('candidateReminderTemplate' if is_candidate else 'companyReminderTemplate') if purpose in {'reminder','candidate_reminder'} else None
+    if template:
+        from .hiring_workflow import render
+        subject,rendered=render(template,{'candidate_name':recipient.get('name','Candidate') if is_candidate else candidate.get('name','Candidate'),'job_title':row.get('jobTitle','Job'),
+         'round_type':row['round'],'start_time':aware(row['startsAt']).isoformat(),'meeting_link':row.get('meetingLink','')})
     body = json.dumps(
         {
             "to": email,
@@ -122,26 +129,42 @@ async def deliver(db, msg):
     repo = RecruitmentOutbox(db)
     org = msg["orgId"]
     key = msg["messageId"]
-    row = await db["recruit_interviews"].find_one(
-        {"orgId": org, "interviewId": msg["entityKey"]}
-    )
-    if (
-        not row
-        or row["status"] != "scheduled"
-        or row.get("scheduleRevision", 1) != msg.get("interviewRevision")
-        or aware(row["endsAt"]) <= now()
-        or (msg.get("kind") in {"recruit_reminder", "recruit_candidate_reminder"} and aware(row["startsAt"]) <= now())
-    ):
-        await repo.coll.update_one(
-            {"orgId": org, "messageId": key},
-            {
-                "$set": {
-                    "status": "cancelled",
-                    "lastError": "Schedule is no longer current",
-                }
-            },
+    workflow=msg.get("kind","").startswith("workflow_")
+    if workflow:
+        try:
+            internal=json.loads(decrypt_recruitment_body(msg["payloadEncrypted"])).get("workflow",{})
+        except Exception:
+            await repo.mark_failed(key,org,"Encrypted email payload unavailable",retryable=False)
+            return
+        if internal:
+            allowed_metadata={k:internal[k] for k in ["rejectionEventId","actorUserId","recipientUserId","provider","reportReferences","templateId"] if k in internal}
+            msg.update(allowed_metadata)
+            await repo.coll.update_one({"orgId":org,"messageId":key},{"$set":allowed_metadata})
+        from .hiring_workflow import delivery_allowed
+        if not await delivery_allowed(db,msg):
+            await repo.coll.update_one({"orgId":org,"messageId":key},{"$set":{"status":"cancelled","lastError":"The application or report access changed"}})
+            return
+    else:
+        row = await db["recruit_interviews"].find_one(
+            {"orgId": org, "interviewId": msg["entityKey"]}
         )
-        return
+        if (
+            not row
+            or row["status"] != "scheduled"
+            or row.get("scheduleRevision", 1) != msg.get("interviewRevision")
+            or aware(row["endsAt"]) <= now()
+            or (msg.get("kind") in {"recruit_reminder", "recruit_candidate_reminder"} and aware(row["startsAt"]) <= now())
+        ):
+            await repo.coll.update_one(
+                {"orgId": org, "messageId": key},
+                {
+                    "$set": {
+                        "status": "cancelled",
+                        "lastError": "Schedule is no longer current",
+                    }
+                },
+            )
+            return
     try:
         body = json.loads(decrypt_recruitment_body(msg["payloadEncrypted"]))
     except Exception:
@@ -159,21 +182,35 @@ async def deliver(db, msg):
         )
         return
     try:
-        await send_via_zepto(
-            body["to"], msg.get("toName", ""), msg["subject"], body["html"]
-        )
-    except EmailSendError as exc:
+        if msg.get('provider')=='gmail':
+            from .gmail_send import send
+            provider_id=await send(db,org,msg['actorUserId'],body['to'],msg['subject'],body['html'])
+            await repo.coll.update_one({'orgId':org,'messageId':key},{'$set':{'providerMessageId':provider_id}})
+        else:
+            configuration = await mail_configuration(db, org)
+            options = {"configuration": configuration} if configuration else {}
+            await send_via_zepto(
+                body["to"], msg.get("toName", ""), msg["subject"], body["html"], **options
+            )
+    except (EmailSendError, CompanyMailError) as exc:
         status = getattr(exc,'status_code',None)
-        permanent = isinstance(status,int) and 400 <= status < 500 and status != 429
+        permanent = isinstance(exc, CompanyMailError) or (isinstance(status,int) and 400 <= status < 500 and status != 429)
         codes = getattr(exc,'provider_codes',[])
         await repo.mark_failed(
-            key, org, f"Email provider refused message (HTTP {status}; codes {','.join(codes)})" if permanent else "Email provider unavailable; retry scheduled", retryable=not permanent
+            key, org, str(exc) if isinstance(exc, CompanyMailError) else f"Email provider refused message (HTTP {status}; codes {','.join(codes)})" if permanent else "Email provider unavailable; retry scheduled", retryable=not permanent
         )
         return
-    await repo.mark_sent(key, org, via="zepto", wipe=True)
+    except HTTPException as exc:
+        await repo.mark_failed(key,org,str(exc.detail),retryable=False)
+        return
+    await repo.mark_sent(key, org, via="gmail" if msg.get("provider")=="gmail" else "zepto", wipe=True)
+    await repo.coll.update_one({'orgId':org,'messageId':key},{'$set':{'deliveryStatus':'accepted'}})
 
 
 async def tick(db):
+    from .hiring_workflow import queue_rejection
+    async for application in db.applications.find({"currentStage":"REJECTED","rejectionMail.queued":False}).limit(25):
+        await queue_rejection(db,application)
     from .google_calendar import tick as sync_google_calendar
     await sync_google_calendar(db)
     from .talent import tick as match_talent

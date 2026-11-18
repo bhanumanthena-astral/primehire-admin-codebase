@@ -1,3 +1,4 @@
+import McqAnswerReview from '../McqAnswerReview';
 import type { CSSProperties } from 'react';
 import { getGrade, shortId, formatDate } from '../../../utils/normalizeReport';
 import type { NormalizedReport, Insights } from '../../../utils/normalizeReport';
@@ -160,6 +161,7 @@ export default function ReportPrintView({
         </tbody>
       </table>
 
+      {questions.filter(q=>q.mcq).map(q=><section key={q.key} style={{marginBottom:20,printColorAdjust:'exact'}}><h3>{q.question}</h3><McqAnswerReview result={q.mcq!}/></section>)}
       <div style={{ display: 'flex', gap: 12, breakInside: 'avoid' }}>
         <InsightCol title="Strength Signals" items={insights.strengths} color="#16a34a" />
         <InsightCol title="Risk Signals & Flags" items={insights.improvements} color="#dc2626" />

@@ -33,6 +33,9 @@ def mock_db():
 def client(mock_db):
     app.dependency_overrides[get_db] = lambda: mock_db
     with TestClient(app) as c:
+        from tests.conftest import ensure_actor
+        for role in ['super_admin','admin','hr','recruiter','viewer','technical_interviewer','managerial_interviewer','leadership']:
+            ensure_actor(c,role)
         yield c
     app.dependency_overrides.pop(get_db, None)
 
@@ -64,8 +67,9 @@ AUTHZ_MATRIX = [
     *[(method,path,['super_admin','admin','hr','recruiter'],['viewer','technical_interviewer','managerial_interviewer']) for method,path in [
         ('GET','/api/candidate-management/assessments'),('POST','/api/candidate-management/person/reveal'),
         ('PUT','/api/candidate-management/person'),('POST','/api/candidate-management/person/assignments'),
-        ('PUT','/api/candidate-management/person/assignments/assignment/dates'),('GET','/api/candidate-management/person/resume'),
+        ('PUT','/api/candidate-management/person/assignments/assignment/dates'),
         ('POST','/api/candidate-management/person/assignments/assignment/generate-link')]],
+    ('GET','/api/candidate-management/person/resume',['super_admin','admin','hr'],['recruiter','viewer','technical_interviewer','managerial_interviewer']),
     ("POST", f"/api/jobs/{_SAMPLE_UUID}/lifecycle", ["super_admin", "admin"], ["hr", "recruiter", "viewer", "technical_interviewer", "managerial_interviewer"]),
     ("GET", "/api/jobs", ["viewer", "recruiter"], []),
     # --- Health (no auth required) ---
@@ -206,9 +210,10 @@ _INTAKE_INTERVIEWERS = ["technical_interviewer", "managerial_interviewer"]
 for method, suffix in [
     ("GET", "/capabilities"), ("GET", "/batches"), ("GET", "/batches/missing"),
     ("GET", "/candidates?jobId=missing"), ("GET", "/items/missing"),
-    ("GET", "/items/missing/download"), ("GET", "/items/missing/versions"),
+    ("GET", "/items/missing/versions"),
 ]:
     AUTHZ_MATRIX.append((method, "/api/resume-intake" + suffix, _INTAKE_READERS, _INTAKE_INTERVIEWERS))
+AUTHZ_MATRIX.append(('GET','/api/resume-intake/items/missing/download',['super_admin','admin','hr','viewer'],['recruiter',*_INTAKE_INTERVIEWERS]))
 for method, suffix in [
     ("GET", "/template"), ("POST", "/upload"), ("POST", "/batches/missing/confirm"),
     ("POST", "/items/missing/associate"), ("POST", "/items/missing/reveal"),
@@ -310,7 +315,7 @@ def test_allowed_role_passes_guard(client, mock_db, method, path, role):
     if path.startswith('/api/candidate-management'):
         # Module 4 verifies the current account role as well as JWT permissions.
         async def seed_current_account():
-            await mock_db['users'].update_one({'orgId':'default','userId':'test-user'},
+            await mock_db['users'].update_one({'orgId':'default','userId':'test-user' if role=='hr' else 'test-'+role},
                 {'$set':{'role':role,'isActive':True}},upsert=True)
         client.portal.call(seed_current_account)
     kwargs = {"json": body} if body else {}

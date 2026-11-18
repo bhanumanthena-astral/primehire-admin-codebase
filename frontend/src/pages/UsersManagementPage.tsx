@@ -1,9 +1,9 @@
 import {Button} from '@/components/ui/button';
-import {Table, TableHeader, TableRow, TableHead, TableBody, TableCell} from '@/components/ui/table';
 import {Input} from '@/components/ui/input';
 import {AppSelect} from '@/src/components/ui/AppSelect';
 import {Textarea} from '@/components/ui/textarea';
 import {Modal} from '../components/ui/Modal';
+import {CompanySettingsDialog} from '../components/CompanySettingsDialog';
 import {JobAccessEditor} from '../components/JobAccessControls';
 import {JobAccess,defaultJobAccess,isJobAdmin} from '../lib/jobAccess';
 import React, { useState, useEffect } from 'react';
@@ -27,11 +27,43 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
+type CompanyDirectory = {
+  companies: {orgId:string; name:string; members:(User & {permissionRequests?:string[]})[]}[];
+  catalog:string[]; granted:string[]; pending:string[];
+};
+const permissionLabel = (key:string) => key === 'whatsapp.campaign' ? 'WhatsApp campaigns' : key.replace(/[._]/g,' ');
+
 export const UsersManagementPage: React.FC = () => {
   const { user: currentUser, viewAs } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [settingsCompany,setSettingsCompany] = useState<{orgId:string;name:string}|null>(null);
+  const [directory,setDirectory] = useState<CompanyDirectory|null>(null);
+  const [companyName,setCompanyName] = useState('');
+  const [inviteOrg,setInviteOrg] = useState('');
+  const [permissions,setPermissions] = useState<string[]>([]);
+  const [requested,setRequested] = useState('');
+  const [saving,setSaving] = useState(false);
+  async function loadDirectory() {
+    const res = await authFetch('/api/companies');
+    if (!res.ok) throw new Error(res.status===404 ? 'Company directory is unavailable. Restart the backend to load the company routes.' : 'Could not load companies and permissions');
+
+    setDirectory(await res.json());
+  }
+  async function changeCompany(path:string, method:string, body?:unknown) {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await authFetch(path,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if (!res.ok) throw new Error((await res.json()).detail || 'Could not save change');
+      await loadDirectory();
+      setRequested('');
+      setCompanyName('');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save change'); }
+    finally { setSaving(false); }
+  }
 
   // Invite modal state
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -47,6 +79,15 @@ export const UsersManagementPage: React.FC = () => {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  function openInvite(orgId = currentUser?.orgId || '') {
+    setShowInviteModal(true);
+    setInviteUrl(null);
+    setInviteEmail('');
+    setInviteName('');
+    setInviteOrg(orgId);setPermissions([]);
+    setInviteRole('hr');setInviteAccess(['view','upload']);
+  }
+
   // View-as modal state
   const [targetUser, setTargetUser] = useState<User | null>(null);
   const [viewAsReason, setViewAsReason] = useState('');
@@ -57,6 +98,7 @@ export const UsersManagementPage: React.FC = () => {
     setError(null);
     try {
       const res = await authFetch('/api/users');
+      if (res.status === 403 && currentUser?.role === 'admin') {setUsers([]); return;}
       if (!res.ok) {
         throw new Error('Failed to load users');
       }
@@ -71,7 +113,8 @@ export const UsersManagementPage: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+    void loadDirectory().catch(err=>setError(err.message));
+  }, [currentUser?.userId]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +129,8 @@ export const UsersManagementPage: React.FC = () => {
           name: inviteName,
           role: inviteRole,
           jobAccess: inviteAccess,
+          ...(inviteOrg && currentUser?.role === 'super_admin' ? {orgId:inviteOrg} : {}),
+          ...(inviteRole === 'admin' ? {adminPermissions:permissions} : {}),
         }),
       });
 
@@ -97,6 +142,7 @@ export const UsersManagementPage: React.FC = () => {
       const data = await res.json();
       const fullInviteUrl = teamInvitationUrl(data.inviteUrl);
       setInviteUrl(fullInviteUrl);
+      void loadDirectory().catch(err=>setError(err.message));
       fetchUsers();
     } catch (err: any) {
       setError(err.message || 'Failed to invite user');
@@ -184,7 +230,7 @@ export const UsersManagementPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="ghost"
-            onClick={fetchUsers}
+            onClick={()=>{void fetchUsers();void loadDirectory().catch(err=>setError(err.message));}}
             disabled={loading}
             className="p-2 border border-border dark:border-border rounded-lg hover:bg-muted dark:hover:bg-muted text-muted-foreground dark:text-muted-foreground transition-colors"
             title="Refresh users"
@@ -192,13 +238,8 @@ export const UsersManagementPage: React.FC = () => {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           <Button variant="ghost"
-            onClick={() => {
-              setShowInviteModal(true);
-              setInviteUrl(null);
-              setInviteEmail('');
-              setInviteName('');
-              setInviteRole('hr');setInviteAccess(['view','upload']);
-            }}
+            disabled={!!directory?.granted && !directory.granted.includes('users.manage')}
+            onClick={() => openInvite()}
             className="flex items-center gap-2 px-4 py-2 bg-warning hover:bg-primary text-primary-foreground rounded-lg text-sm font-medium shadow-sm transition-all"
           >
             <UserPlus className="h-4 w-4" />
@@ -206,6 +247,25 @@ export const UsersManagementPage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {directory?.companies && <section className="space-y-3 rounded-xl border p-4">
+        {currentUser?.role === 'super_admin' ? <>
+          <h2 className="text-lg font-semibold">Company hierarchy</h2>
+          <form className="flex gap-2" onSubmit={e=>{e.preventDefault();void changeCompany('/api/companies','POST',{name:companyName.trim()});}}>
+            <Input aria-label="Company name" value={companyName} maxLength={160} onChange={e=>setCompanyName(e.target.value)} placeholder="Company name"/>
+            <Button type="submit" disabled={saving || !companyName.trim()}>Create company</Button>
+          </form>
+
+        </> : <>
+          <h2 className="font-semibold">{directory.companies[0]?.name} · Administrator permissions</h2>
+          <select aria-label="Requested permission" value={requested} onChange={e=>setRequested(e.target.value)}>
+            <option value="">Choose a permission</option>
+            {directory.catalog.filter(p=>!directory.granted.includes(p)&&!directory.pending.includes(p)).map(p=><option key={p} value={p}>{permissionLabel(p)}</option>)}
+          </select>
+          <Button disabled={saving||!requested} onClick={()=>void changeCompany('/api/companies/requests/'+requested,'POST')}>Request from super admin</Button>
+          {directory.pending.length>0&&<p>Pending approval · {directory.pending.map(permissionLabel).join(', ')}</p>}
+        </>}
+      </section>}
 
       {error && (
         <div className="p-4 bg-[var(--destructive-soft)] dark:bg-[var(--destructive-soft)]/30 border border-destructive/30 dark:border-destructive/50 rounded-xl text-destructive dark:text-destructive text-sm flex items-center gap-3">
@@ -221,57 +281,39 @@ export const UsersManagementPage: React.FC = () => {
             <Loader2 className="h-6 w-6 animate-spin mr-2 text-warning" />
             <span>Loading members...</span>
           </div>
-        ) : users.length === 0 ? (
+        ) : users.length === 0 && !directory?.companies?.length ? (
           <div className="text-center p-12 text-muted-foreground">
             <Users className="h-10 w-10 mx-auto mb-2 text-muted-foreground dark:text-foreground" />
             <p>No users found in this organization.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="w-full text-left text-sm">
-              <TableHeader className="bg-background dark:bg-background/50 border-b border-border dark:border-border text-muted-foreground dark:text-muted-foreground font-semibold text-xs uppercase tracking-wider">
-                <TableRow>
-                  <TableHead className="px-6 py-3.5">Name / Email</TableHead>
-                  <TableHead className="px-6 py-3.5">Role</TableHead>
-                  <TableHead className="px-6 py-3.5">MFA</TableHead>
-                  <TableHead className="px-6 py-3.5">Status</TableHead>
-                  <TableHead className="px-6 py-3.5 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {users.map((u) => (
-                  <TableRow key={u.userId} className="hover:bg-background/50 dark:hover:bg-muted/50 transition-colors">
-                    <TableCell className="px-6 py-4">
-                      <div className="flex items-center gap-3"><StaticTeamAvatar accountId={u.userId} role={avatarRole(u.role)} portrait className="team-member-picture"/><div><div className="font-medium text-foreground dark:text-white">{u.name}</div>
-                      <div className="text-xs text-muted-foreground dark:text-muted-foreground">{u.email}</div></div></div>
-                    </TableCell>
-                    <TableCell className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted dark:bg-card text-foreground dark:text-muted-foreground capitalize">
-                        <Shield className="h-3 w-3 text-warning" />
-                        {teamRoleLabel(u.role)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-6 py-4">
-                      {u.mfaEnabled ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-success dark:text-success font-medium">
-                          <CheckCircle className="h-3.5 w-3.5" /> Enabled
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Off</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          u.isActive
-                            ? 'bg-[var(--success-soft)] text-success dark:bg-[var(--success-soft)]/40 dark:text-success'
-                            : 'bg-[var(--destructive-soft)] text-destructive dark:bg-[var(--destructive-soft)]/40 dark:text-destructive'
-                        }`}
-                      >
-                        {u.isActive ? (u.passwordSetupRequired ? 'Awaiting password' : 'Active') : 'Inactive'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-6 py-4 text-right space-x-2">
+            <div className="space-y-6" aria-label="Companies">
+              {(directory?.companies ?? []).map(company=><section key={company.orgId} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm" aria-label={company.name}>
+                <div className="flex items-center justify-between gap-4 border-b bg-muted/40 px-6 py-5">
+                  <div><h2 className="text-xl font-bold">{company.name}</h2><p className="mt-1 text-sm text-muted-foreground">{company.members.length} employees</p></div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(currentUser?.role==='super_admin'||directory?.granted.includes('users.manage'))&&<Button variant="outline" onClick={()=>openInvite(company.orgId)}>Add member</Button>}
+                    {currentUser?.role==='super_admin'?<Button variant="outline" onClick={()=>setSettingsCompany(company)}>Company settings</Button>:<Users className="h-6 w-6 text-warning"/>}
+                  </div>
+                </div>
+                <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {company.members.map(u=><article key={u.userId} className="flex flex-col gap-4 rounded-xl border border-border bg-background p-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <StaticTeamAvatar accountId={u.userId} role={avatarRole(u.role)} portrait className="team-member-picture"/>
+                      <div className="min-w-0"><h3 className="font-semibold">{u.name}</h3><p className="break-all text-xs text-muted-foreground">{u.email}</p></div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-md bg-muted px-2 py-1">{teamRoleLabel(u.role)}</span>
+                      <span className={u.isActive?'text-success':'text-destructive'}>{u.isActive?(u.passwordSetupRequired?'Awaiting password':'Active'):'Inactive'}</span>
+                      <span className="text-muted-foreground">MFA {u.mfaEnabled?'enabled':'off'}</span>
+                    </div>
+                    {u.permissionRequests?.map(permission=><div key={permission} className="space-y-2 rounded border p-2 text-sm">
+                      <p>Requested {permissionLabel(permission)}</p>
+                      {[true,false].map(approve=><Button key={String(approve)} disabled={saving} variant="outline" onClick={()=>void changeCompany(
+                        `/api/companies/${company.orgId}/requests/${u.userId}/${permission}`,'PUT',{approve})}>{approve?'Approve':'Deny'}</Button>)}
+                    </div>)}
+                    <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-3">
                       {!isJobAdmin(u)&&<Button variant="ghost" className="text-xs font-bold underline" onClick={()=>{setAccessError('');setAccessUser(u);setUserAccess(u.jobAccess??defaultJobAccess(u.role));}}>Access</Button>}
                       {u.isActive && u.passwordSetupRequired && <Button variant="ghost" className="text-xs underline" onClick={() => reissueInvite(u)}>New invitation</Button>}
                       {currentUser?.role === 'super_admin' && u.userId !== currentUser.userId && (
@@ -300,16 +342,19 @@ export const UsersManagementPage: React.FC = () => {
                           </Button>
                         </>
                       )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+
+                    </div>
+                  </article>)}
+                  {!company.members.length&&<p className="text-sm text-muted-foreground">No employees yet. Invite a member to this company.</p>}
+                </div>
+              </section>)}
+            </div>
           </div>
         )}
       </div>
 
       {/* Invite Member Modal */}
+      {settingsCompany&&currentUser?.role==='super_admin'&&<CompanySettingsDialog company={settingsCompany} catalog={directory?.catalog??[]} onClose={()=>setSettingsCompany(null)}/>}
       {showInviteModal && (
         <Modal onClose={() => setShowInviteModal(false)} label="Invite Team Member" dismissible={!inviteLoading} className="max-w-md p-6 space-y-4">
             <h2 className="text-lg font-bold text-foreground dark:text-white">Invite Team Member</h2>
@@ -366,6 +411,21 @@ export const UsersManagementPage: React.FC = () => {
                   </AppSelect>
                 </div>
 
+                {currentUser?.role==='super_admin' && <>
+                  <label className="block">Company
+                    <select required className="block w-full rounded border p-2" value={inviteOrg} onChange={e=>setInviteOrg(e.target.value)}>
+                      {directory?.companies?.map(company=><option key={company.orgId} value={company.orgId}>{company.name}</option>)}
+                    </select>
+                  </label>
+                  {inviteRole==='admin' && <fieldset className="max-h-52 overflow-y-auto rounded border p-3">
+                    <legend>Company admin permissions</legend>
+                    <label className="flex items-center gap-2 py-1 font-medium"><input type="checkbox" checked={!!directory?.catalog.length && permissions.length===directory.catalog.length} onChange={e=>setPermissions(e.target.checked?(directory?.catalog??[]):[])}/>Select all permissions</label>
+                    {directory?.catalog?.map(p=><label key={p} className="flex items-center gap-2 py-1">
+                      <input type="checkbox" checked={permissions.includes(p)} onChange={e=>setPermissions(e.target.checked?[...permissions,p]:permissions.filter(value=>value!==p))}/>
+                      {permissionLabel(p)}
+                    </label>)}
+                  </fieldset>}
+                </>}
                 {inviteRole==='leadership'?<p className="rounded-lg border border-border bg-muted p-3 text-xs text-muted-foreground">Dedicated leadership dashboard with read-only hiring metrics. Candidate contacts, review comments and operational controls are not included.</p>:<JobAccessEditor value={inviteAccess} onChange={setInviteAccess} allowed={defaultJobAccess(inviteRole)} disabled={['admin','super_admin'].includes(inviteRole)}/>}
                 <div className="flex justify-end gap-2.5 pt-2">
                   <Button variant="ghost"

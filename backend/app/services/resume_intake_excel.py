@@ -17,7 +17,7 @@ COLUMNS = {
     "PG Degree": "pgDegree", "PG Specialization": "pgSpecialization", "PG University": "pgUniversity", "PG Graduation Year": "pgGraduationYear",
     "Doctorate Degree": "doctorateDegree", "Doctorate Specialization": "doctorateSpecialization",
     "Doctorate University": "doctorateUniversity", "Doctorate Graduation Year": "doctorateGraduationYear",
-    "Gender": "gender", "Marital Status": "maritalStatus", "Home Town": "homeTown", "Pin Code": "pinCode", "Date of Birth": "dateOfBirth",
+    "Gender": "gender", "Marital Status": "maritalStatus", "Home Town": "homeTown", "Pin Code": "pinCode", "Date of Birth": "dateOfBirth", "Application Source":"applicationSource",
 }
 
 
@@ -89,6 +89,11 @@ def parse_excel(data, max_rows=5000, require_resume=False):
                     if not header or cell.value in (None, ""):
                         continue
                     key, value = COLUMNS[header], cell.value
+                    if key == "applicationSource":
+                        from ..schemas.resume_intake import SOURCES
+                        item["source"]=str(value).strip().lower()
+                        if item["source"] not in SOURCES:raise ValueError("Use a supported application source")
+                        continue
                     if key == "resumeFileName":
                         item[key] = str(value).strip()
                         if len(item[key]) > 255:

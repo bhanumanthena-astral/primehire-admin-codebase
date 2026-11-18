@@ -8,6 +8,7 @@ import re
 import uuid
 from typing import Literal
 from pathlib import Path
+from ..security.resume_access import require_original_resume
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -49,8 +50,8 @@ def available(db):
         raise HTTPException(503, "Resume intake database is unavailable.")
 
 
-def public_item(item, *, detail=False, reveal=False):
-    fields = ["batchId", "rowNumber", "fileName", "sizeBytes", "status", "error", "revision", "source",
+def public_item(item, *, detail=False, reveal=False, original_allowed=True):
+    fields = ["batchId", "jobId", "rowNumber", "fileName", "sizeBytes", "status", "error", "revision", "source",
         "createdAt", "updatedAt", "warnings", "scanStatus", "applicantId", "applicationId", "confirmedAt", "assignedUserId", "atsStale",'atsState','atsError']
     output = {key: item[key] for key in fields if key in item}
     output["itemId"] = item["_id"]
@@ -58,8 +59,8 @@ def public_item(item, *, detail=False, reveal=False):
     output["ats"] = item.get("ats")
     if detail:
         output["confidence"] = item.get("confidence", {})
-        output["hasResume"] = bool(item.get("fileId") and item.get("storageKey"))
-    if reveal:
+        output["hasResume"] = bool(original_allowed and item.get("fileId") and item.get("storageKey"))
+    if reveal and original_allowed:
         output["rawText"] = item.get("rawText", "")
     return jsonable_encoder(output)
 
@@ -89,7 +90,7 @@ async def capabilities(user: CurrentUser = Depends(module_permission("jobs.view"
         "ocrConfigured": bool(settings.resume_ocr_tessdata and Path(settings.resume_ocr_tessdata, "eng.traineddata").is_file()),
         "docConversionConfigured": bool(settings.resume_doc_converter and Path(settings.resume_doc_converter).is_file()),
         "canAssign": "applications.assign" in user.permissions and "resumes.upload" in user.permissions and not user.impersonating,
-        "canDownload": "resumes.upload" in user.permissions or user.role == "viewer" and limits.viewerDownloads}
+        "canDownload": user.role != "recruiter" and ("resumes.upload" in user.permissions or user.role == "viewer" and limits.viewerDownloads)}
 
 
 @router.put("/settings")
@@ -152,6 +153,26 @@ async def batches(skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=50
     async for batch in db["resume_intake_batches"].aggregate(stages):
         output.append(batch.get("cachedSummary") or await IntakeRepository(db).summary(batch))
     return jsonable_encoder({"items": output, "skip": skip, "hasMore": len(output) == limit})
+
+
+@router.get("/jobs/{job_id}/items")
+async def job_items(job_id: str, skip: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100),
+    status: str | None = None, q: str = Query("", max_length=100), atsOnly: bool = False,
+    user: CurrentUser = Depends(module_permission("jobs.view")), db=Depends(get_db)):
+    available(db)
+    await intake.job_for(db, user, job_id)
+    if status and status not in STATUSES:
+        raise HTTPException(422, "Unknown processing status.")
+    query = {"orgId": user.org_id, "jobId": job_id, "status": status or {"$ne": "deleted"}}
+    if atsOnly:
+        query["atsState"] = {"$in": ["done", "queued", "scoring"]}
+    if q:
+        query["$or"] = [{field: {"$regex": re.escape(q), "$options": "i"}}
+            for field in ["fileName", "profile.name"]]
+    items = [public_item(item) async for item in db["resume_intake_items"].find(query,
+        {"rawText": 0, "storageKey": 0, "confirmation": 0})
+        .sort([("createdAt", -1), ("_id", 1)]).skip(skip).limit(limit)]
+    return jsonable_encoder({"items": items, "total": await db["resume_intake_items"].count_documents(query), "skip": skip})
 
 
 @router.get("/batches/{batch_id}")
@@ -308,7 +329,7 @@ async def associate(item_id: str, payload: AssociateRequest, user: CurrentUser =
 async def item_detail(item_id: str, user: CurrentUser = Depends(module_permission("jobs.view")), db=Depends(get_db)):
     available(db)
     item, job = await intake.item_for(db, user, item_id)
-    output = public_item(item, detail=True)
+    output = public_item(item, detail=True, original_allowed=user.role!="recruiter")
     batch = await IntakeRepository(db).get_batch(item["batchId"], user.org_id)
     output["atsSelection"] = ats_selection.selection(item, batch, job)
     try:
@@ -324,7 +345,22 @@ async def item_detail(item_id: str, user: CurrentUser = Depends(module_permissio
         or ats.get("profileSnapshotHash") != profile_fingerprint(item.get("profile", {}))))
     output["matches"] = [{"candidateId": candidate["applicantId"], "name": candidate.get("name", ""),
         "email": mask_email(candidate.get("email", "")), "phone": mask_phone(candidate.get("phone", ""))}
-        for candidate in await intake.matches(db, user.org_id, item.get("profile", {}))] if output['canEdit'] else []
+        for candidate in await intake.matches(db, user.org_id, item.get("profile", {})) if candidate["applicantId"]!=item.get("applicantId") or item["status"]=="duplicate"] if output['canEdit'] else []
+    from ..services.pii import phone_digits_variants
+    for match in output["matches"]:
+        record=await db.applicants.find_one({"orgId":user.org_id,"applicantId":match["candidateId"]}) or {}
+        profile=item.get("profile",{})
+        match["matchedOn"]=[]
+        if profile.get("email","").strip().lower()==record.get("email","").strip().lower() and profile.get("email"):match["matchedOn"].append("Email address")
+        if set(phone_digits_variants(profile.get("phone",""))) & set(record.get("phoneDigits") or phone_digits_variants(record.get("phone",""))):match["matchedOn"].append("Phone number")
+        # Candidate match information is shown only after the existing job access check.
+        match["sameJob"]=bool(await db.applications.find_one({"orgId":user.org_id,"jobId":item["jobId"],"applicantId":match["candidateId"]}))
+        if user.role in {"super_admin","admin"}:
+            match["previousJobs"]=[]
+            async for application in db.applications.find({"orgId":user.org_id,"applicantId":match["candidateId"]}).limit(5):
+                previous=await db.jobs.find_one({"orgId":user.org_id,"jobId":application["jobId"]},{"title":1}) or {}
+                match["previousJobs"].append(previous.get("title","Previous opening"))
+    output["duplicateReview"]=item.get("duplicateReview")
     output["notes"] = jsonable_encoder([{"text": redact_contacts(note['text']), **{key: note[key] for key in ["createdAt", "actorUserId"]}}
         async for note in db["resume_intake_notes"].find({"orgId": user.org_id, "itemId": item_id}).sort("createdAt", -1).limit(20)])
     return output
@@ -332,7 +368,7 @@ async def item_detail(item_id: str, user: CurrentUser = Depends(module_permissio
 
 async def review_output(db, user, item, job):
     batch = await IntakeRepository(db).get_batch(item['batchId'], user.org_id)
-    return {**public_item(item, detail=True, reveal=True), 'atsSelection': ats_selection.selection(item, batch, job)}
+    return {**public_item(item, detail=True, reveal=True, original_allowed=user.role!="recruiter"), 'atsSelection': ats_selection.selection(item, batch, job)}
 
 
 @router.post("/items/{item_id}/reveal")
@@ -413,6 +449,7 @@ async def add_note(item_id: str, payload: NoteRequest, user: CurrentUser = Depen
 
 @router.get("/items/{item_id}/download")
 async def download(item_id: str, user: CurrentUser = Depends(module_permission("jobs.view")), db=Depends(get_db)):
+    require_original_resume(user)
     available(db)
     item, _ = await intake.item_for(db, user, item_id)
     if "resumes.upload" not in user.permissions and not (user.role == "viewer" and (await intake.get_limits(db, user.org_id)).viewerDownloads):
@@ -541,12 +578,12 @@ async def edit_candidate(item_id: str, payload: ReviewRequest, user: CurrentUser
             raise HTTPException(409, "Changed contact information matches another candidate. Resolve the identity first.")
         from ..services.pii import phone_digits_variants
         await db["applicants"].update_one({"orgId": user.org_id, "applicantId": item["applicantId"]}, {"$set": {
-            "name": profile["name"], "email": profile["email"] or f"phone-only-{item['applicantId']}@placeholder.local",
+            "name": profile["name"], "normalizedEmail": profile["email"].strip().lower(), "email": profile["email"] or f"phone-only-{item['applicantId']}@placeholder.local",
             "phone": profile["phone"], "phoneDigits": phone_digits_variants(profile["phone"]), "profile": profile, "updatedAt": now()}})
         stale = profile_fingerprint(profile) != profile_fingerprint(fresh.get("profile", {})) or bool(fresh.get("atsStale"))
         updated = await IntakeRepository(db).patch_item(item_id, user.org_id, {"profile": profile, "atsStale": stale}, payload.expectedRevision)
         await intake.audit(db, user, "candidate_edit", item_id, {"applicantId": item["applicantId"], "revision": updated["revision"]})
-        return public_item(updated, detail=True, reveal=True)
+        return public_item(updated, detail=True, reveal=True, original_allowed=user.role!="recruiter")
 
 
 @router.get("/assignees")

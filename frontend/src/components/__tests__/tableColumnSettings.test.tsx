@@ -1,3 +1,4 @@
+vi.mock('../../lib/authContext',()=>({useAuth:()=>({user:{role:'admin'}})}));
 import {render,screen,fireEvent,within,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {ResumeReviewTable} from '../ResumeReviewTable';
@@ -13,24 +14,25 @@ function headers(){return within(screen.getByRole('table',{name:'Resume and ATS 
 it('hides a column while keeping the name, controls and expanded-row span correct',async()=>{
  render(<ResumeReviewTable {...props} preferenceKey={key}/>);await open();
  expect(screen.getByRole('checkbox',{name:'Show Name'})).toHaveAttribute('aria-disabled','true');
- fireEvent.click(screen.getByRole('checkbox',{name:'Show Skills'}));
- expect(headers()).not.toContain('Skills');expect(headers()).toContain('Name');expect(headers()).toContain('Actions');
+ fireEvent.click(screen.getByRole('checkbox',{name:'Show Skill Score'}));
+ expect(headers()).not.toContain('Skill Score');expect(headers()).toContain('Name');expect(headers()).toContain('Actions');
  fireEvent.click(screen.getByRole('button',{name:'Close column settings'}));
+ const columnCount=headers().length;
  fireEvent.click(screen.getByRole('button',{name:'Expand ATS details for Asha'}));
- expect(document.querySelector('#resume-details-i > td')).toHaveAttribute('colspan','14');
+ expect(document.querySelector('#resume-details-i > td')).toHaveAttribute('colspan',String(columnCount));
 });
 it('reorders headers and matching data cells and preserves sorting',async()=>{
  render(<ResumeReviewTable {...props} preferenceKey={key}/>);await open();
- fireEvent.click(screen.getByRole('button',{name:'Move ATS score left'}));
- expect(headers().slice(0,4)).toEqual(['Details','Name','ATS score','Current designation']);
+ fireEvent.click(screen.getByRole('button',{name:'Move ATS Score left'}));
+ expect(headers().slice(0,4)).toEqual(['Details','Name','ATS Score','Current designation']);
  const row=within(screen.getByRole('table',{name:'Resume and ATS review'})).getAllByRole('row')[1];
  expect(within(row).getAllByRole('cell')[2]).toHaveTextContent('66 / 100');expect(within(row).getAllByRole('cell')[3]).toHaveTextContent('Backend Engineer');
- fireEvent.click(screen.getByRole('button',{name:'Close column settings'}));fireEvent.click(screen.getByRole('button',{name:'ATS score'}));
- expect(screen.getByRole('columnheader',{name:'ATS score'})).toHaveAttribute('aria-sort','descending');
+ fireEvent.click(screen.getByRole('button',{name:'Close column settings'}));fireEvent.click(screen.getByRole('button',{name:'ATS Score'}));
+ expect(screen.getByRole('columnheader',{name:'ATS Score'})).toHaveAttribute('aria-sort','descending');
 });
 it('persists visibility and order on remount and restores defaults',async()=>{
- const view=render(<ResumeReviewTable {...props} preferenceKey={key}/>);await open();fireEvent.click(screen.getByRole('checkbox',{name:'Show Evaluation notes'}));fireEvent.click(screen.getByRole('button',{name:'Move ATS score left'}));view.unmount();
- render(<ResumeReviewTable {...props} preferenceKey={key}/>);expect(headers()).not.toContain('Evaluation notes');expect(headers()[2]).toBe('ATS score');await open();fireEvent.click(screen.getByRole('button',{name:'Reset to default'}));
+ const view=render(<ResumeReviewTable {...props} preferenceKey={key}/>);await open();fireEvent.click(screen.getByRole('checkbox',{name:'Show Evaluation notes'}));fireEvent.click(screen.getByRole('button',{name:'Move ATS Score left'}));view.unmount();
+ render(<ResumeReviewTable {...props} preferenceKey={key}/>);expect(headers()).not.toContain('Evaluation notes');expect(headers()[2]).toBe('ATS Score');await open();fireEvent.click(screen.getByRole('button',{name:'Reset to default'}));
  expect(headers()).toContain('Evaluation notes');expect(headers()[2]).toBe('Current designation');
 });
 it('keeps preferences isolated when the signed-in account changes',async()=>{
@@ -40,9 +42,9 @@ it('keeps preferences isolated when the signed-in account changes',async()=>{
  expect(localStorage.getItem('columns:tenant-a:user-b')).toBeNull();
 });
 it('handles malformed saved settings and blocked browser storage',async()=>{
- localStorage.setItem(key,'broken json');const view=render(<ResumeReviewTable {...props} preferenceKey={key}/>);expect(headers()).toContain('Skills');view.unmount();
+ localStorage.setItem(key,'broken json');const view=render(<ResumeReviewTable {...props} preferenceKey={key}/>);expect(headers()).toContain('Skill Score');view.unmount();
  vi.spyOn(Storage.prototype,'getItem').mockImplementation(()=>{throw new Error('Blocked');});vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw new Error('Blocked');});
- render(<ResumeReviewTable {...props} preferenceKey={key}/>);await open();fireEvent.click(screen.getByRole('checkbox',{name:'Show Skills'}));expect(headers()).not.toContain('Skills');
+ render(<ResumeReviewTable {...props} preferenceKey={key}/>);await open();fireEvent.click(screen.getByRole('checkbox',{name:'Show Skill Score'}));expect(headers()).not.toContain('Skill Score');
 });
 it('rejects unknown/duplicate keys, keeps required columns, and adds new columns',()=>{
  const options=[{key:'name',label:'Name',required:true},{key:'score',label:'Score'},{key:'new',label:'New'}];

@@ -15,7 +15,7 @@ from ..schemas.talent import MatchAdvice
 from ..schemas.talent import MatchRequest
 from ..schemas.resume_intake import IntakeSettings
 from ..security.deps import CurrentUser
-from ..security.roles import get_permissions_for_role
+from ..security.roles import effective_permissions
 from ..security.recruitment import (
     job_allowed,
     app_allowed,
@@ -366,7 +366,7 @@ async def tick(db):
                     actor["userId"],
                     run["orgId"],
                     actor["role"],
-                    get_permissions_for_role(actor["role"]),
+                    await effective_permissions(db, actor),
                     "",
                 )
                 job = await target(db, user, run["jobId"], accepting=True)
@@ -514,7 +514,7 @@ async def queue_new_jobs(db):
             actor["userId"],
             job["orgId"],
             actor["role"],
-            get_permissions_for_role(actor["role"]),
+            await effective_permissions(db, actor),
             "",
         )
         try:

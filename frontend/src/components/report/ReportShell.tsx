@@ -1,3 +1,4 @@
+import RoundReport from './RoundReport';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeReport, generateInsights } from '../../utils/normalizeReport';
 import { tabsFor, roundKindOf } from '../../utils/reportConfig';
@@ -7,10 +8,6 @@ import {
   openPrintDialog,
 } from '../../utils/exportReportPdf';
 import ReportHeader from './ReportHeader';
-import ReportTabs from './ReportTabs';
-import TechnicalReport from './TechnicalReport';
-import HRReport from './HRReport';
-import BasicReport from './BasicReport';
 import EmptyReportState from './EmptyReportState';
 import ReportPrintView from './print/ReportPrintView';
 import ShareModal from './ShareModal';
@@ -35,7 +32,7 @@ export default function ReportShell({
   onRegenerate?: () => void;
   regenerating?: boolean;
 }) {
-  const normalized = useMemo(() => normalizeReport(data), [data]);
+  const normalized = useMemo(() => normalizeReport(typeof data==='object'&&data!==null?{...data,assessmentQuestions:assessment.questions}:data), [data,assessment.questions]);
   const report =
     normalized && normalized.meta.roundType === 'UNKNOWN'
       ? { ...normalized, meta: { ...normalized.meta, roundType: assessment.roundType } }
@@ -142,20 +139,7 @@ export default function ReportShell({
           <EmptyReportState status={report.meta.status} />
         ) : (
           <>
-            <ReportTabs tabs={tabs} active={activeTab} onChange={goTo} />
-            {kind === 'HR' ? (
-              <HRReport
-                report={report}
-                insights={insights}
-                onRefresh={() => goTo('overview')}
-                onRegenerate={onRegenerate}
-                regenerating={regenerating}
-              />
-            ) : kind === 'BASIC' ? (
-              <BasicReport report={report} insights={insights} />
-            ) : (
-              <TechnicalReport report={report} insights={insights} />
-            )}
+            <RoundReport report={report} insights={insights}/>
             <p className="pt-2 text-center text-[0.6875rem] text-muted-foreground">
               Job {report.meta.jobId ?? 'N/A'} · Candidate {report.meta.candidateId ?? 'N/A'} ·{' '}
               {report.meta.roundType} · Status {report.meta.status ?? 'N/A'}

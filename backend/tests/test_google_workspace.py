@@ -1,7 +1,7 @@
 """Synthetic Google integration: no Google accounts, paid calls, or live credentials."""
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlsplit
 from unittest.mock import AsyncMock
 
@@ -272,6 +272,7 @@ def booking():
 
 async def test_outbox_event_creation_is_idempotent_and_has_private_reminder(google,db,monkeypatch):
     await user(db);await connection(db)
+    monkeypatch.setattr(calendar,'dry_run',lambda:True)
     row=booking();await db['recruit_interviews'].insert_one(row)
     monkeypatch.setattr(calendar,'check_availability',AsyncMock(return_value={'available':True}))
     calls=AsyncMock(side_effect=[None,{'id':'new'}]);monkeypatch.setattr(calendar,'request',calls)
@@ -279,7 +280,7 @@ async def test_outbox_event_creation_is_idempotent_and_has_private_reminder(goog
     assert (await calendar.sync_interview(db,row))['status']=='synced'
     body=calls.call_args.kwargs['body']
     assert body['reminders']=={'useDefault':False,'overrides':[{'method':'popup','minutes':15}]}
-    assert body['visibility']=='private' and 'attendees' not in body
+    assert body['visibility']=='private' and body['attendees']==[{'email':'member@gmail.com'}]
     assert calls.call_args.kwargs['params']['sendUpdates']=='none'
     await calendar.sync_interview(db,row)
     assert calls.await_count==2
@@ -366,7 +367,7 @@ async def test_real_schedule_reschedule_reassign_cancel_journey(recruitment_clie
     response=await recruitment_client.put('/api/recruitment/interviews/'+key,headers=headers(),json=body)
     assert response.status_code==200,response.text
     row=response.json();assert row['googleCalendarStatus']=='synced' and len(events)==1
-    assert next(iter(events.values()))['start']['dateTime']==start.isoformat()
+    assert datetime.fromisoformat(next(iter(events.values()))['start']['dateTime']).astimezone(timezone.utc)==start
     body.update(interviewerId='second-tech',expectedRevision=row['revision'])
     response=await recruitment_client.put('/api/recruitment/interviews/'+key,headers=headers(),json=body)
     assert response.status_code==200,response.text

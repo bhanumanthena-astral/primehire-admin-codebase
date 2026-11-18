@@ -10,7 +10,7 @@ beforeEach(()=>vi.clearAllMocks());
 it('shows the six requested fields, zero scores, pending statuses and back navigation',async()=>{
  vi.mocked(authFetch).mockResolvedValue(new Response(JSON.stringify({items:[row,{...row,applicationId:'b',name:'Zoe',email:'zoe@example.test',assessment:{score:null,label:'Report pending'}}],total:2})));
  const back=vi.fn();render(<JobApplicationsPage job={job} onBack={back}/>);
- expect(await screen.findByText('amy@example.test')).toBeVisible();expect(screen.getByText('0')).toBeVisible();expect(screen.getByText('Report pending')).toBeVisible();expect(screen.getAllByRole('columnheader')).toHaveLength(6);
+ expect(await screen.findByText('amy@example.test')).toBeVisible();expect(screen.getByText('0')).toBeVisible();expect(screen.getByText('Report pending')).toBeVisible();expect(screen.getAllByRole('columnheader')).toHaveLength(7);
  expect(vi.mocked(authFetch).mock.calls[0][0]).toContain('/jobs/job-a/applications?skip=0&limit=50');
  fireEvent.click(screen.getByRole('button',{name:'Back to job'}));expect(back).toHaveBeenCalledOnce();
 });

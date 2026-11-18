@@ -17,6 +17,7 @@ from ..config import settings
 from ..models.user import utcnow
 from ..models.recruitment import aware, lease
 from . import google_oauth as oauth
+from .recruitment_mail import dry_run
 
 BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
 
@@ -147,8 +148,8 @@ def event_body(row, identifier):
     return {'id': identifier, 'summary': f"Elite HR — {row['round'].title()} interview",
             'description': 'Interview scheduled in Elite HR.' + (f"\nJoin: {row['meetingLink']}" if row.get('meetingLink') else ''),
             'location': row.get('location', ''),
-            'start': {'dateTime': aware(row['startsAt']).isoformat()},
-            'end': {'dateTime': aware(row['endsAt']).isoformat()},
+            'start': {'dateTime': aware(row['startsAt']).astimezone(ZoneInfo(row.get('timezone','UTC'))).isoformat(), 'timeZone':row.get('timezone','UTC')},
+            'end': {'dateTime': aware(row['endsAt']).astimezone(ZoneInfo(row.get('timezone','UTC'))).isoformat(), 'timeZone':row.get('timezone','UTC')},
             'visibility': 'private', 'transparency': 'opaque',
             'reminders': {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': row.get('reminderMinutes', 15)}]},
             'extendedProperties': {'private': {'eliteInterview': row['interviewId'], 'eliteOrg': row['orgId']}}}
@@ -179,7 +180,7 @@ async def remove(db, row, mapping):
         return
     if not owns(event, row):
         raise HTTPException(409, 'The Google event identity changed. Administrator review is required.')
-    await request(db, row['orgId'], uid, 'DELETE', event_id=mapping['eventId'], params={'sendUpdates': 'none'}, allow=(404, 410))
+    await request(db, row['orgId'], uid, 'DELETE', event_id=mapping['eventId'], params={'sendUpdates': 'none' if dry_run() else 'all'}, allow=(404, 410))
 
 
 async def enqueue(db, row):
@@ -231,11 +232,15 @@ async def sync_interview(db, row):
                 if old and not owns(old, row):
                     raise HTTPException(409, 'The Google event identity changed. Administrator review is required.')
                 body = event_body(row, identifier)
+                candidate=await db.applicants.find_one({'orgId':row['orgId'],'applicantId':row.get('applicantId')}) or {}
+                interviewer=await db.users.find_one({'orgId':row['orgId'],'userId':row['interviewerId']}) or {}
+                addresses={record.get('email','').strip().lower() for record in [candidate,interviewer]}
+                body['attendees']=[{'email':address} for address in sorted(addresses) if '@' in address and not address.endswith('@placeholder.local')]
                 if old and old.get('status') != 'cancelled':
                     body.pop('id')
-                    result = await request(db, row['orgId'], row['interviewerId'], 'PATCH', event_id=identifier, body=body, params={'sendUpdates': 'none'})
+                    result = await request(db, row['orgId'], row['interviewerId'], 'PATCH', event_id=identifier, body=body, params={'sendUpdates': 'none' if dry_run() else 'all'})
                 else:
-                    result = await request(db, row['orgId'], row['interviewerId'], 'POST', body=body, params={'sendUpdates': 'none'}, allow=(409,))
+                    result = await request(db, row['orgId'], row['interviewerId'], 'POST', body=body, params={'sendUpdates': 'none' if dry_run() else 'all'}, allow=(409,))
                     if result is None:  # A retry after a successful provider write.
                         result = await request(db, row['orgId'], row['interviewerId'], 'GET', event_id=identifier)
                         if result.get('status') == 'cancelled' or not owns(result, row):

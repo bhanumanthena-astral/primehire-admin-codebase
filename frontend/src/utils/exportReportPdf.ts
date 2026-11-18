@@ -1,3 +1,4 @@
+import {drawMcqPdf} from './mcqPdf';
 import { jsPDF } from 'jspdf';
 import type { RefObject } from 'react';
 import type { NormalizedReport, Insights, NormalizedQuestion } from './normalizeReport';
@@ -328,6 +329,7 @@ export async function exportInteractivePdfReport({
   currentY += 4;
 
   report.questions.forEach((q: NormalizedQuestion, index: number) => {
+    if(q.mcq){currentY=drawMcqPdf(doc,q.mcq,q.question,currentY);return;}
     checkPageBreak(36);
 
     // Question Box Container

@@ -53,6 +53,10 @@ async def deliver(db, job):
     config = configuration()
     if not actor or actor.get('role') not in {'super_admin', 'admin', 'hr', 'recruiter'} or not config['configured'] or not approval.get('enabled') or approval.get('price') != config['price'] or approval.get('currency') != config['currency']:
         return {'skipped': 'Delivery configuration, actor or manager approval is unavailable'}
+    from ..security.roles import effective_permissions
+    policy = await db['company_settings'].find_one({'_id': org}, {'enabledPermissions': 1}) or {}
+    if (actor['role'] == 'admin' and 'whatsapp.campaign' not in await effective_permissions(db, actor)) or (actor['role'] != 'super_admin' and 'enabledPermissions' in policy and 'whatsapp.campaign' not in policy['enabledPermissions']):
+        return {"skipped": "Administrator lacks WhatsApp campaign permission"}
     if actor.get('role') not in {'super_admin', 'admin'} and actor['userId'] not in {hiring_job.get('createdBy'), hiring_job.get('assigneeUserId')}:
         return {'skipped': 'Sender no longer owns this job'}
     person = await db['applicants'].find_one({'orgId': org, 'applicantId': application['applicantId']}) or {}

@@ -20,6 +20,7 @@ from ..models.user import utcnow
 from ..models.recruitment import aware, lease
 from ..security.tokens import hash_token
 
+GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.send'
 CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events.owned'
 TOKEN_URL = 'https://oauth2.googleapis.com/token'
 JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs'
@@ -83,7 +84,7 @@ async def start(db, return_to, *, actor=None):
         record.update(userId=actor.user_id, sessionId=actor.session_id)
     await db['google_oauth_tickets'].insert_one(record)
     params = {'client_id': settings.google_client_id, 'redirect_uri': settings.google_redirect_uri,
-              'response_type': 'code', 'scope': 'openid email profile' + (' ' + CALENDAR_SCOPE if actor else ''),
+              'response_type': 'code', 'scope': 'openid email profile' + (' ' + CALENDAR_SCOPE + ' ' + GMAIL_SCOPE if actor else ''),
               'state': state, 'nonce': nonce,
               'code_challenge': base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('='),
               'code_challenge_method': 'S256', 'prompt': 'consent' if actor else 'select_account'}
@@ -243,15 +244,15 @@ async def consume(db, ticket):
     return record, user
 
 
-async def access_token(db, org, uid):
+async def access_token(db, org, uid, *, required_scope=CALENDAR_SCOPE):
     require_configured(db)
     query = {'orgId': org, 'userId': uid}
     if not await db['users'].find_one({**query, 'isActive': True}):
         raise HTTPException(409, 'The assigned interviewer is no longer active')
     async with lease(db, org, [f'google-token:{uid}']):
         row = await db['google_connections'].find_one(query)
-        if not row or row.get('status') != 'connected' or CALENDAR_SCOPE not in row.get('scopes', []):
-            raise HTTPException(409, 'No Google Calendar connection is available for this interviewer')
+        if not row or row.get('status') != 'connected' or required_scope not in row.get('scopes', []):
+            raise HTTPException(409, 'No Google Calendar connection is available for this interviewer' if required_scope==CALENDAR_SCOPE else 'Reconnect Google and allow Gmail sending.')
         if row.get('expiresAt') and aware(row['expiresAt']) > utcnow() + timedelta(seconds=60):
             return decrypt(row['accessTokenEncrypted'])
         try:

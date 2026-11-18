@@ -202,3 +202,26 @@ async def test_unknown_or_unconfigured_media_is_rejected_without_network_access(
     row=await capture(db,source(),report_available=True)
     assert (await client.get(BASE+'/reports/'+row['reportId']+'/media/q2?version=1',headers=headers())).status_code==404
     assert (await client.get(BASE+'/reports/'+row['reportId']+'/media/q1?version=1',headers=headers())).status_code==409
+
+async def test_mcq_old_versions_recover_answer_fields_and_scoped_original_options(client,db):
+    payload=source()
+    payload['report']['question_wise_result']=[{'id':'original_q','question':'Choose one','type':'MCQ',
+        'option_id':-8,'correct_option_id':'B','max_score':10,'obtained_score':0,'is_result_generated':True}]
+    row=await capture(db,payload,report_available=True,submitted=True)
+    await db.assessments.insert_one({'orgId':'other','jobId':'ASSESSMENT','questions':[{'id':'original_q','options':['Wrong tenant']}]})
+    await db.assessments.insert_one({'orgId':'default','jobId':'ASSESSMENT','questions':[{'id':'original-q','text':'Choose one','options':['Google','OpenAI'],'correctOption':'OpenAI'}]})
+    stored=await db.report_versions.find_one({'reportId':row['reportId']})
+    questions=deepcopy(stored['content']['questions'])
+    for question in questions:
+        question.pop('type',None)
+        question.pop('mcqInput',None)
+    await db.report_versions.update_one({'reportId':row['reportId']},{'$set':{'content.questions':questions}})
+    response=await client.get(BASE+'/reports/'+row['reportId'],headers=headers())
+    assert response.status_code==200,response.text
+    content=response.json()['content']
+    assert content['questions'][0]['type']=='MCQ'
+    assert content['questions'][0]['mcqInput']['optionId']==-8
+    assert content['questions'][0]['mcqInput']['isResultGenerated'] is True
+    assert content['assessmentQuestions'][0]['options']==['Google','OpenAI']
+    unchanged=await db.report_versions.find_one({'reportId':row['reportId']})
+    assert 'mcqInput' not in unchanged['content']['questions'][0]

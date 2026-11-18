@@ -1,6 +1,7 @@
 """Module 4 V2-only API. Legacy candidate/assessment CRUD is untouched."""
 import re
 from typing import Literal
+from ..security.resume_access import require_original_resume
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from ..config import settings
@@ -105,7 +106,7 @@ async def detail(key:str,response:Response,user=Depends(require_permission('cand
     row=await service.person(db,user,key)
     manage=await service.can_manage(db,user)
     return {'candidateId':key,'profile':project_management_profile(service.profile(row)),'revision':row.get('profileRevision',0),
-        'createdAt':row.get('createdAt'),'updatedAt':row.get('updatedAt'),'canManage':manage}
+        'createdAt':row.get('createdAt'),'updatedAt':row.get('updatedAt'),'canManage':manage,'canDownloadResume':manage and user.role!='recruiter'}
 
 
 @router.post('/{key}/reveal')
@@ -155,6 +156,7 @@ async def dates(key:str,assignment_id:str,payload:AssignmentDates,user=Depends(r
 
 @router.get('/{key}/resume')
 async def resume(key:str,user=Depends(require_permission('candidates.manage')),db=Depends(database)):
+    require_original_resume(user)
     await writable(db,user);await service.person(db,user,key)
     query={'orgId':user.org_id,'applicantId':key,'status':{'$ne':'deleted'},'scanStatus':'clean','storageKey':{'$exists':True}}
     if user.role not in service.ADMIN:

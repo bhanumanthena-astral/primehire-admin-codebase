@@ -58,6 +58,10 @@ async def link(job_id: str, payload: Link, user=Depends(require_permission('cand
         if (job.get('assessmentJobId') or None) != (payload.expectedAssessmentId or None):
             raise HTTPException(409, 'The linked assessment changed. Refresh the job and try again')
         assessment = await service.assessment_for(db, user, payload.assessmentId)
+        if job.get('assessmentJobId') and job['assessmentJobId'] != payload.assessmentId:
+            await db['applications'].update_many({'orgId':user.org_id,'jobId':job_id,
+                'assessment.assessmentId':None,'assessment':{'$ne':None}},
+                {'$set':{'assessment.assessmentId':job['assessmentJobId']}})
         await db['jobs'].update_one({'orgId': user.org_id, 'jobId': job_id}, {'$set': {
             'assessmentJobId': payload.assessmentId, 'assessmentRoundType': assessment['roundType'], 'updatedAt': now()}})
         await service.audit(db, user, 'job_assessment_linked', job_id, {'assessmentId': payload.assessmentId, 'previousAssessmentId': job.get('assessmentJobId')})

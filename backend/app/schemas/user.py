@@ -28,6 +28,7 @@ class UserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     role: UserRole
     orgId: str | None = None
+    adminPermissions: list[str] | None = None
     password: str | None = None
     jobAccess: list[Literal['view','edit','create','upload']] | None = None
 

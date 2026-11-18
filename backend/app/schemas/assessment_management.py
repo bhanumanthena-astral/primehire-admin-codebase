@@ -75,6 +75,21 @@ class PublishDraft(BaseModel):
     confirmed: Literal[True]
 
 
+class UpdateAssessmentDates(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    expectedRevision: int = Field(ge=1)
+    startDate: datetime
+    endDate: datetime
+
+    @model_validator(mode='after')
+    def dates(self):
+        if not self.startDate.tzinfo or not self.endDate.tzinfo:
+            raise ValueError('Dates must include a timezone')
+        if self.endDate <= self.startDate:
+            raise ValueError('End Date must be later than Start Date')
+        return self
+
+
 class CsvText(BaseModel):
     model_config = ConfigDict(extra='forbid')
     text: str = Field(min_length=1, max_length=2_000_000)

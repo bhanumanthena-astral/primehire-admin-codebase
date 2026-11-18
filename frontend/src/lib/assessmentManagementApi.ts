@@ -3,7 +3,7 @@ import { AssessmentProfile, Question } from '../types';
 
 export type ManagedAssessment = AssessmentProfile & {
   revision: number; publicationState: 'draft' | 'publishing' | 'published' | 'uncertain';
-  status: string; canEdit: boolean; canPublish: boolean;
+  status: string; canEdit: boolean; canEditDates?: boolean; canPublish: boolean;
   createdBy?: string; updatedBy?: string; createdByName?: string; updatedByName?: string;
   updatedAt?: string; publishError?: string;
 };

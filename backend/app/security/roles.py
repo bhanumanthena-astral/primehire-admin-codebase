@@ -17,6 +17,7 @@ class Role(str, Enum):
 
 
 PERMISSIONS = frozenset({
+    "whatsapp.campaign",
     "leadership.view",
     "google.connect",
     "candidates.view", "candidates.manage",
@@ -46,6 +47,7 @@ PERMISSIONS = frozenset({
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     Role.SUPER_ADMIN.value: PERMISSIONS,
     Role.ADMIN.value: frozenset({
+        "whatsapp.campaign",
         "leadership.view",
         "candidates.view", "candidates.manage",
         "assessments.view", "assessments.manage",
@@ -103,3 +105,18 @@ def get_permissions_for_role(role: str) -> frozenset[str]:
 def has_permission(role: str, permission: str) -> bool:
     """Return True if the role grants the specified permission."""
     return permission in get_permissions_for_role(role)
+
+
+def user_permissions(user: dict) -> frozenset[str]:
+    defaults = get_permissions_for_role(user["role"])
+    if user["role"] == "admin" and user.get("adminPermissions") is not None:
+        return defaults.intersection(user["adminPermissions"])
+    return defaults
+
+
+async def effective_permissions(db, user: dict) -> frozenset[str]:
+    permissions = user_permissions(user)
+    if user["role"] == "super_admin":
+        return permissions
+    policy = await db.company_settings.find_one({"_id": user["orgId"]}, {"enabledPermissions": 1}) or {}
+    return permissions.intersection(policy["enabledPermissions"]) if "enabledPermissions" in policy else permissions

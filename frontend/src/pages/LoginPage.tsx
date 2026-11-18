@@ -23,6 +23,7 @@ export const LoginPage: React.FC = () => {
   const location = useLocation();
   const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/';
 
+  const [companyId,setCompanyId] = useState('');
   const [identity, setIdentity] = useState('');
   const [passcode, setPasscode] = useState('');
   const [showPasscode, setShowPasscode] = useState(false);
@@ -47,7 +48,7 @@ export const LoginPage: React.FC = () => {
 
     setLoading(true);
     try {
-      const result = await login(identity.trim(), passcode);
+      const result = await login(identity.trim(), passcode, companyId.trim() || undefined);
       if (result.mfaRequired && result.mfaToken) {
         setMfaMethod('password');
         setMfaToken(result.mfaToken);
@@ -111,6 +112,10 @@ export const LoginPage: React.FC = () => {
                 onChange={event=>{setIdentity(event.target.value);setIdentityError(null);}} aria-invalid={!!identityError} aria-describedby={identityError?'elite-identity-error':undefined} className="h-11"/>
               {identityError&&<p id="elite-identity-error" role="alert" className="text-xs text-destructive">{identityError}</p>}
             </div>
+            <details><summary className="cursor-pointer text-sm">Sign in to a specific company</summary>
+              <label htmlFor="company-id">Company ID</label>
+              <Input id="company-id" value={companyId} onChange={e=>setCompanyId(e.target.value)}/>
+            </details>
             <div className="space-y-2">
               <label htmlFor="elite-passcode" className="block text-sm font-medium">Passcode</label>
               <div className="relative">

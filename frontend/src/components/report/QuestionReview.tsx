@@ -1,3 +1,4 @@
+import McqAnswerReview from './McqAnswerReview';
 import {Button} from '@/components/ui/button';
 import type React from 'react';
 import { useEffect, useState, Fragment } from 'react';
@@ -80,6 +81,7 @@ function QuestionDetail({ q, qkey, delay = 0 }: { q: NormalizedQuestion | undefi
     setVideoError(false);
   }, [qkey]);
   if (!q) return null;
+  if(q.mcq)return <div className="min-w-0 space-y-4 rounded-2xl border border-border bg-card p-5"><h3 className="font-semibold">{q.question}</h3><McqAnswerReview result={q.mcq}/></div>;
   const grade = getGrade(q.percentage);
 
   return (

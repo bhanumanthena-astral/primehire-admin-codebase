@@ -34,10 +34,10 @@ it('expands evaluation and assignment tables without opening a profile modal',as
 });
 it('sorts scores including zero and leaves unscored rows last',()=>{
  render(<ResumeReviewTable {...props()} items={[item,{...item,itemId:'i2',profile:{name:'Zero'},ats:{...item.ats,overall:0}},{...item,itemId:'i3',profile:{name:'Pending'},ats:null}]}/>);
- fireEvent.click(screen.getByRole('button',{name:'ATS score'}));
+ fireEvent.click(screen.getByRole('button',{name:'ATS Score'}));
  let rows=within(screen.getByRole('table',{name:'Resume and ATS review'})).getAllByRole('row');
  expect(rows[1]).toHaveTextContent('Asha');expect(rows[2]).toHaveTextContent('Zero');expect(rows[3]).toHaveTextContent('Pending');
- fireEvent.click(screen.getByRole('button',{name:'ATS score'}));
+ fireEvent.click(screen.getByRole('button',{name:'ATS Score'}));
  rows=within(screen.getByRole('table',{name:'Resume and ATS review'})).getAllByRole('row');
  expect(rows[1]).toHaveTextContent('Zero');expect(rows[3]).toHaveTextContent('Pending');
 });
@@ -52,7 +52,7 @@ it('keeps management controls hidden for read-only access',()=>{
 it('shows every ATS dimension, evidence and evaluation note in the main row before expansion',()=>{
  render(<ResumeReviewTable {...props()} items={[{...item,profile:{name:'Asha',currentDesignation:'Backend Engineer',education:['B.Tech'],ugUniversity:'Example University'}}]}/>);
  const table=screen.getByRole('table',{name:'Resume and ATS review'});
- for(const label of ['Skills','Experience','Education','Keyword','Role','Matched skills','Missing skills','Evaluation notes'])expect(within(table).getByRole('columnheader',{name:label})).toBeVisible();
+ for(const label of ['Skill Score','Experience','Education','Keyword Match','Role','Matched skills','Missing skills','Evaluation notes'])expect(within(table).getByRole('columnheader',{name:label})).toBeVisible();
  expect(within(table).getByText('Python, SQL')).toBeVisible();
  expect(within(table).getByText('AWS')).toBeVisible();
  expect(within(table).getByText('Backend Engineer')).toBeVisible();

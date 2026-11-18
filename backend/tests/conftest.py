@@ -136,8 +136,9 @@ def legacy_matching_intent(monkeypatch):
     monkeypatch.setattr(ResumeFileRepository, 'create', matching_file)
 
 
-def auth_headers(role: str = "super_admin", user_id: str = "test-user", org_id: str = "default") -> dict[str, str]:
-    """Helper returning Bearer authorization headers for test requests."""
+def auth_headers(role: str = "super_admin", user_id: str | None = None, org_id: str = "default") -> dict[str, str]:
+    """Use distinct synthetic actors so persisted HR ownership cannot change another role."""
+    user_id = user_id or ("test-user" if role == "hr" else "test-" + role)
     token = create_access_token(
         user_id=user_id,
         org_id=org_id,
@@ -212,3 +213,22 @@ def post_job(client, job_headers: dict, sa_headers: dict, job_key: str,
                       headers=job_headers)
     assert res.status_code == 201, res.text
     return res.json()
+
+
+def ensure_actor(client, role, user_id=None):
+    """Persist a complete synthetic account before exercising its real role guards."""
+    uid=user_id or ('test-user' if role=='hr' else 'test-'+role)
+    async def persist():
+        from app.security.deps import get_db
+        from app.models.user import UserRepository
+        database=client.app.dependency_overrides[get_db]()
+        existing=await database.users.find_one({'orgId':'default','userId':uid})
+        if existing:
+            await database.users.update_one({'orgId':'default','userId':uid},{'$set':{'role':role}})
+        else:
+            await UserRepository(database).create({'orgId':'default','userId':uid,'role':role,'isActive':True,'name':'Synthetic '+role,'email':uid+'@example.test'})
+    if client.portal:
+        client.portal.call(persist)
+    else:
+        with client._portal_factory() as portal:portal.call(persist)
+    return auth_headers(role=role,user_id=uid)

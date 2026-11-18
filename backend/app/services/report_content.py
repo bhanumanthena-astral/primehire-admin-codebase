@@ -98,6 +98,8 @@ def presentation(payload, round_type):
         url=pick(q.get('videoUrl'),q.get('videoAnswer'))
         if isinstance(url,str) and url: result['media'][reference]=url
         result['questions'].append({
+             'type':text(q.get('type')),
+            'mcqInput':{key:q.get(key) for key in ['id','question','type','optionId','correctOptionId','isResultGenerated','options']},
             'reference':reference,'id':text(pick(q.get('id'),q.get('questionId'))),
             'question':text(pick(q.get('question'),q.get('questionText'))),
             'responseReference':pick(q.get('answer'),q.get('response'),q.get('optionId')),

@@ -1,3 +1,4 @@
+import {useAuth} from '../lib/authContext';
 import React, {useEffect, useState} from 'react';
 import {ArrowLeft, ChevronRight} from 'lucide-react';
 import {Button} from '@/components/ui/button';
@@ -15,12 +16,14 @@ import type {ManagedAssessment} from '../lib/assessmentManagementApi';
 
 const steps = ['Job details', 'Resumes & ATS review', 'Assessments', 'Candidate reports', 'Interview scheduling'];
 export function JobWorkspace({jobId,onBack,onChanged,onDeleted,renderAssessments}:{jobId:string;onBack:()=>void;onChanged:(job:Job)=>void;onDeleted:(id:string)=>void;renderAssessments?:(job:Job,onViewTable?:(assessment:ManagedAssessment)=>void)=>React.ReactNode}) {
+  const {user}=useAuth();
   const [job,setJob]=useState<Job|null>(null),[step,setStep]=useState(0),[applicationsOpen,setApplicationsOpen]=useState(false),[error,setError]=useState('');
   const [candidateTable,setCandidateTable]=useState<ManagedAssessment|null>(null);
   const [scheduleTarget,setScheduleTarget]=useState<Application|null>(null);
   const [caps,setCaps]=useState<Capabilities|null>(null);
   useEffect(()=>{let active=true;void fetchJobDetail(jobId).then(value=>{if(active)setJob(value.job);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[jobId,step]);
   useEffect(()=>{if(step!==1)return;let active=true;void intakeGet<Capabilities>('/capabilities').then(value=>{if(active)setCaps(value);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[step]);
+  if(user?.role==='admin'&&!applicationsOpen)return <JobDetailsPage jobId={jobId} onBack={onBack} onChanged={onChanged} onDeleted={onDeleted} onShowApplications={()=>setApplicationsOpen(true)}/>;
   if(applicationsOpen&&job)return <JobApplicationsPage job={job} onBack={()=>setApplicationsOpen(false)}/>;
   return <section className="space-y-5" aria-label="Job workspace">
     <div className="flex flex-wrap items-center justify-between gap-3"><Button variant="outline" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4"/>Exit to jobs</Button><nav aria-label="Job breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"><button onClick={()=>setStep(0)}>{job?.title||'Job workspace'}</button><ChevronRight size={14}/><span className="font-semibold text-foreground">{steps[step]}</span></nav></div>

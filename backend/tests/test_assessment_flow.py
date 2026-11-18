@@ -49,7 +49,7 @@ def _hr():
 
 
 def _sa():
-    return auth_headers(role="super_admin", org_id="default")
+    return auth_headers(role="super_admin", org_id="default", user_id="assessment-root")
 
 
 CANARY = "C@nary-Pw-9zX7"
@@ -155,7 +155,7 @@ def _make_shortlisted(client, key="A-JOB", email="cand.a@example.com", assessmen
     job = client.post("/api/jobs", json={
         **job_payload(key, "Backend", ensure_hr_owner(client, _sa()), lifecycleStatus="OPEN"),
         "mustHaveSkills": ["Python"],
-        "assessmentJobId": assessment}, headers=auth_headers(role="super_admin")).json()
+        "assessmentJobId": assessment}, headers=auth_headers(role="super_admin", user_id="assessment-root")).json()
     applicant = client.post("/api/applicants", json={"email": email, "name": "Cand A"},
                             headers=_hr()).json()
     app_res = client.post("/api/applications", json={
@@ -290,7 +290,7 @@ async def test_bulk_per_item_results(client, mock_db):
         "initialStage": "TALENT_POOL"}, headers=_hr()).json()
     no_assess_job = client.post("/api/jobs", json=job_payload("B-NA", "No Assess",
                                 ensure_hr_owner(client, _sa()), lifecycleStatus="OPEN"),
-                                headers=auth_headers(role="super_admin")).json()
+                                headers=auth_headers(role="super_admin", user_id="assessment-root")).json()
     no_assess_app = client.post("/api/applications", json={
         "jobId": no_assess_job["jobId"],
         "applicantId": client.post("/api/applicants", json={"email": "b3@example.com", "name": "B3"},
@@ -396,7 +396,7 @@ async def test_autosend_default_off_opt_in_sends(client, mock_db, monkeypatch):
     monkeypatch.setattr(settings, "email_dry_run", True)
     client.post("/api/jobs", json={**job_payload("AS-JOB", "Auto", ensure_hr_owner(client, _sa()), lifecycleStatus="OPEN"),
                                    "mustHaveSkills": ["Python"],
-                                   "assessmentJobId": "UP-AS-1"}, headers=auth_headers(role="super_admin"))
+                                   "assessmentJobId": "UP-AS-1"}, headers=auth_headers(role="super_admin", user_id="assessment-root"))
     lines = ["Auto Cand", "auto.cand@example.com", "+919444444444",
              "Python dev with 5 years of experience", "Skills: Python, SQL", "B.Tech"]
     ct = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

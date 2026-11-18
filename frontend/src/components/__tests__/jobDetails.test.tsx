@@ -29,6 +29,7 @@ vi.mock('../../lib/authContext', () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock('../AdminHiringProgress',()=>({AdminHiringProgress:()=> <section aria-label="Guided hiring workflow">Guided hiring</section>}));
 vi.mock('../JobsPage', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../JobsPage')>();
   return {
