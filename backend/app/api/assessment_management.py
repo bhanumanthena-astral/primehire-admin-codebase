@@ -23,9 +23,13 @@ def database(db=Depends(get_db)):
 
 
 async def can_write(db, user):
-    if user.impersonating or 'assessments.manage' not in user.permissions:
+    if user.impersonating:
         return False
-    if user.role in {'super_admin', 'admin'}:
+    if user.role == 'super_admin':
+        return True
+    if 'assessments.manage' not in user.permissions:
+        return False
+    if user.role == 'admin':
         return True
     actor = await db['users'].find_one({'orgId': user.org_id, 'userId': user.user_id}, {'jobAccess': 1})
     access = (actor or {}).get('jobAccess')
