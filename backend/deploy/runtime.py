@@ -141,7 +141,7 @@ def main():
         elif args.role == 'assessment':
             from app.services.worker import run_forever
             asyncio.run(run_forever(db, poll_seconds=2,
-                kinds=['assessment_send','assessment_sync','report_sync']))
+                kinds=['assessment_send','email_send','assessment_sync','report_sync']))
         elif args.role == 'recruitment':
             from app.services.recruitment_worker import run
             asyncio.run(run(db))

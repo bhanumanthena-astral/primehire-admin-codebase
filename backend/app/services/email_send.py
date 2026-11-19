@@ -17,6 +17,7 @@ import random
 import re
 from html import escape
 from typing import Any
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -284,7 +285,7 @@ async def send_via_zepto(to_email: str, to_name: str, subject: str, html_body: s
             error = EmailSendError("Email provider rejected the credentials.")
             error.status_code = resp.status_code
             raise error
-        if 400 <= resp.status_code < 500:
+        if 400 <= resp.status_code < 500 and resp.status_code != 429:
             error = EmailSendError(f"Email provider refused the message ({resp.status_code}).")
             error.status_code = resp.status_code
             raise error
@@ -309,6 +310,13 @@ async def process_email_job(db: Any, job: dict[str, Any]) -> dict[str, Any]:
         return {"skipped": "message not found"}
     if msg.get("status") == "sent":
         return {"skipped": "already sent"}
+    if msg.get("status") in {"failed", "cancelled"}:
+        return {"skipped": "message is terminal"}
+    if not await repo.claim_due(message_id, org_id):
+        return {"skipped": "message is not due or another worker is sending"}
+    if int(msg.get("attempts", 0)) >= int(msg.get("maxAttempts", 5)):
+        await repo.mark_failed(message_id, org_id, "Delivery attempt limit reached.", retryable=False)
+        return {"failed": "Delivery attempt limit reached."}
     if not msg.get("payloadEncrypted"):
         await repo.mark_failed(message_id, org_id, "Body already wiped; cannot resend.", retryable=False)
         return {"failed": "body wiped"}
@@ -320,7 +328,6 @@ async def process_email_job(db: Any, job: dict[str, Any]) -> dict[str, Any]:
         return {"failed": type(exc).__name__}
 
     to_email = str(body.get("to", ""))
-    await repo.mark_sending(message_id, org_id)
 
     if settings.email_dry_run:
         await repo.mark_sent(message_id, org_id, via="dry_run", wipe=False)
@@ -339,12 +346,45 @@ async def process_email_job(db: Any, job: dict[str, Any]) -> dict[str, Any]:
             to_email, str(msg.get("toName", "")), str(msg.get("subject", "")),
             str(body.get("html", "")), **options)
     except (EmailSendError, CompanyMailError) as exc:
-        status = await repo.mark_failed(message_id, org_id, str(exc), retryable=not isinstance(exc, CompanyMailError),
+        code = getattr(exc, "status_code", None)
+        permanent = isinstance(exc, CompanyMailError) or (isinstance(code, int) and 400 <= code < 500 and code != 429)
+        status = await repo.mark_failed(message_id, org_id, str(exc), retryable=not permanent,
                                          max_attempts=int(msg.get("maxAttempts", 5)))
         return {"failed": str(exc), "status": status}
     await repo.mark_sent(message_id, org_id, via="zepto", wipe=True)
+    await repo.coll.update_one({"messageId": message_id, "orgId": org_id},
+                              {"$set": {"deliveryStatus": "accepted"}})
     logger.info("Outbox %s sent via Zepto (upstream=%s).", message_id, upstream_id)
     return {"sent": "zepto"}
+
+
+async def recover_email_jobs(db: Any, limit: int = 50) -> int:
+    """Repair the durable outbox/job hand-off, including old completed retries."""
+    from ..models.jobs import BackgroundJobRepository
+
+    now = datetime.now(timezone.utc)
+    queue = BackgroundJobRepository(db)
+    recovered = 0
+    cursor = db["email_outbox"].find({"$or": [
+        {"status": "pending", "nextRetryAt": {"$lte": now}},
+        {"status": "sending", "updatedAt": {"$lt": now - timedelta(minutes=5)}},
+    ]}, {"payloadEncrypted": 0}).sort("nextRetryAt", 1).limit(limit)
+    async for msg in cursor:
+        query = {"orgId": msg["orgId"], "kind": "email_send", "entityKey": msg["messageId"]}
+        job = await queue.coll.find_one(query)
+        if job is None:
+            payload = {"messageId": msg["messageId"]}
+            if msg.get("kind") == "assessment_invite" and msg.get("entityType") == "application":
+                payload["applicationId"] = msg["entityKey"]
+            await queue.enqueue(org_id=msg["orgId"], kind="email_send", entity_type="outbox_message",
+                                entity_key=msg["messageId"], payload=payload)
+            recovered += 1
+        elif job["status"] in {"done", "dead", "failed"}:
+            result = await queue.coll.update_one({**query, "jobId": job["jobId"], "status": {"$in": ["done", "dead", "failed"]}},
+                {"$set": {"status": "pending", "runAfter": now, "leaseUntil": None,
+                          "attempts": 0, "result": None, "lastError": None, "updatedAt": now}})
+            recovered += result.modified_count
+    return recovered
 
 
 def audit_safe_details(msg: dict[str, Any]) -> dict[str, Any]:

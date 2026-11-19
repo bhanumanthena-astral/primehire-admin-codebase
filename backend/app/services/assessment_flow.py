@@ -102,7 +102,7 @@ async def _request_assessment_send(
         org_id=org_id, kind="assessment_send", entity_type="application",
         entity_key=application_id,
         payload=intent,
-        dedupe_key=f"assessment_generate:application:{application_id}:assessment:{job['assessmentJobId']}" if generate_only else None,
+        dedupe_key=f"{'assessment_generate' if generate_only else 'assessment_send'}:application:{application_id}:assessment:{job['assessmentJobId']}",
     )
     # Explicit retries can revive a finished/dead request after a provider/parser
     # failure; a running or pending request is left alone.

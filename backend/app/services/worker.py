@@ -99,6 +99,9 @@ async def _handle_email_send(db: Any, job: dict[str, Any]) -> dict[str, Any]:
         return outcome
     # Chain: only a REAL send moves the stage (dry-run records, never sends).
     if outcome.get("sent") == "zepto":
+        await _set_assessment(db, job["orgId"], application_id, {
+            "state": "email_sent", "emailError": None,
+        })
         actor = str(payload.get("actorUserId", "system"))
         try:
             await transition_application(
@@ -188,6 +191,13 @@ async def _execute_once(db: Any, kinds: list[str] | None = None, *, job_id: str 
         # after a worker restart — so nothing is lost or duplicated.
         return {"jobId": job["jobId"], "status": "deferred",
                 "runAfter": result.get("run_after"), "error": result.get("error")}
+    if job.get("kind") == "email_send" and result.get("status") == "pending":
+        from ..models.outbox import EmailOutboxRepository
+        msg = await EmailOutboxRepository(db).get(job["payload"]["messageId"], job["orgId"])
+        await repo.coll.update_one({"jobId": job["jobId"], "status": "running"},
+            {"$set": {"status": "deferred", "runAfter": msg["nextRetryAt"], "leaseUntil": None,
+                      "lastError": msg["lastError"]}})
+        return {"jobId": job["jobId"], "status": "deferred", "runAfter": msg["nextRetryAt"]}
     await repo.complete(job["jobId"], result)
     return {"jobId": job["jobId"], "status": "done", "result": result}
 
@@ -214,6 +224,7 @@ async def run_forever(db: Any, poll_seconds: int = 5, kinds: list[str] | None = 
 
     last_sweep = 0.0
     last_auto_close = 0.0
+    last_email_sweep = 0.0
     while not stop.is_set():
         try:
             outcome = await run_once(db) if kinds is None else await run_once(db, kinds=kinds)
@@ -230,6 +241,13 @@ async def run_forever(db: Any, poll_seconds: int = 5, kinds: list[str] | None = 
             except asyncio.TimeoutError:
                 pass
         now = _time.monotonic()
+        if (kinds is None or "email_send" in kinds) and now - last_email_sweep >= 30:
+            last_email_sweep = now
+            try:
+                from .email_send import recover_email_jobs
+                await recover_email_jobs(db)
+            except Exception:
+                logger.warning("Email outbox recovery failed; retrying next cycle.")
         if now - last_sweep >= max(60, _settings.assessment_sync_interval_s):
             last_sweep = now
             try:

@@ -120,6 +120,17 @@ class EmailOutboxRepository:
             {"$set": {"status": "sending", "updatedAt": _utcnow()}, "$inc": {"attempts": 1}},
         )
 
+    async def claim_due(self, message_id: str, org_id: str) -> bool:
+        now = _utcnow()
+        result = await self.coll.update_one(
+            {"messageId": message_id, "orgId": org_id, "$or": [
+                {"status": "pending", "nextRetryAt": {"$lte": now}},
+                {"status": "sending", "updatedAt": {"$lt": now - timedelta(minutes=5)}},
+            ]},
+            {"$set": {"status": "sending", "updatedAt": now}, "$inc": {"attempts": 1}},
+        )
+        return result.modified_count == 1
+
     async def mark_sent(self, message_id: str, org_id: str, *, via: str, wipe: bool) -> None:
         update: dict[str, Any] = {"status": "sent", "sentVia": via, "sentAt": _utcnow(),
                                   "lastError": None, "updatedAt": _utcnow()}
@@ -151,9 +162,9 @@ class EmailOutboxRepository:
 
     async def requeue(self, message_id: str, org_id: str) -> bool:
         res = await self.coll.update_one(
-            {"messageId": message_id, "orgId": org_id, "status": "failed"},
+            {"messageId": message_id, "orgId": org_id, "status": "failed", "wiped": False},
             {"$set": {"status": "pending", "nextRetryAt": _utcnow(), "lastError": None,
-                      "updatedAt": _utcnow()}},
+                      "attempts": 0, "updatedAt": _utcnow()}},
         )
         return res.modified_count == 1
 
