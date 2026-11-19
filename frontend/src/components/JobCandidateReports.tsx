@@ -7,6 +7,8 @@ import type {Job} from '../lib/hiringApi';
 import {Application, Page, recruitmentRequest, stageLabel} from '../lib/recruitmentApi';
 import {useAuth} from '../lib/authContext';
 import {JobCandidateReportDialog} from './JobCandidateReportDialog';
+import {syncJobAssessmentResults} from '../lib/hiringApi';
+import {assessmentScoreLabel} from '../lib/assessmentProgress';
 
 export function JobCandidateReports({job,onSchedule,completedOnly,onScheduleSelected}:{job:Job;completedOnly?:boolean;onScheduleSelected?:(rows:Application[])=>void;onSchedule:(application:Application)=>void}) {
   const {user,impersonatingUser}=useAuth();
@@ -16,6 +18,13 @@ export function JobCandidateReports({job,onSchedule,completedOnly,onScheduleSele
   const [page,setPage]=useState(0),[revision,setRevision]=useState(0);
   const [items,setItems]=useState<Application[]>([]),[total,setTotal]=useState(0);
   const [loading,setLoading]=useState(true),[error,setError]=useState('');
+  const [syncing,setSyncing]=useState(false);
+  async function refreshReports(){
+    setSyncing(true);setError('');
+    try{if(canManage)await syncJobAssessmentResults(job.jobId);setRevision(value=>value+1);}
+    catch(cause){setError(cause instanceof Error?cause.message:'Could not sync assessment results');}
+    finally{setSyncing(false);}
+  }
   const [report,setReport]=useState<Application|null>(null);
   const [range,setRange]=useState<number[]|null>(null);
   const [selected,setSelected]=useState<Application[]>([]);
@@ -34,25 +43,24 @@ export function JobCandidateReports({job,onSchedule,completedOnly,onScheduleSele
   return <section aria-label="Candidate reports" className="space-y-4">
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-xl font-bold">Candidate reports</h2><p className="mt-1 text-sm text-muted-foreground">Review candidate scores and move directly to interview scheduling.</p></div>
-      <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={()=>window.location.assign(`/reports?jobId=${encodeURIComponent(job.jobId)}`)}>Open Reports workspace</Button><Button variant="outline" disabled={loading} onClick={()=>setRevision(value=>value+1)}><RefreshCw className="mr-2 h-4 w-4"/>Refresh reports</Button></div>
+      <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={()=>window.location.assign(`/reports?jobId=${encodeURIComponent(job.jobId)}`)}>Open Reports workspace</Button><Button variant="outline" disabled={loading||syncing} onClick={()=>void refreshReports()}><RefreshCw className="mr-2 h-4 w-4"/>Refresh reports</Button></div>
     </header>
     {completedOnly&&<><JobScoreFilter label="Assessment score range" range={range} busy={loading||selecting} count={total} onClear={()=>setSelected([])} onChange={v=>{setRange(v);setPage(0)}}
       onSelect={canManage?async()=>{setSelecting(true);try{const rows=await matchingApplications(range?listPath:listPath+'&scoreField=assessment');setSelected(rows.filter(eligible))}catch(e){setError(e instanceof Error?e.message:'Selection failed')}finally{setSelecting(false)}}:undefined}/>
       {canManage&&<Button disabled={!selected.length||selecting} onClick={()=>onScheduleSelected?.(selected)}>Schedule interviews ({selected.length})</Button>}</>}
-    {error?<div role="alert" className="rounded-xl border p-4 text-sm text-destructive">{error}<Button variant="outline" className="ml-3" onClick={()=>setRevision(value=>value+1)}>Retry candidate reports</Button></div>:loading?<p role="status">Loading candidate reports…</p>:<div className="rounded-2xl border bg-card p-1">
+    {error?<div role="alert" className="rounded-xl border p-4 text-sm text-destructive">{error}<Button variant="outline" className="ml-3" onClick={()=>setRevision(value=>value+1)}>Retry candidate reports</Button></div>:loading?<p role="status">Loading candidate reportsâ€¦</p>:<div className="rounded-2xl border bg-card p-1">
       <Table><caption className="sr-only">Candidate reports for {job.title}</caption>
         <TableHeader><TableRow>{completedOnly&&<TableHead>Select</TableHead>}{['Candidate name','ATS score','Pipeline stage','Assessment score',...(completedOnly?['Assessment status','Completed date']:[]),'Actions'].map(label=><TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
         <TableBody>{items.map(row=>{
           const hasReport=row.assessment?.reportAvailable??(row.assessment?.score!=null);
           const terminal=['HIRED','REJECTED','WITHDRAWN'].includes(row.currentStage);
           const canSchedule=canManage&&!terminal;
-          const pending=/pending|submitted/i.test(row.assessment?.status||'');
           return <TableRow key={row.applicationId}>
             {completedOnly&&<TableCell><input type="checkbox" aria-label={'Select '+row.candidate.name} checked={selected.some(r=>r.applicationId===row.applicationId)} disabled={!canSchedule||selecting} onChange={e=>setSelected(rows=>e.target.checked?[...rows,row]:rows.filter(r=>r.applicationId!==row.applicationId))}/></TableCell>}
             <TableCell className="font-semibold">{row.candidate.name}{completedOnly&&<div className="text-xs font-normal">{row.candidate.email}</div>}</TableCell>
             <TableCell className="tabular-nums">{row.atsScore??'Pending'}</TableCell>
             <TableCell><span className="rounded-full bg-muted px-2.5 py-1 text-xs">{stageLabel(row.currentStage)}</span></TableCell>
-            <TableCell className="tabular-nums">{row.assessment?.score??(pending?'Report pending':'Not attempted')}</TableCell>
+            <TableCell className="tabular-nums">{assessmentScoreLabel(row)}</TableCell>
             {completedOnly&&<><TableCell>{row.assessment?.status||"Unavailable"}</TableCell><TableCell>{row.assessment?.completedAt?new Date(row.assessment.completedAt).toLocaleString():"Unavailable"}</TableCell></>}
             <TableCell><div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" disabled={!canViewReports||!hasReport} title={!hasReport?'The assessment report is not ready yet':undefined} onClick={()=>setReport(row)}><FileText className="mr-1.5 h-3.5 w-3.5"/>View report</Button>
@@ -62,7 +70,7 @@ export function JobCandidateReports({job,onSchedule,completedOnly,onScheduleSele
         })}{!items.length&&<TableRow><TableCell colSpan={5} className="h-28 text-center text-muted-foreground">No candidates for this job yet.</TableCell></TableRow>}</TableBody>
       </Table>
     </div>}
-    {!error&&!loading&&<footer className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground"><span>{total} candidates · Page {page+1} of {Math.max(1,Math.ceil(total/50))}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={!page} onClick={()=>setPage(value=>value-1)}>Previous reports</Button><Button variant="outline" size="sm" disabled={(page+1)*50>=total} onClick={()=>setPage(value=>value+1)}>Next reports</Button></div></footer>}
+    {!error&&!loading&&<footer className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground"><span>{total} candidates Â· Page {page+1} of {Math.max(1,Math.ceil(total/50))}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={!page} onClick={()=>setPage(value=>value-1)}>Previous reports</Button><Button variant="outline" size="sm" disabled={(page+1)*50>=total} onClick={()=>setPage(value=>value+1)}>Next reports</Button></div></footer>}
     {report&&<JobCandidateReportDialog key={report.applicationId} job={job} application={report} onClose={()=>setReport(null)}/>}
   </section>;
 }

@@ -67,3 +67,43 @@ nicePts  = 15 (none listed)
 expPts   = 0 (no band)
 keyword  = round(80 + 15 + 0) = 95 â†’ SHORTLISTED
 ```
+
+## Module 2 (`module2-v2`) — resume intake ATS
+
+The V2 intake pipeline stores its own `scoreVersion: "module2-v2"` and
+`taxonomyVersion: "skills-v2"` in the ATS payload; `keyword-v1` above remains
+unchanged for the legacy pipeline. The V2 formula is deliberately
+requirement-first and explainable:
+
+```
+mandatory = mustHaveSkills when present, otherwise keywords
+preferred = niceToHaveSkills + keywords not already mandatory
+skills    = 100 * mandatory credit / mandatory requirements
+keyword   = 100 * matched preferred weight / total preferred weight
+overall   = weighted mean of available dimensions, renormalized
+            (skills 35, experience 20, education 10, keyword 15, role 20)
+```
+
+- A requirement is matched through canonical aliases (`React.js` = `React`,
+  `NodeJS` = `Node.js`) against the **reviewed candidate profile**. Resume
+  evidence is used for explanation and excerpts, never to override a human
+  adding or removing a skill.
+- A multi-part requirement earns `0.5` credit per known evidenced component
+  (for example `AWS EC2` when the profile has `AWS`). Partial matches are
+  returned in `partialMatches`; they are not reported as fully matched.
+- `matchedPreferredSkills` and `missingPreferredSkills` are separate from the
+  mandatory lists. The five existing breakdown keys are preserved so the table
+  and confirmation range logic do not need a schema migration.
+- `unassessed` lists dimensions with no job/profile input; unavailable
+  dimensions are excluded rather than assumed. Education keywords are matched
+  with negation-aware aliases, and personal attributes are never scored.
+- The ATS payload is advisory: it never changes a stage, sends email or makes a
+  hiring decision. Reviewer-visible evidence excerpts are contact-redacted
+  unless the audited reveal path is used.
+- `POST /api/resume-intake/items/{itemId}/reparse` reprocesses the stored
+  original, replaces resume-derived skills/evidence, retains reviewed personal
+  fields, clears the old ATS and recalculates it for a confirmed application.
+  The action is audited as `resume_intake.reparse`.
+
+New extraction versions: `resume-parser-v2` / `skills-v2`. Parser evidence is
+returned in `ParsedResume.skillEvidence` and `CandidateProfile.skillEvidence`.

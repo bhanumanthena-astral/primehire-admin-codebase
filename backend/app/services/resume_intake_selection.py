@@ -62,22 +62,25 @@ async def enqueue_score(db, item, job, *, retry=False, _attempt=0):
             if fresh:
                 return await enqueue_score(db, fresh, job, retry=retry, _attempt=_attempt+1)
             return
-    await BackgroundJobRepository(db).enqueue(
+    queued = await BackgroundJobRepository(db).enqueue(
         org_id=item['orgId'], kind='resume_intake_score', entity_type='resume_intake_item',
         entity_key=item['_id'], payload={'itemId':item['_id']},
         dedupe_key=f"{item['orgId']}:resume_intake_score:{item['_id']}:{desired}:{generation}")
+    if queued['status'] in {'done','dead'}:
+        await db['background_jobs'].update_one({'orgId':item['orgId'],'jobId':queued['jobId'],
+            'status':queued['status']},{'$set':{'status':'pending','attempts':0,'runAfter':now(),'leaseUntil':None,'lastError':None}})
 
 
 async def score_batch(db,job):
     batch_id=job['payload']['batchId'];org=job['orgId']
     batch=await IntakeRepository(db).get_batch(batch_id,org)
-    if not batch or not batch.get('atsRange'):return {'skipped':'no range selected'}
+    if not batch:return {'skipped':'batch unavailable'}
     target=await db['jobs'].find_one({'orgId':org,'jobId':batch['jobId']})
     if not target:return {'skipped':'job unavailable'}
     count=0
     async for item in db['resume_intake_items'].find({'orgId':org,'batchId':batch_id,'status':{'$in':list(SCOREABLE)},'scanStatus':'clean'}).limit(5500):
         await enqueue_score(db,item,target);count+=1
-    await db['resume_intake_batches'].update_one({'_id':batch_id,'orgId':org,'atsRangeRevision':batch.get('atsRangeRevision',0)},{'$set':{'atsScoringRequested':False}})
+    await db['resume_intake_batches'].update_one({'_id':batch_id,'orgId':org,'atsRangeRevision':batch.get('atsRangeRevision')},{'$set':{'atsScoringRequested':False}})
     await IntakeRepository(db).refresh_summary(batch_id,org)
     return {'queued':count}
 
@@ -89,7 +92,7 @@ async def score_item(db,job):
         if not item or item.get('status') not in SCOREABLE or item.get('scanStatus')!='clean':return {'skipped':'not ready'}
         if item.get('retentionUntil') and item['retentionUntil'].replace(tzinfo=now().tzinfo)<=now():return {'skipped':'expired retention'}
         batch=await repo.get_batch(item['batchId'],org)
-        if not batch or not batch.get('atsRange'):return {'skipped':'no human-selected range'}
+        if not batch:return {'skipped':'batch unavailable'}
         target=await db['jobs'].find_one({'orgId':org,'jobId':item['jobId']})
         if not target:return {'skipped':'job unavailable'}
         desired=snapshot(item,target)
@@ -108,3 +111,32 @@ async def score_item(db,job):
             raise RuntimeError('ATS preview failed; candidate creation was not performed') from None
     await repo.refresh_summary(item['batchId'],org)
     return {'scored':True}
+
+
+async def resume_ats(db, target, *, batch_id=None):
+    """Explicit scoring recovery; ranges and candidate creation stay human-gated."""
+    org=target['orgId']
+    scope={'orgId':org,'jobId':target['jobId']}
+    if batch_id:scope['_id']=batch_id
+    result={'queued':0,'batches':0,'alreadyScored':0,'notReady':0}
+    async for batch in db['resume_intake_batches'].find(scope).limit(5500):
+        query={'orgId':org,'batchId':batch['_id'],'status':{'$in':list(SCOREABLE)},'scanStatus':'clean',
+            '$or':[{'retentionUntil':None},{'retentionUntil':{'$gt':now()}}]}
+        total=await db['resume_intake_items'].count_documents(query)
+        fresh={'atsState':'done','atsStale':{'$ne':True},'atsPreviewJobHash':job_fingerprint(target)}
+        done=await db['resume_intake_items'].count_documents({**query,**fresh})
+        result['alreadyScored']+=done
+        if not batch.get('imported'):
+            result['notReady']+=total-done
+            continue
+        if total==done:continue
+        await db['resume_intake_batches'].update_one({'_id':batch['_id'],'orgId':org},{'$set':{'atsScoringRequested':True}})
+        task=await BackgroundJobRepository(db).enqueue(org_id=org,kind='resume_intake_score_batch',
+            entity_type='resume_intake_batch',entity_key=batch['_id'],payload={'batchId':batch['_id']},
+            dedupe_key=f"{org}:resume-ats:{batch['_id']}")
+        if task['status'] in {'done','dead'}:
+            await db['background_jobs'].update_one({'orgId':org,'jobId':task['jobId'],'status':task['status']},
+                {'$set':{'status':'pending','attempts':0,'runAfter':now(),'leaseUntil':None,'lastError':None}})
+        result['queued']+=total-done
+        result['batches']+=1
+    return result

@@ -121,7 +121,7 @@ describe('Assessment Management additions',()=>{
     const file=new File(['test'],'assessments.csv',{type:'text/csv'});Object.defineProperty(file,'text',{value:async()=> 'test'});
     fireEvent.change(screen.getByLabelText('Assessment CSV file'),{target:{files:[file]}});
     expect(await screen.findByText('Question prompt: Required')).toBeVisible();
-    fireEvent.click(screen.getByRole('button',{name:'Review import confirmation'}));
+    fireEvent.click(screen.getByRole('button',{name:'Import valid questions'}));
     expect(vi.mocked(assessmentRequest).mock.calls.some(([path])=>path==='/csv/import')).toBe(false);
     fireEvent.click(screen.getByRole('button',{name:'Confirm import'}));
     expect(await screen.findByRole('region',{name:'Assessment import summary'})).toHaveTextContent('1 drafts created');
@@ -145,4 +145,35 @@ it('preserves explicit IST windows and maps MCQ expected answers without provide
   expect(assessmentInputDate(assessmentFormDate('2027-01-01T10:00'))).toBe('2027-01-01T10:00');
   expect(configFromForm({...record,questions:[{...record.questions[0],type:'MCQ',referenceAnswer:undefined,options:['A','B'],correctOption:'B'}]}).questions[0].referenceAnswer).toBe('B');
   expect(configFromForm({...record,roundType:'BASIC',questions:[{...record.questions[0],referenceAnswer:'Imported rubric',criteria:'Updated rubric'}]}).questions[0].referenceAnswer).toBe('Updated rubric');
+});
+
+it('lets users correct grouped dates and a question, revalidate, then import the corrected text and hash',async()=>{
+ const columns=['Job Title','Job Description','Language Selection','Round Type','Start Date','End Date','Question Type','Max Duration (Seconds)','Max Score','Weightage (%)','Question Prompt / Text','Expected Reference Answer'];
+ const values={'Job Title':'Intern','Job Description':'Frontend role','Language Selection':'English','Round Type':'Wrong round','Start Date':'bad date','End Date':'bad date','Question Type':'Invalid type','Max Duration (Seconds)':'120','Max Score':'5','Weightage (%)':'50','Question Prompt / Text':'Explain HTML','Expected Reference Answer':'Markup'};
+ const invalid:any={columns,previewHash:'a'.repeat(64),fileErrors:[],rows:[2,3].map(row=>({row,groupId:'Assessment 1',status:'invalid',values:{...values},errors:[{field:'Start Date',reason:'Use a valid date'}]})),groups:[{groupId:'Assessment 1',status:'invalid',rows:[2,3],config:null}]};
+ const valid={...invalid,previewHash:'b'.repeat(64),rows:invalid.rows.map((row:any)=>({...row,status:'valid',errors:[]})),groups:[{groupId:'Assessment 1',status:'valid',rows:[2,3],config:record}]};
+ let validations=0;
+ vi.mocked(assessmentRequest).mockImplementation(async(path)=>path==='/csv/validate'?(++validations===1?invalid:valid):{totalRows:2,totalGroups:1,imported:1,failed:0,duplicates:0,rows:valid.rows,items:[]} as any);
+ render(<AssessmentCsvDialog onClose={vi.fn()} onImported={vi.fn()}/>);
+ const file=new File(['source'],'source.csv',{type:'text/csv'});Object.defineProperty(file,'text',{value:async()=> 'source'});
+ fireEvent.change(screen.getByLabelText('Assessment CSV file'),{target:{files:[file]}});
+ await screen.findByText(/0 valid assessments/);
+ expect(screen.getByRole('button',{name:'Import valid questions'})).toBeDisabled();
+ fireEvent.click(screen.getByText('Edit CSV values before importing'));
+ fireEvent.change(screen.getByLabelText('Start Date'),{target:{value:'2027-01-01'}});
+ fireEvent.change(screen.getByLabelText('End Date'),{target:{value:'2027-02-01'}});
+ fireEvent.change(screen.getByLabelText('Round Type'),{target:{value:'TECHNICAL'}});
+ fireEvent.change(screen.getByLabelText('Question Type'),{target:{value:'SPEAK_TO_ANSWER'}});
+ fireEvent.change(screen.getByLabelText('Question Prompt / Text'),{target:{value:'Explain "HTML", including\nsemantics'}});
+ expect(screen.getByText(/Corrections have not been validated/)).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Validate corrections'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Import valid questions'})).toBeEnabled());
+ const corrected=(vi.mocked(assessmentRequest).mock.calls.filter(([path])=>path==='/csv/validate').at(-1)?.[1] as any).text;
+ expect(corrected.match(/2027-01-01/g)).toHaveLength(2);
+ expect(corrected).toContain('Explain ""HTML"", including\nsemantics');
+ fireEvent.click(screen.getByRole('button',{name:'Import valid questions'}));
+ expect(vi.mocked(assessmentRequest).mock.calls.some(([path])=>path==='/csv/import')).toBe(false);
+ fireEvent.click(screen.getByRole('button',{name:'Confirm import'}));
+ await waitFor(()=>expect(assessmentRequest).toHaveBeenCalledWith('/csv/import',{text:corrected,previewHash:'b'.repeat(64),confirmed:true}));
+ expect(await screen.findByText('Import complete')).toBeVisible();
 });

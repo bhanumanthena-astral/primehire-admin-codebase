@@ -14,6 +14,7 @@ from ..schemas.resume_intake import CandidateProfile, IntakeSettings
 from . import resume_intake_security as security
 from .resume_intake_parse import isolated
 from .resume_intake import add_item, enqueue_item, matches
+from .resume_intake_projection import reconcile_skill_evidence
 from .storage import read_bytes, new_storage_key, write_bytes, resolve_storage_key
 
 
@@ -129,6 +130,7 @@ async def parse_item(db, job):
         item = await repo.get_item(item_id, org)
         if not item or item["status"] not in {"queued", "processing"} or item.get("retentionUntil", now()).replace(tzinfo=now().tzinfo) <= now():
             return {"skipped": "item no longer queued"}
+        original_status = item.get("reparseFromStatus") or item["status"]
         item = await repo.patch_item(item_id, org, {"status": "processing"}, revision=item["revision"])
         batch = await repo.get_batch(item["batchId"], org)
         limits = IntakeSettings.model_validate(batch["limits"])
@@ -145,26 +147,75 @@ async def parse_item(db, job):
             # A spreadsheet's explicitly supplied values take precedence over
             # extracted suggestions; blanks can be filled from its resume.
             incoming = item.get("profile", {})
-            profile = CandidateProfile.model_validate({key: incoming.get(key) if incoming.get(key) not in (None, "", []) else value for key, value in extracted.items()}).model_dump(mode="json")
+            reparse = bool(job.get("payload", {}).get("reparse") or item.get("reparseRequested"))
+            if reparse:
+                # An administrator reprocesses the original file to repair
+                # extraction, not to overwrite human corrections. Replace only
+                # resume-derived skill fields; retain reviewed personal data.
+                values = dict(incoming)
+                for key in ("skills", "skillEvidence"):
+                    values[key] = extracted.get(key) or values.get(key) or []
+                for key, value in extracted.items():
+                    if values.get(key) in (None, "", []) and value not in (None, "", []):
+                        values[key] = value
+            else:
+                values = {key: incoming.get(key) if incoming.get(key) not in (None, "", []) else value for key, value in extracted.items()}
+            profile = CandidateProfile.model_validate(values).model_dump(mode="json")
+            profile["skillEvidence"] = reconcile_skill_evidence(profile, None if reparse else incoming)
             duplicates = await matches(db, org, profile)
             duplicate_file = await repo.items.find_one({"orgId": org, "jobId": item["jobId"],
                 "contentHash": item["contentHash"], "_id": {"$ne": item_id}, "status": {"$in": ["review_required", "duplicate_suspected", "completed", "duplicate"]}})
             warnings = list(dict.fromkeys(item.get("warnings", []) + parsed.get("warnings", []) + (["This file was already uploaded for the job."] if duplicate_file else [])))
             if not profile.get("email") and not profile.get("phone"):
                 warnings.append("A valid email or phone is required before confirmation.")
-            ready=await repo.patch_item(item_id, org, {"status": "duplicate_suspected" if duplicates or duplicate_file else "review_required",
-                "profile": profile, "rawText": parsed["rawText"], "confidence": parsed["confidence"], "warnings": warnings, "error": None}, revision=item["revision"])
-            if batch.get('atsRange'):
+            target_status = "duplicate_suspected" if duplicates or duplicate_file else "review_required"
+            if reparse and original_status in {"completed", "duplicate"}:
+                target_status = original_status
+            updates = {"status": target_status,
+                "profile": profile, "rawText": parsed["rawText"], "confidence": parsed["confidence"], "warnings": warnings,
+                "parserVersion": parsed.get("parserVersion", ""), "taxonomyVersion": parsed.get("taxonomyVersion", ""),
+                "reparseRequested": False, "error": None}
+            if reparse:
+                updates.update({"lastReparsedAt": now(), "ats": None, "atsStale": True, "atsState": "pending",
+                    "reparseFromStatus": None})
+            ready=await repo.patch_item(item_id, org, updates, revision=item["revision"])
+            if reparse and item.get("applicationId"):
+                await db["applicants"].update_one({"orgId": org, "applicantId": item.get("applicantId")},
+                    {"$set": {"profile": profile, "resume.parsedJson": profile, "updatedAt": now()}})
+                target = await db["jobs"].find_one({"orgId": org, "jobId": item["jobId"]})
+                if target:
+                    try:
+                        from .resume_intake import get_limits
+                        from .resume_intake_llm import evaluate
+                        from .resume_intake_ats import SCORE_VERSION, score
+                        ats = await evaluate(db, org, profile, parsed["rawText"], target, await get_limits(db, org),
+                            item["applicationId"], local_score=score)
+                        ats["evaluatedAt"] = now().isoformat()
+                        await db["applications"].update_one({"orgId": org, "applicationId": item["applicationId"]}, {"$set": {
+                            "matchScore": ats["overall"], "scoreBreakdown": {"ats": ats, "atsStatus": "done",
+                                "final": ats["overall"], "keyword": ats["breakdown"]["keyword"],
+                                "matched": ats["matchedSkills"], "missing": ats["missingSkills"],
+                                "scoreVersion": ats.get("scoreVersion") or SCORE_VERSION,
+                                "taxonomyVersion": ats.get("taxonomyVersion", "")}, "updatedAt": now()}})
+                        await repo.patch_item(item_id, org, {"ats": ats, "atsStale": False, "atsState": "done"},
+                            revision=ready["revision"])
+                    except Exception:
+                        import logging
+                        logging.getLogger(__name__).exception("ATS recalculation after reparse failed")
+            if batch.get('atsRange') and not item.get("applicationId"):
                 from .resume_intake_selection import enqueue_score
                 target=await db['jobs'].find_one({'orgId':org,'jobId':item['jobId']})
                 if target:await enqueue_score(db,{**ready,'scanStatus':'clean'},target)
             await db["resume_files"].update_one({"fileId": item_id, "orgId": org},
-                {"$set": {"status": "parsed", "kind": kind, "parsedJson": profile, "rawTextChars": len(parsed["rawText"])}})
+                {"$set": {"status": "parsed", "kind": kind, "parsedJson": profile, "rawTextChars": len(parsed["rawText"]),
+                    "parserVersion": parsed.get("parserVersion", ""), "taxonomyVersion": parsed.get("taxonomyVersion", "")}})
             return {"reviewRequired": True}
         except security.IntakeError as exc:
             await repo.patch_item(item_id, org, {"status": exc.code, "error": exc.message}, revision=item["revision"])
             return {"status": exc.code}
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            import logging
+            logging.getLogger(__name__).warning("Resume parse failed: %s", type(exc).__name__)
             await repo.patch_item(item_id, org, {"status": "failed", "error": "Stored resume or parsed data could not be processed. Retry or upload a replacement."}, revision=item["revision"])
             return {"status": "failed"}
 

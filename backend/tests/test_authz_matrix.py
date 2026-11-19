@@ -218,7 +218,7 @@ for method, suffix in [
     ("GET", "/template"), ("POST", "/upload"), ("POST", "/batches/missing/confirm"),
     ("POST", "/items/missing/associate"), ("POST", "/items/missing/reveal"),
     ("PUT", "/items/missing/review"), ("POST", "/items/missing/confirm"),
-    ("POST", "/items/missing/retry"), ("POST", "/items/missing/notes"),
+    ("POST", "/items/missing/retry"), ("POST", "/items/missing/reparse"), ("POST", "/items/missing/notes"),
     ("GET", "/batches/missing/export"), ("GET", "/items/missing/profile.pdf"),
     ("POST", "/items/missing/recalculate"), ("PUT", "/items/missing/profile"),
     ("GET", "/batches/missing/report"),

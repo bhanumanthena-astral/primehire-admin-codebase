@@ -5,6 +5,8 @@ import {JobCandidateReports} from '../JobCandidateReports';
 import {JobCandidateReportDialog} from '../JobCandidateReportDialog';
 import {recruitmentRequest} from '../../lib/recruitmentApi';
 import {authFetch} from '../../lib/authFetch';
+import {syncJobAssessmentResults} from '../../lib/hiringApi';
+vi.mock('../../lib/hiringApi',async original=>({...await original<any>(),syncJobAssessmentResults:vi.fn().mockResolvedValue({queued:1,checked:1})}));
 import {useAuth} from '../../lib/authContext';
 vi.mock('../../lib/recruitmentApi',async original=>({...await original<any>(),recruitmentRequest:vi.fn()}));
 vi.mock('../../lib/authFetch',()=>({authFetch:vi.fn()}));
@@ -12,6 +14,13 @@ vi.mock('../../lib/authContext',()=>({useAuth:vi.fn()}));
 vi.mock('../report/ReportShell',()=>({default:({candidate,data}:any)=><p>Report for {candidate.name}: {data.overallScore}</p>}));
 const job:any={jobId:'job-a',title:'Backend Engineer'};
 const candidate:any={applicationId:'application-a',applicantId:'person-a',jobId:'job-a',candidate:{name:'Synthetic Candidate'},atsScore:0,currentStage:'ASSESSMENT_COMPLETED',assessment:{score:0,reportAvailable:true}};
+
+it('synchronizes provider results when Refresh reports is clicked',async()=>{
+ render(<JobCandidateReports job={job} onSchedule={vi.fn()}/>);
+ await screen.findByText('Synthetic Candidate');
+ fireEvent.click(screen.getByRole('button',{name:'Refresh reports'}));
+ await waitFor(()=>expect(syncJobAssessmentResults).toHaveBeenCalledWith('job-a'));
+});
 beforeEach(()=>{
   vi.clearAllMocks();vi.mocked(useAuth).mockReturnValue({user:{role:'admin'}} as any);
   vi.mocked(recruitmentRequest).mockResolvedValue({items:[candidate],total:1});

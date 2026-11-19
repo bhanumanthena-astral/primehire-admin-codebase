@@ -62,3 +62,11 @@ it('shows every ATS dimension, evidence and evaluation note in the main row befo
  expect(within(table).getByText('Experience is unavailable')).toBeVisible();
  expect(screen.queryByRole('table',{name:'Local scoring breakdown'})).not.toBeInTheDocument();
 });
+
+it('links only editable unreviewed rows to ATS batch review',()=>{
+ const next=vi.fn();const ready={...item,status:'review_required'};
+ render(<ResumeReviewTable {...props()} items={[ready,{...item,itemId:'done'},{...ready,itemId:'no-access',canEdit:false},{...ready,itemId:'queued',status:'queued'}]} onContinueToAts={next}/>);
+ expect(screen.getAllByRole('button',{name:'Continue to ATS review'})).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'Continue to ATS review'}));
+ expect(next).toHaveBeenCalledWith(ready);
+});

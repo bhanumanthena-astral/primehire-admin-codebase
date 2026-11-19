@@ -26,3 +26,10 @@ Existing companies without a permission policy keep their current grants. Reques
 Verification: `backend/tests/test_company_settings.py` covers root-only access, encrypted write-only tokens, preservation/removal, revision conflicts, company policy enforcement, invalid ciphertext and cross-company provider routing.
 The same tests can run against the isolated PostgreSQL validation database using the existing `ELITEHR_TEST_POSTGRES_ENV` fixture.
 Frontend tests cover settings controls, key replacement/removal, permission updates, conflict messages and super-admin-only visibility.
+
+
+## Local delivery testing
+
+Normal `scripts/start_e2e_local.ps1` startup runs email in dry-run mode, regardless of ambient live-mail settings. For an explicitly authorized real test, pass `-TestEmailRecipient` with one exact email address. This restarts the local API/workers with both assessment and recruitment allowlists restricted to that address. Other recipients remain blocked. Running the launcher again without this option returns to dry-run and restarts services when the mode changes. The existing configured Zepto sender and encrypted company configuration paths are reused; no credential is written to source or logs.
+
+Verification on 2026-11-18: the configured Nxtagent sender successfully sent one authorized configuration test through the encrypted outbox and ZeptoMail. Provider acceptance was recorded, and the user confirmed inbox receipt. CCC still requires its own company sender/key configuration. Nine mail-mode/company/recruitment regression tests passed; PowerShell launcher syntax passed. This test did not send candidate invitations.

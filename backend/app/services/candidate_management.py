@@ -209,7 +209,10 @@ async def generate_link(db,user,key,assignment_id,payload):
     from .candidate_link_crypto import encrypt_link, OutboxCryptoError
     row=await assignment_for(db,user,key,assignment_id)
     assessment=await assessment_for(db,user,row['assessmentId'])
-    if row['status']=='Generated': return assignment_public(row,True)
+    if row['status']=='Generated':
+        from .assessment_assignment_sync import attach_attempt
+        await attach_attempt(db,row)
+        return assignment_public(row,True)
     if utc(row['endDate'])<=now(): raise HTTPException(409,'This assignment has expired')
     try: encrypt_link('candidate-assessment-key-check')
     except OutboxCryptoError: raise HTTPException(503,'An existing outbox encryption key is required to protect assessment links') from None
@@ -234,6 +237,8 @@ async def generate_link(db,user,key,assignment_id,payload):
             'generatedAt':now(),'error':None,'updatedAt':now()},'$inc':{'revision':1}},return_document=ReturnDocument.AFTER)
     if not updated: raise HTTPException(409,'Assignment changed while generating its link; reconcile before retrying')
     await audit(db,user,'link_generated',key,{'assignmentId':assignment_id})
+    from .assessment_assignment_sync import attach_attempt
+    await attach_attempt(db,updated)
     # Provider password is returned to the authorized human once, never persisted.
     result=assignment_public(updated,True)
     if record.get('password'): result['accessCode']=record['password']

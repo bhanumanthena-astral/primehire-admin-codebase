@@ -24,7 +24,7 @@ def group_job_id(org, group):
 
 
 def parse_csv(text, org):
-    result = {'previewHash': digest(text), 'rows': [], 'groups': [], 'fileErrors': []}
+    result = {'previewHash': digest(text), 'columns': [], 'rows': [], 'groups': [], 'fileErrors': []}
     if len(text.encode('utf-8')) > 2_000_000:
         result['fileErrors'].append('CSV exceeds 2 MB')
         return result
@@ -41,6 +41,7 @@ def parse_csv(text, org):
         # Accept older saved templates, but new uploads need no user-created identifier.
         if any(value not in HEADERS + OPTIONAL + ['Assessment Group ID'] for value in headers):
             raise ValueError('Unknown column headers; use the downloadable template')
+        result['columns'] = headers
         grouped = {}
         for values in reader:
             row_number = reader.line_num
@@ -51,11 +52,19 @@ def parse_csv(text, org):
             row = {'row': row_number, 'status': 'valid', 'errors': []}
             result['rows'].append(row)
             if len(values) != len(headers):
-                row.update(status='invalid', errors=[{'field': 'Row', 'reason': 'Column count does not match the header'}])
+                row.update(status='invalid', editable=False, errors=[{'field': 'Row', 'reason': 'Column count does not match the header; correct the source file and upload again'}])
                 # Keep the identifiable group blocked instead of importing its
                 # other questions while silently dropping this malformed row.
                 values = (values + [''] * len(headers))[:len(headers)]
             values = dict(zip(headers, [value.strip() for value in values]))
+            row['values'] = dict(values)
+            values['Round Type'] = {'BASIC INTERVIEW':'BASIC','TECHNICAL INTERVIEW':'TECHNICAL','HR INTERVIEW':'HR'}.get(values['Round Type'].upper(),values['Round Type'].upper())
+            question_type = re.sub(r'[ -]+','_',values['Question Type'].upper())
+            values['Question Type'] = {'VERBAL':'SPEAK_TO_ANSWER','SPOKEN':'SPEAK_TO_ANSWER','MULTIPLE_CHOICE':'MCQ','MULTIPLE_CHOICE_QUESTION':'MCQ'}.get(question_type,question_type)
+            for header in ['Start Date','End Date']:
+                if re.fullmatch(r'\d{2}/\d{2}/\d{4}',values[header]):
+                    try:values[header]=datetime.strptime(values[header],'%d/%m/%Y').date().isoformat()
+                    except ValueError:pass
             metadata_keys = ['Job Description', 'Language Selection', 'Round Type', 'Start Date', 'End Date', 'Job Title']
             group = values.get('Assessment Group ID') or 'auto:' + digest(json.dumps([values.get(key, '') for key in metadata_keys], ensure_ascii=False))
             grouped.setdefault(group, []).append((row, values))
@@ -100,7 +109,7 @@ def parse_csv(text, org):
                     metadata[key] = datetime.combine(date.fromisoformat(base[header]), time(), IST)
                 except ValueError:
                     for row, _ in entries:
-                        row['errors'].append({'field': header, 'reason': 'Use a valid YYYY-MM-DD date'})
+                        row['errors'].append({'field': header, 'reason': 'Use YYYY-MM-DD or DD/MM/YYYY (day first)'})
             config = None
             try:
                 config = AssessmentConfig.model_validate({
@@ -111,9 +120,13 @@ def parse_csv(text, org):
             except ValidationError as errors:
                 for error in errors.errors(include_input=False, include_context=False, include_url=False):
                     location = error['loc']
+                    if len(location)==1 and location[0] in {'startDate','endDate'} and location[0] not in metadata:
+                        continue  # The original date error above already explains the correction.
                     targets = [entries[location[1]][0]] if len(location) > 1 and location[0] == 'questions' and isinstance(location[1], int) else [row for row, _ in entries]
                     for row in targets:
-                        row['errors'].append({'field': '.'.join(str(part) for part in location) or 'Assessment', 'reason': error['msg']})
+                        field = {'roundType':'Round Type','language':'Language Selection','startDate':'Start Date','endDate':'End Date','jobTitle':'Job Title','jobDescription':'Job Description','type':'Question Type','text':'Question Prompt / Text','maxDuration':'Max Duration (Seconds)','maxScore':'Max Score','weightage':'Weightage (%)','referenceAnswer':'Expected Reference Answer','options':'Options','correctOption':'Correct Answer'}.get(str(location[-1]) if location else '', 'Question' if location and location[0]=='questions' else 'Assessment')
+                        reason = {'Round Type':'Choose BASIC, TECHNICAL or HR','Question Type':'Choose SPEAK_TO_ANSWER (spoken/verbal) or MCQ'}.get(field,error['msg']) if error['type']=='literal_error' else error['msg']
+                        row['errors'].append({'field': field, 'reason': reason})
             invalid = any(row['errors'] for row, _ in entries)
             for row, _ in entries:
                 row['status'] = 'invalid' if invalid else 'valid'

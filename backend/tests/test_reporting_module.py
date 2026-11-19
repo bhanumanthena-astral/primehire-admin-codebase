@@ -11,6 +11,43 @@ from tests.test_recruitment import client,headers
 BASE='/api/reporting'
 
 
+@pytest.mark.parametrize('url,mime,expected',[
+    ('https://storage.example/answer.webm?signature=private','application/octet-stream','video/webm'),
+    ('https://storage.example/answer.mp4','binary/octet-stream','video/mp4'),
+    ('https://storage.example/answer.txt','application/octet-stream','application/octet-stream'),
+    ('https://storage.example/answer.webm','text/html','text/html'),
+    ('https://storage.example/answer.webm','video/webm; codecs=vp8','video/webm'),
+])
+def test_object_storage_video_mime(url,mime,expected):
+    from app.api.reporting import media_content_type
+    assert media_content_type(url,mime)==expected
+
+
+async def test_binary_webm_stream_keeps_authorization_and_range_support(client,db,monkeypatch):
+    import httpx
+    from app.api import reporting as api
+    row=await capture(db,source(),report_available=True)
+    requests=[]
+    class Storage:
+        def __init__(self,**kwargs):pass
+        def build_request(self,method,url,headers):return httpx.Request(method,url,headers=headers)
+        async def send(self,request,**kwargs):
+            requests.append(request)
+            return httpx.Response(206,content=bytes.fromhex('1a45dfa3'),headers={
+                'Content-Type':'application/octet-stream','Content-Length':'4','Content-Range':'bytes 0-3/100','Accept-Ranges':'bytes'})
+        async def aclose(self):pass
+    monkeypatch.setattr(api,'validate_media_url',AsyncMock())
+    monkeypatch.setattr(api.httpx,'AsyncClient',Storage)
+    path=BASE+'/reports/'+row['reportId']+'/media/q1?version=1'
+    assert (await client.get(path)).status_code==401
+    response=await client.get(path,headers={**headers(),'Range':'bytes=0-3'})
+    assert response.status_code==206 and response.content==bytes.fromhex('1a45dfa3')
+    assert response.headers['content-type']=='video/webm'
+    assert response.headers['content-range']=='bytes 0-3/100'
+    assert requests[0].headers['range']=='bytes=0-3'
+    assert 'authorization' not in requests[0].headers
+
+
 def source(**changes):
     value={'interview_details':{'interview_id':'attempt0','candidate_id':'provider0','job_id':'ASSESSMENT','round_type':'TECHNICAL','submitted_at':now().isoformat()},
         'report':{'overall_score':0,'overall_grade':'Stored grade','max_score':20,

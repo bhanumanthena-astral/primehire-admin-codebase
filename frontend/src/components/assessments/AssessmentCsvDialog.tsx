@@ -3,29 +3,47 @@ import { Upload, Download, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '@/components/ui/button';
 import { assessmentRequest, CsvPreview, ImportSummary, downloadAssessmentTemplate } from '../../lib/assessmentManagementApi';
+import {AssessmentCsvCorrections} from './AssessmentCsvCorrections';
+import {correctedAssessmentCsv} from '../../lib/assessmentManagementApi';
 import { AssessmentPreview } from './AssessmentPreview';
 
 export function AssessmentCsvDialog({onClose,onImported}:{onClose:()=>void;onImported:()=>void}) {
   const [text,setText]=useState(''),[filename,setFilename]=useState(''),[preview,setPreview]=useState<CsvPreview|null>(null),[summary,setSummary]=useState<ImportSummary|null>(null);
+  const [dirty,setDirty]=useState(false);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[confirm,setConfirm]=useState(false),[selected,setSelected]=useState('');
   async function fileSelected(file?:File) {
     if(!file||busy)return;
-    setError('');setPreview(null);setSummary(null);setConfirm(false);setText('');setSelected('');
+    setError('');setDirty(false);setPreview(null);setSummary(null);setConfirm(false);setText('');setSelected('');
     if(!file.name.toLowerCase().endsWith('.csv')||!file.size||file.size>2_000_000){setError('Choose a non-empty CSV file up to 2 MB.');return;}
     setBusy(true);setFilename(file.name);
     try{const content=await file.text();setText(content);setPreview(await assessmentRequest<CsvPreview>('/csv/validate',{text:content}));}
     catch(cause:any){setError(cause.message||'Could not read this file. Please choose it again.');}finally{setBusy(false);}
   }
   async function submit(){
-    if(!preview||busy)return;
+    if(!preview||busy||dirty||preview.fileErrors.length)return;
     setBusy(true);setError('');
     try{setSummary(await assessmentRequest<ImportSummary>('/csv/import',{text,previewHash:preview.previewHash,confirmed:true}));onImported();setConfirm(false);}
     catch(cause:any){setError(cause.message);}finally{setBusy(false);}
   }
+  function correct(rows:number[],field:string,value:string){
+    setPreview(previous=>previous?{...previous,rows:previous.rows.map(row=>rows.includes(row.row)?{...row,values:{...row.values,[field]:value}}:row)}:previous);
+    setDirty(true);setConfirm(false);setSelected('');setError('');
+  }
+  async function revalidate(){
+    if(!preview?.columns||busy)return;
+    const corrected=correctedAssessmentCsv(preview.columns,preview.rows);
+    setBusy(true);setError('');setConfirm(false);
+    try{
+      const result=await assessmentRequest<CsvPreview>('/csv/validate',{text:corrected});
+      if(result.fileErrors.length){setError(result.fileErrors.join(' '));return;}
+      setText(corrected);setPreview(result);setDirty(false);setSelected('');
+    }catch(cause:any){setError(cause.message||'Validation failed. Your corrections have been kept.');}
+    finally{setBusy(false);}
+  }
   const valid=preview?.groups.filter(group=>group.status==='valid')||[];
   return <Modal label="Import assessment CSV" onClose={onClose} dismissible={!busy} className="max-w-5xl p-5 sm:p-6">
     <h2 className="text-xl font-bold">Import assessments from CSV</h2>
-    <p className="mt-2 text-sm text-muted-foreground">One row per question. Questions with the same job title, description, language, round and dates are combined into one draft automatically. Preview all questions and confirm before importing.</p>
+    <p className="mt-2 text-sm text-muted-foreground">One row per question. You can correct values after upload. Questions with the same job title, description, language, round and dates are combined into one draft automatically. Preview all questions and confirm before importing.</p>
     <div className="mt-5 flex flex-wrap gap-2"><Button variant="outline" onClick={downloadAssessmentTemplate}><Download className="mr-2 h-4 w-4"/>Download CSV template</Button></div>
     <label className={`mt-4 flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-muted/20 p-6 text-center focus-within:ring-2 focus-within:ring-ring ${busy?'pointer-events-none opacity-60':''}`}
       onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();void fileSelected(event.dataTransfer.files[0]);}}>
@@ -38,9 +56,15 @@ export function AssessmentCsvDialog({onClose,onImported}:{onClose:()=>void;onImp
     {preview?.fileErrors.map(message=><p role="alert" key={message} className="mt-3 text-sm text-destructive">{message}</p>)}
     {summary?<section aria-label="Assessment import summary" className="mt-5 rounded-xl border border-border bg-primary/5 p-4"><h3 className="flex items-center gap-2 font-bold"><CheckCircle2 className="h-4 w-4"/>Import complete</h3><p className="mt-2 text-sm">{summary.totalRows} question rows · {summary.totalGroups} assessments · {summary.imported} drafts created · {summary.failed} invalid/failed assessments · {summary.duplicates} duplicates</p><p className="mt-2 text-xs text-muted-foreground">Successful drafts are saved. Publish each draft after reviewing its questions. No candidate invitations were sent.</p>{summary.items.filter(item=>item.reason).map(item=><p key={item.groupId} className="mt-2 text-sm">{item.groupId}: {item.reason}</p>)}</section>
       :preview&&!preview.fileErrors.length&&<section className="mt-5 space-y-4"><div className="rounded-xl border border-border p-4 text-sm">{preview.rows.length} question rows · {valid.length} valid assessments · {preview.groups.filter(group=>group.status==='invalid').length} invalid assessments · {preview.groups.filter(group=>group.status==='duplicate').length} duplicates</div>
-        <div className="flex flex-wrap gap-2">{valid.map(group=><Button key={group.groupId} variant={selected===group.groupId?'secondary':'outline'} size="sm" onClick={()=>setSelected(selected===group.groupId?'':group.groupId)}>Preview {group.groupId} ({group.rows.length} questions)</Button>)}</div>
+        <div className="flex flex-wrap gap-2">{valid.map(group=><Button key={group.groupId} variant={selected===group.groupId?'secondary':'outline'} size="sm" disabled={busy||dirty} onClick={()=>setSelected(selected===group.groupId?'':group.groupId)}>Preview {group.groupId} ({group.rows.length} questions)</Button>)}</div>
         {valid.find(group=>group.groupId===selected)?.config&&<div className="max-h-80 overflow-y-auto rounded-xl border border-border p-4"><AssessmentPreview config={valid.find(group=>group.groupId===selected)!.config!}/></div>}
-        {!!valid.length&&<div className="flex flex-wrap items-center gap-3 rounded-xl border border-border p-4">{confirm?<><p className="text-sm">Create {valid.length} valid assessment drafts? Invalid and duplicate assessments will be skipped.</p><Button disabled={busy} onClick={()=>void submit()}>Confirm import</Button><Button variant="ghost" disabled={busy} onClick={()=>setConfirm(false)}>Back to validation</Button></>:<Button disabled={busy} onClick={()=>setConfirm(true)}>Review import confirmation</Button>}</div>}
+        {!!preview.columns?.length&&preview.rows.every(row=>row.values&&row.editable!==false)&&<AssessmentCsvCorrections preview={preview} busy={busy} onChange={correct}/>}
+        {dirty&&<p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Corrections have not been validated yet. Validate corrections before importing.</p>}
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border p-4">
+          {!!preview.columns?.length&&preview.rows.every(row=>row.values&&row.editable!==false)&&<Button variant="outline" disabled={busy||!dirty} onClick={()=>void revalidate()}>Validate corrections</Button>}
+          {confirm?<><p className="text-sm">Create {valid.length} valid assessment drafts? Invalid and duplicate assessments will be skipped.</p><Button disabled={busy||dirty} onClick={()=>void submit()}>Confirm import</Button><Button variant="ghost" disabled={busy} onClick={()=>setConfirm(false)}>Back to validation</Button></>:<Button disabled={busy||dirty||!valid.length} onClick={()=>setConfirm(true)}>Import valid questions</Button>}
+          {!valid.length&&<p className="text-xs text-muted-foreground">Correct the invalid values and validate again to enable import. No questions have been saved yet.</p>}
+        </div>
       </section>}
     {(summary?.rows||preview?.rows)?.length>0&&<div className="mt-5 max-h-72 overflow-auto rounded-xl border border-border"><table className="w-full text-left text-xs"><caption className="sr-only">Assessment CSV row validation results</caption><thead className="sticky top-0 bg-muted"><tr>{['Row','Assessment','Status','Field / reason'].map(value=><th key={value} className="p-3">{value}</th>)}</tr></thead><tbody>{(summary?.rows||preview!.rows).map(row=><tr key={row.row} className="border-t border-border"><td className="p-3">{row.row}</td><td className="p-3">{row.groupId||'Not available'}</td><td className="p-3 capitalize">{row.status}</td><td className="p-3">{row.errors.map((value,index)=><p key={index}>{value.field}: {value.reason}</p>)}</td></tr>)}</tbody></table></div>}
   </Modal>;

@@ -312,12 +312,15 @@ async def handle_assessment_sync(db: Any, job: dict[str, Any]) -> dict[str, Any]
         "status": "Report pending" if report_pending else "Completed",
         "syncedAt": _utcnow().isoformat(), "error": None, "syncError":None,
     })
-    if app_doc.get('currentStage') in {Stage.SHORTLISTED.value, Stage.ASSESSMENT_SENT.value}:
+    early = {Stage.SHORTLISTED.value, Stage.ASSESSMENT_SENT.value}
+    if assessment.get('assignmentId'):
+        early.update({Stage.RESUME_UPLOADED.value, Stage.PARSED.value})
+    if app_doc.get('currentStage') in early:
         await transition_application(
             db, org_id=org_id, application_id=application_id,
             to_stage=Stage.ASSESSMENT_COMPLETED, actor_user_id="system",
             reason="Provider confirmed assessment submission from the generated candidate link.",
-            is_override=app_doc.get('currentStage') == Stage.SHORTLISTED.value,
+            is_override=app_doc.get('currentStage') != Stage.ASSESSMENT_SENT.value,
             metadata={"interviewId": interview_id, "score": score},
         )
     return {"completed": True, "score": score}
@@ -325,6 +328,8 @@ async def handle_assessment_sync(db: Any, job: dict[str, Any]) -> dict[str, Any]
 
 async def enqueue_sync_sweep(db: Any, *, limit: int = 20, org_id: str | None = None, job_id: str | None = None, force: bool = True) -> int:
     """Poll generated links and retry reports still pending, with bounded scope."""
+    from .assessment_assignment_sync import reconcile_assignments
+    await reconcile_assignments(db, org_id=org_id, job_id=job_id, limit=limit)
     queue = BackgroundJobRepository(db)
     # Cross-org system sweep; each job remains org-scoped via its payload.
     query = {'currentStage':{'$nin':['REJECTED','WITHDRAWN','HIRED','TALENT_POOL']},

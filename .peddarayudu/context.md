@@ -1,45 +1,33 @@
-# Active completion pass — 2026-11-18
-Sol light approved. Attachment fc4f72eb-bb53-4b4e-b1a4-bb1e881d9a27 is authoritative. Checklist .peddarayudu/completion-checklist.md. Highest priority is persisted job/assessment-scoped Include Invited Candidates OFF by default, accurate status/counts and eligible bulk selection. Remaining tasks: Admin UX/report comparison, restart/company isolation/mailing/ATS/upload/combined workspace verification, complete synthetic browser flow, Super Admin and technical regression. No Gmail/Calendar verification, real candidate sends, deletion, deployment or push. Existing extensive worktree retained.
+## Latest completed task: production job-wide resume review — 19 November 2026
+User authorized Sol light, backend deployment and fixing both intern backlogs; user owns frontend push. Found six-file upload chunks; only last batch had an ATS range. Added job-wide ATS review GET/PUT/confirm with explicit range application and separate approval, snapshot concurrency checks, uploader/admin/job/org scope, existing durable per-item confirmation and dedupe protections. Frontend JobResumeAtsReview appears above All job resumes; single-batch actions retained. New tests test_resume_job_review.py and jobResumeAtsReview.test.tsx; scope tests mock the new component independently.
+Deployed 20261119-job-ats-review-01 on exact prior parser release, four-file overlay only (API/schema/selection helper/new resume_job_review service). Artifact and checksum under artifacts/backend. Staging .tmp/intake-review-release-stage-02, based on actual prior skills-02 archive, not the unrelated dirty checkout. Existing preflight/encrypted backup/rollback used; backup elitehr-postgres-20261119T063953Z.enc authenticated-decryption verified, no fresh restore exercise. Prior parser release retained. No migrations/dependency/mail changes, no Git commit/push/frontend deployment.
+33 scoped exact-package tests passed (unrelated local reparse excluded), 24 local ATS/workflow tests passed, 2 isolated PostgreSQL validation tests passed, 13 frontend tests plus TypeScript passed. Browser UI not repeated. First deployment preflight route inspection needed app.openapi paths for newer FastAPI deferred routers; corrected before switching code. A mock-response failure in old frontend scope tests was corrected by separately mocking the new component.
+Applied existing saved ranges (backend60-100, frontend20-80) across63/36 batches and queued existing confirmation workflow under the original active administrator. Waited until all completed. Final: backend64 new completed profiles,65 total applications including1 existing; frontend143 completed profiles/applications. All207 have unique application links and candidate IDs, zero confirming/paused/active-bulk states, zero eligible valid-identity rows left. Retained backend292 below range +16 missing identity +2 OCR +1 rejected; frontend55 below +3 above +14 missing identity. Readiness PostgreSQL/storage/scanner OK, API/resume/assessment active, recent errors empty. No invitation sending in this workflow.
+Details docs/RESUME_JOB_REVIEW_PRODUCTION_FIX.md; recovery/audit/watch scripts in .tmp contain code and aggregate counts only. Full-app completion pass below remains pending; do not claim entire app audited or all missing source files repaired.
 
-Initial audit: HEAD77c0646 v2; invitation table currently shows all and selects invited candidates. New filter must run before server pagination and preserve history. Restart via scripts/start_e2e_local.ps1 verified local launcher (dry-run). Browser reference/tool inspections started.
+## Latest resume-review navigation — 19 November 2026
+User selected Sol light/Ponytail. Added Review next upload batch callout in JobResumeList and Continue to ATS review on editable review_required/duplicate_suspected/confirmation_paused rows. ResumeIntakePage navigates to that row's original batch, clears stale batch data/search/status/score filters, and shows existing ATS slider/apply/create controls. Selected old batches remain in the dropdown even when not in the latest batch page; a late batch-list response cannot reset the chosen batch. Completed/in-progress/read-only rows do not get the action. Navigation does not move records or call scoring/creation endpoints until explicit user action.
+Changed three frontend components and three targeted test files. Twelve tests passed, including old-batch navigation/race, explicit ATS apply scope, and access/state gating. TypeScript run session76993. Frontend-only local change; no production/frontend deployment or backend changes for this request. Previous deployed parsing fix and older pending completion work below remain intact.
 
-## Latest: portal-owned traits, 2026-11-18
-Assigned reviewers customize company/job/round/reviewer-scoped traits via PUT /api/hiring-workflow/interviews/{id}/traits. Admin sees effective traits; later reviewers see submitted snapshots. 23 backend workflow tests passed. Six frontend workflow tests and TypeScript check passed. No new migration; backend restart required.
+# Elite HR V2 checkpoint — 2026-11-19
 
-# CCC completion checkpoint
-All ten features implemented locally. See docs/ccc-implementation.md for files, migration and exact verification.
-User approved Sol medium + Ponytail and explicitly waived live Gmail/Calendar checks.
-150 backend tests passed; final 18 workflow tests plus concurrent rejection regression passed. 47 affected UI tests, typecheck and build passed. Earlier PostgreSQL: 15 passed.
-Runtime restart pending for routes/startup migration. Keep email dry-run enabled during testing. Preserve unrelated worktree changes.
+## Latest completed request: production parsing
+User explicitly authorized production-safe backend parsing/ATS repair/deployment for JOB-cbb30f522aed4cc791e7f01074320649, Backend Developer Intern, choosing Sol6.1light/Ponytail. This overrides prior no-deploy only for this backend fix. Current HEAD398ee5f; extensive unrelated dirty work retained, no commit/push.
 
-## Historical notes (superseded)
-# CCC implementation in progress
-User approved Sol medium + Ponytail, all ten features in attachment 27173266-18af-4fc5-a4ec-e687634c1f23/Pasted text.txt. Local only. No real candidate emails or production deployment. Scope checklist .peddarayudu/ccc-checklist.md.
-New files backend/app/services/hiring_workflow.py, gmail_send.py, backend/app/api/hiring_workflow.py, security/resume_access.py. Existing PostgreSQL repositories, recruitment encrypted outbox/worker and Google refresh path reused. Prior company/report/admin uncommitted changes remain.
-Implemented (unverified yet):
-- Four original resume download gates deny recruiters; recruitment field projection removes resume; raw intake text suppressed and legacy applicant original resume removed. Need audit legacy batch parsedJson and UI.
-- Persisted org templates/default rejection, preview, transition rejection intent and queued durable notification with worker reconciliation. Missing default blocks rejection.
-- Position count refresh protected by lease.
-- Source options expanded including Unknown; Excel Application Source, application filters and updates.
-- Duplicate detail has match reasons/same-job marker; review endpoint stores keep/dismiss reason. IntakeIdentityReview UI added.
-- ATS existing real breakdown labels, source column, dimension sort.
-- Trait config endpoints max6 active/versioned, review traitSnapshot, UI manager.
-- ShareReports UI and finalized report/human review sharing, preview, encrypted company/Gmail queue, retry/status; revalidates recipient access. HR handoff notifications based on completed required rounds.
-- Separate reminder templates and disabled reminders/15,30,60,1440 UI; snapshot templates at schedule. Provider Calendar attendees and sendUpdates honor email dry-run.
-- Gmail uses encrypted OAuth connection, scoped refresh, provider message ID; requests send scope on reconnect.
-Most recent frontend tsc passed (before latest source/refinement).
-Read-only configured DB check: PostgreSQL, OAuth credentials configured, zero google_connections. File settings email dry run FALSE; local launcher overrides TRUE. No live send or event has been tested; tests must use synthetic mocks.
-Next: run new backend integration tests, fix import/worker/serialization issues, finish screen source/naming/position counters. Then frontend/component/browser tests, migration/index assessment, update completion report. Existing old checkpoint below is historical.
-Previous task state (historical evidence, recheck before relying):
-# Active work
-Complete the original Admin-only redesign, including browser evidence and requirement report. User rejects partial completion. Use Sol medium, Ponytail. No pushes/deployments.
-Current branch v2 with many existing unrelated changes including backend permissions/company settings and reports. Do not overwrite them.
-AdminHome, AdminHiringProgress and role gates in App/JobWorkspace/JobDetailsPage were added in prior turn. Current turn adds polling, existing Progress, guided assessment modal in HiringStageWorkspace.
-Resume table already has saved columns per org/user via ResumeIntakePage preferenceKey. Range selection already reads all pages.
-Checklist .peddarayudu/admin-redesign-checklist.md. Browser session admin-redesign opened Dribbble. Need local synthetic fixture/browser verification next.
-Current typecheck process 59527. No completion claimed.
-## Verification update 2026-11-17
-Current Admin changes typecheck and build pass. 34 targeted tests pass. Browser synthetic guided-admin login, dashboard, job upload, ATS workspace, assessment modal and interview tab verified. Mobile 390x844 document scrollWidth=390, no page overflow. Screenshots in visualization workspace admin-mobile.png/admin-desktop.png.
-Full frontend: 365 pass, 2 fail (company creation request assertion; MCQ original/sanitized ID recovery), logs frontend-regression.log.
-Full backend: 1877 pass, 181 fail, 27 skip. Authorization expectations 403 vs 401 among failures. logs backend-regression.log. Do not claim regression clean or completion. Isolated recruitment suite 9 pass.
-Synthetic backend 39528 exited during interruption. Browser Super Admin re-login could not finish. Need restart backend, diagnose auth fixture failures, fix frontend failures with current uncommitted company/report work considered, then finish end-to-end upload/scoring/assignment/hire browser run.
+Deployed release20261119-resume-skills-02 on the configured PostgreSQL host; prior20261118-ats-resume-03 retained. Encrypted backup elitehr-postgres-20261119T060042Z.enc authenticated-decryption verified (restore not rerun). API/resume/assessment active; PostgreSQL/storage/scanner ready; recent error query clean. Release01 failed safely before mutation due smoke-test bytecode;02 disabled bytecode.
+
+Found narrow legacy taxonomy and list API omitting stored skills. Production package includes12 parsing/evidence/repair files on exact production baseline, NOT unrelated local ATS/API/mail changes. Curated aliases/evidence, DOCX text boxes/headers/tables, privacy-safe skill projection, regex pattern caching, negation/ambiguous-word guards, bounded150skills with warning; canonical reviewed aliases match. Existing weights/dependencies/stages/mail unchanged.80staged tests +1repair test passed;49related local tests passed; Linux and service-user parser smoke passed.
+
+Compared372resumes in place without exporting documents. Repair dry-run375total/372eligible; applied372 under item leases/revision checks, skipped0. New skills and fresh local-only ATS previews/audits verified for372, zero eligible remain. PriorATS retained. No human-reviewed/confirmed/other-job records or stages changed, no invitations/AIcalls made. Two textless files and one rejected source remain flagged; configuredOCR data exists, scanner-approved reread still found no usable text. Mean29.82ms textparse excludes OCR/I/O, not SLA. Unchangedweights yield30scoresup/2down/340same, never inflate scores.
+
+Details/rollback limits: docs/RESUME_PARSER_PRODUCTION_FIX.md. Artifact artifacts/backend/elitehr-backend-20261119-resume-skills-02.tar.gz +SHA; exact overlay .tmp/parser-hotfix-files.json; baseline/stage .tmp/parser-release-baseline and .tmp/parser-release-stage. Production ATS is minimal baseline patch, whereas local resume_intake_ats.py still contains the prior broader uncommitted rewrite. Local changes this task: taxonomy caching/version/precision, worker limit warning, repair service/CLI and tests. Existing expanded taxonomy/schema/projection work was pre-existing and tested. Protected server/key paths in backend/secrets/e2e-local-launch.json; never print them or secrets. No public DNS/frontend cutover performed.
+
+## Prior completed fixes
+CSV: actual Front intern Questionnaire CSV10questions now1valid/0invalid. Day-first dates, Technical Interview/Verbal aliases, correction editor with shared/question fields, validate/newhash/confirm import; original file untouched.53backend/10UI/typecheck passed. No real draft imported/published. Mail card overlap and save-feedback fixes typechecked/browser/component checked. Reviewer-owned traits and immutable snapshots verified; see docs/ccc-implementation.md.
+
+Nxtagent/default Zepto test accepted and user confirmed Inbox. CCC email remains disabled/no company key. Local launcher supports exact-recipient live tests; ordinary startup dry-run. docs/company-settings.md. No candidate mail test permitted beyond the address explicitly authorized in chat.
+
+## Still-pending earlier completion pass
+Attachment fc4f72eb-bb53-4b4e-b1a4-bb1e881d9a27 and .peddarayudu/completion-checklist.md remain outstanding; Gmail/Calendar verification excluded. Invitation filter server-scoped/defaultOFF implemented;50focused backend,7PostgreSQL and12UI checks passed. Synthetic UI10->invite5->5remaining verified;3DOCX fixtures await upload for8/13toggle. Complete upload/ATS/results/report/video/PDF/interview/hiring browser flow, Admin/SuperAdmin regression and full final tests/matrix still needed. Synthetic fixture backend/tests/e2e_completion_server.py8008/4188, session completion-pass; recheck before use.
+
+Earlier full backend183failed->13failed; targeted1172passed/1failed due helper client.portal=None now corrected but rerun pending. Earlier full frontend372passed/3failed; affected tests fixed/passed. Do not claim full-app completion. No unrelated production deployment authorized by the current parsing request.

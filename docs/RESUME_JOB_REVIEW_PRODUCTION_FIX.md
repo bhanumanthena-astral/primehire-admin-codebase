@@ -1,0 +1,19 @@
+# Job-wide resume review — 19 November 2026
+
+Backend release: `20261119-job-ats-review-01`, based on `20261119-resume-skills-02`.
+
+Multiple-resume uploads deliberately use small transport batches. Backend Intern had 63 batches and Frontend Intern had 36; the old controls saved a range and created profiles for only the selected batch. The displayed three/five records were the last chunks, not the full job. Production parsing and scoring had finished; most chunks had no selected ATS range.
+
+The new job-wide review covers every accessible upload batch for one job across all pages. Applying a range does not create profiles. A separate explicit approval queues the existing durable confirmation workflow. Upload/range snapshots reject stale approvals; each batch and each candidate retain their existing revision, lease, identity and range checks. Non-admin users can operate only on their own batches for an accessible job. Cross-company access remains prohibited. Individual-batch review remains available.
+
+Frontend location after the user's frontend deployment: **All job resumes → Review all job resumes → Apply ATS range to all batches → approve → Create profiles across all batches**. Summary counts distinguish total resumes, eligible rows, missing ranges, pending scores, created profiles and missing details/file issues. Profile creation does not send invitations or change a hiring decision.
+
+The production package changes only four files: API routes, request schema, job review service and the missing job-scoring recovery helper. It preserves the deployed parser, score weights, dependencies, mail configuration and unrelated local development. No database migration is needed. Exact archive and checksum are under `artifacts/backend/elitehr-backend-20261119-job-ats-review-01.tar.gz`.
+
+Validation: 24 local backend tests; 33 scoped tests against the exact staged production package; two tests replayed in isolated PostgreSQL validation schemas; 13 frontend tests; TypeScript. The package suite excludes the unrelated local reparse feature, which is not part of this production release. Browser validation of the new frontend controls has not been repeated.
+
+Deployment used the existing preflight, encrypted backup and automatic rollback procedure. Backup `elitehr-postgres-20261119T063953Z.enc` passed authenticated decryption verification; a fresh restore exercise was not performed. Production PostgreSQL, storage and scanner readiness passed, with API/resume/assessment services active. The previous code release is retained. Code rollback does not undo profiles already created; retain legitimate profiles and use intake audit records for any targeted remediation.
+
+Authorized backlog recovery uses the existing saved ranges: Backend Intern 60–100 and Frontend Intern 20–80. It does not fabricate identity information or lower score thresholds. Unreadable/corrupt files, missing identity details and ambiguous duplicate matches remain explicit correction cases. Frontend deployment is owned by the user; no Git commit or push was performed by this task.
+
+Final production verification: 64 backend intake profiles completed (65 total job applications including one existing application); 143 frontend intake profiles completed (143 applications). All 207 completed rows have unique linked applications and nonempty candidate/application IDs. Both jobs have zero active bulk batches, zero confirming rows and zero paused confirmations. Backend retains 292 valid-identity rows below range, 16 missing identity details, two OCR-required sources and one rejected source. Frontend retains 55 below range, three above range and 14 missing identity details. No qualifying valid-identity rows remain awaiting creation. Readiness and all three services passed; recent error logs were empty.

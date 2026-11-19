@@ -24,12 +24,27 @@ export function QuestionVideo({reportId,version,reference}:{reportId:string;vers
  const [url,setUrl]=useState(''),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const [requested,setRequested]=useState(false);
  useEffect(()=>{if(!requested||!reference)return;const controller=new AbortController();let objectUrl='';setLoading(true);setError('');
- void reportingResponse(`/reports/${encodeURIComponent(reportId)}/media/${encodeURIComponent(reference)}?version=${version}`,undefined,controller.signal)
- .then(response=>response.blob()).then(blob=>{if(!controller.signal.aborted){objectUrl=URL.createObjectURL(blob);setUrl(objectUrl);}})
- .catch(cause=>{if(!controller.signal.aborted)setError(cause.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+ async function loadVideo(){
+  for(let attempt=0;attempt<3;attempt++){
+   if(controller.signal.aborted)return;
+   let blob:Blob;
+   try{
+    const response=await reportingResponse(`/reports/${encodeURIComponent(reportId)}/media/${encodeURIComponent(reference!)}?version=${version}`,undefined,controller.signal);
+    blob=await response.blob();
+   }catch(cause){
+    if(controller.signal.aborted)return;
+    if(!(cause instanceof TypeError)||attempt===2)throw cause;
+    await new Promise(resolve=>setTimeout(resolve,300*(attempt+1)));
+    continue;
+   }
+   if(!controller.signal.aborted){objectUrl=URL.createObjectURL(blob);setUrl(objectUrl);}
+   return;
+  }
+ }
+ void loadVideo().catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof TypeError?'The video download was interrupted. Please retry.':cause.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
  return()=>{controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};},[requested,reference,reportId,version]);
  if(!reference)return <p className="text-sm text-muted-foreground">Video unavailable for this question.</p>;
- return <div className="space-y-2">{url?<video aria-label="Authorized question video" controls preload="metadata" src={url} className="max-h-80 w-full rounded-xl bg-black" onError={()=>setError('Video playback is unavailable. The transcript and other report sections remain accessible.')}/>:<Button variant="outline" disabled={loading} onClick={()=>{setRequested(false);setTimeout(()=>setRequested(true),0);}}>{loading?'Loading video…':'Load authorized video'}</Button>}{error&&<p role="alert" className="text-xs text-destructive">{error}</p>}</div>;
+ return <div className="space-y-2">{url?<video aria-label="Authorized question video" controls preload="metadata" src={url} className="max-h-80 w-full rounded-xl bg-black" onError={()=>setError('Video playback is unavailable. The transcript and other report sections remain accessible.')}/>:<Button variant="outline" disabled={loading} onClick={()=>{setRequested(false);setTimeout(()=>setRequested(true),0);}}>{loading?'Loading video…':error?'Retry video':'Load authorized video'}</Button>}{error&&<p role="alert" className="text-xs text-destructive">{error}</p>}</div>;
 }
 export function StoredReportEvidence({content,reportId,version}:{content:ReportContent;reportId:string;version:number}){
  if(!content.schemaSupported)return <Block title="Round-specific schema unavailable"><p className="text-sm text-muted-foreground">This round’s detailed schema has not been confirmed. Basic and Technical fields are withheld. Common report metadata and version history remain available.</p></Block>;

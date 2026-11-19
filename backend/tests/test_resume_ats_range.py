@@ -28,6 +28,53 @@ async def batch_rows(client, db):
     return batch_id, f'/api/resume-intake/batches/{batch_id}'
 
 
+async def test_resume_scores_without_setting_a_range_and_keeps_candidate_creation_gated(client,db,scored):
+    batch_id,path=await batch_rows(client,db)
+    response=await client.post('/api/resume-intake/jobs/a/resume-ats',json={},headers=headers())
+    assert response.status_code==202,response.text
+    assert response.json()['queued']==5
+    # Repeated clicks must reuse the same durable batch intent.
+    await client.post('/api/resume-intake/jobs/a/resume-ats',json={},headers=headers())
+    assert await db.background_jobs.count_documents({'dedupeKey':'default:resume-ats:'+batch_id})==1
+    await drain(db)
+    result=(await client.get(path,headers=headers())).json()
+    assert len(scored)==5 and all(row['atsState']=='done' for row in result['items'])
+    assert not result['batch']['atsRange'] and result['batch']['status']!='processing'
+    assert all(row['atsSelection']['state']=='range_required' for row in result['items'])
+    assert (await confirm_row(client,result['items'][0],0)).status_code==409
+    again=await client.post('/api/resume-intake/jobs/a/resume-ats',json={},headers=headers())
+    assert again.json()['queued']==0 and again.json()['alreadyScored']==5
+    await drain(db)
+    assert len(scored)==5 and await db.applicants.count_documents({})==0
+
+
+async def test_resume_is_job_scoped_and_never_scores_unclean_files(client,db,scored):
+    batch_id,path=await batch_rows(client,db)
+    first=(await client.get(path,headers=headers())).json()['items'][0]
+    await db.resume_intake_items.update_one({'_id':first['itemId']},{'$set':{'scanStatus':'required'}})
+    assert (await client.post('/api/resume-intake/jobs/a/resume-ats',json={},headers=headers(role='viewer'))).status_code==403
+    assert (await client.post('/api/resume-intake/jobs/other/resume-ats',json={'batchId':batch_id},headers=headers())).status_code==404
+    response=await client.post('/api/resume-intake/jobs/a/resume-ats',json={'batchId':batch_id},headers=headers())
+    assert response.status_code==202 and response.json()['queued']==4
+    await drain(db)
+    assert len(scored)==4
+
+
+async def test_resume_recovers_a_dead_scoring_intent(client,db,scored):
+    from app.services.resume_intake_selection import enqueue_score
+    batch_id,_=await batch_rows(client,db)
+    item=await db.resume_intake_items.find_one({'batchId':batch_id})
+    target=await db.jobs.find_one({'jobId':'a'})
+    await enqueue_score(db,item,target)
+    task=await db.background_jobs.find_one({'kind':'resume_intake_score'})
+    await db.background_jobs.update_one({'jobId':task['jobId']},{'$set':{'status':'dead','attempts':5}})
+    fresh=await db.resume_intake_items.find_one({'_id':item['_id']})
+    await enqueue_score(db,fresh,target)
+    assert (await db.background_jobs.find_one({'jobId':task['jobId']}))['status']=='pending'
+    await drain(db)
+    assert len(scored)==1
+
+
 async def confirm_row(client, row, revision):
     full = await reveal(client, row)
     return await client.post(f'/api/resume-intake/items/{row["itemId"]}/confirm', headers=headers(), json={

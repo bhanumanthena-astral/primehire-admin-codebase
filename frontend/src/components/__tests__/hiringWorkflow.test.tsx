@@ -72,3 +72,27 @@ it('shows shared round traits without edit controls to read-only viewers',async(
  expect(screen.getByText('Explain decisions')).toBeVisible();
  expect(screen.queryByRole('button',{name:'Save traits'})).not.toBeInTheDocument();
 });
+
+it('confirms hiring template save only after the backend succeeds and clears stale confirmation on edits',async()=>{
+ const settings={revision:1,templates:[{id:'reject',name:'Approved response',category:'rejection',subject:'Application update',body:'Thank you'}],defaultRejectionId:'reject'};
+ let finish!:(value:any)=>void;
+ vi.mocked(workflowRequest).mockImplementation(async(path,body)=>body?new Promise(resolve=>{finish=resolve}):settings);
+ render(<HiringTemplateSettings/>);
+ await screen.findByText(/Approved response/);
+ fireEvent.click(screen.getByRole('button',{name:'Save hiring templates'}));
+ expect(screen.getByRole('button',{name:'Saving…'})).toBeDisabled();
+ expect(screen.queryByText('Hiring email templates saved successfully.')).not.toBeInTheDocument();
+ finish({...settings,revision:2});
+ expect(await screen.findByRole('status')).toHaveTextContent('Hiring email templates saved successfully.');
+ await userEvent.click(screen.getByText(/Approved response/));
+ fireEvent.change(screen.getByRole('textbox',{name:'Subject'}),{target:{value:'Changed subject'}});
+ expect(screen.queryByText('Hiring email templates saved successfully.')).not.toBeInTheDocument();
+});
+it('shows a failed hiring-template save without claiming success',async()=>{
+ vi.mocked(workflowRequest).mockImplementation(async(path,body)=>{if(body)throw new Error('Backend unavailable');return {revision:1,templates:[],defaultRejectionId:null}});
+ render(<HiringTemplateSettings/>);
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Save hiring templates'})).toBeEnabled());
+ fireEvent.click(screen.getByRole('button',{name:'Save hiring templates'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('Backend unavailable');
+ expect(screen.queryByText('Hiring email templates saved successfully.')).not.toBeInTheDocument();
+});

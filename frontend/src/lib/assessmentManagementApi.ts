@@ -10,8 +10,8 @@ export type ManagedAssessment = AssessmentProfile & {
 export type AssessmentCapabilities = { enabled: boolean; canManage: boolean; publishedEditingSupported: boolean };
 export type Config = { jobId: string; jobTitle: string; jobDescription: string; language: string; roundType: string;
   startDate: string; endDate: string; questions: Question[] };
-export type CsvRow = { row: number; groupId?: string; status: string; errors: { field: string; reason: string }[] };
-export type CsvPreview = { previewHash: string; fileErrors: string[]; rows: CsvRow[];
+export type CsvRow = { values?:Record<string,string>; editable?:boolean; row: number; groupId?: string; status: string; errors: { field: string; reason: string }[] };
+export type CsvPreview = { columns?:string[]; previewHash: string; fileErrors: string[]; rows: CsvRow[];
   groups: { groupId: string; status: string; rows: number[]; config: Config | null }[] };
 export type ImportSummary = { totalRows: number; totalGroups: number; imported: number; failed: number; duplicates: number;
   rows: CsvRow[]; items: { groupId: string; status: string; reason?: string; assessmentId?: string }[] };
@@ -63,4 +63,10 @@ export function downloadAssessmentTemplate() {
   const url = URL.createObjectURL(new Blob(['\ufeff'+text], {type:'text/csv;charset=utf-8'}));
   const link = document.createElement('a'); link.href=url; link.download='assessment_upload_template.csv'; link.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+/** Quote every cell so corrected commas, quotes and multiline questions survive. */
+export function correctedAssessmentCsv(columns:string[],rows:CsvRow[]):string{
+ const quote=(value:string)=>'"'+value.replaceAll('"','""')+'"';
+ return [columns.map(quote).join(','),...rows.map(row=>columns.map(column=>quote(row.values?.[column]??'')).join(','))].join('\r\n');
 }

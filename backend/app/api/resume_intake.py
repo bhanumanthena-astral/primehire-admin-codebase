@@ -24,9 +24,11 @@ from ..services.resume_intake_ats import score, job_fingerprint, profile_fingerp
 from ..services.resume_intake_llm import evaluate
 from ..services.resume_intake_excel import build_template, COLUMNS
 from ..services.pii import mask_email, mask_phone
-from ..services.resume_intake_projection import project_profile, redact_contacts
+from ..services.resume_intake_projection import project_profile, reconcile_skill_evidence, redact_contacts, redact_value
 from ..services.storage import resolve_storage_key
 from ..services import resume_intake_selection as ats_selection
+from ..schemas.resume_intake import ResumeAtsRequest, JobAtsReviewRequest
+from ..services import resume_job_review
 
 router = APIRouter(prefix="/api/resume-intake", tags=["resume-intake-v2"])
 
@@ -56,7 +58,7 @@ def public_item(item, *, detail=False, reveal=False, original_allowed=True):
     output = {key: item[key] for key in fields if key in item}
     output["itemId"] = item["_id"]
     output["profile"] = project_profile(item.get('profile'), detail=detail, reveal=reveal)
-    output["ats"] = item.get("ats")
+    output["ats"] = item.get("ats") if reveal else redact_value(item.get("ats"))
     if detail:
         output["confidence"] = item.get("confidence", {})
         output["hasResume"] = bool(original_allowed and item.get("fileId") and item.get("storageKey"))
@@ -241,7 +243,7 @@ async def preview_score(item_id:str,payload:RevisionRequest,user:CurrentUser=Dep
     available(db);item,target=await intake.item_for(db,user,item_id,existing_write=True)
     if item['revision']!=payload.expectedRevision:raise HTTPException(409,'Resume changed. Refresh before scoring.')
     batch=await IntakeRepository(db).get_batch(item['batchId'],user.org_id)
-    if not batch.get('atsRange'):raise HTTPException(409,'Select the batch ATS range before scoring.')
+    if not batch:raise HTTPException(404,'Upload batch not found.')
     if item['status'] not in ats_selection.SCOREABLE:raise HTTPException(409,'Finish parsing and scanning before scoring.')
     from ..security.rate_limit import limiter
     if not limiter.check(f'ats-preview:{user.org_id}:{user.user_id}',30,60).allowed:raise HTTPException(429,'Too many scoring requests. Retry shortly.')
@@ -251,6 +253,22 @@ async def preview_score(item_id:str,payload:RevisionRequest,user:CurrentUser=Dep
         await ats_selection.enqueue_score(db,item,target,retry=True)
     await IntakeRepository(db).refresh_summary(item['batchId'],user.org_id)
     return {'atsState':'queued'}
+
+
+@router.post('/jobs/{job_id}/resume-ats',status_code=202)
+async def resume_job_ats(job_id:str,payload:ResumeAtsRequest,user:CurrentUser=Depends(module_permission('resumes.upload')),db=Depends(get_db)):
+    available(db)
+    target=await intake.job_for(db,user,job_id,write=True)
+    if payload.batchId:
+        batch=await batch_for(db,user,payload.batchId)
+        if batch['jobId']!=job_id:raise HTTPException(404,'Upload batch not found in this job.')
+    from ..security.rate_limit import limiter
+    if not limiter.check(f'resume-ats:{user.org_id}:{user.user_id}',10,60).allowed:
+        raise HTTPException(429,'Too many ATS resume requests. Retry shortly.')
+    async with fenced_claim(db,user.org_id,['resume-ats:'+job_id]):
+        result=await ats_selection.resume_ats(db,target,batch_id=payload.batchId)
+    await intake.audit(db,user,'ats_resumed',job_id,{**result,'batchId':payload.batchId})
+    return result
 
 
 @router.post("/batches/{batch_id}/confirm", status_code=202)
@@ -279,6 +297,68 @@ async def confirm_batch(batch_id: str, payload: BulkConfirmRequest, user: Curren
     return {"status": "queued"}
 
 
+@router.get('/jobs/{job_id}/ats-review')
+async def job_ats_review(job_id: str, user: CurrentUser = Depends(module_permission('resumes.upload')), db=Depends(get_db)):
+    available(db)
+    target = await intake.job_for(db, user, job_id, write=True)
+    return await resume_job_review.overview(db, user, target)
+
+
+@router.put('/jobs/{job_id}/ats-review')
+async def save_job_ats_review(job_id: str, payload: JobAtsReviewRequest,
+        user: CurrentUser = Depends(module_permission('resumes.upload')), db=Depends(get_db)):
+    available(db)
+    target = await intake.job_for(db, user, job_id, write=True)
+    from ..security.rate_limit import limiter
+    if not limiter.check(f'job-ats:{user.org_id}:{user.user_id}', 10, 60).allowed:
+        raise HTTPException(429, 'Too many range changes. Retry shortly.')
+    async with fenced_claim(db, user.org_id, ['job-ats:'+job_id], ttl=900):
+        batches = await resume_job_review.batches_for(db, user, job_id)
+        if resume_job_review.fingerprint(batches) != payload.expectedSnapshot:
+            raise HTTPException(409, 'Uploads or ATS ranges changed. Refresh before applying to all batches.')
+        policy = {'minimum': payload.minimum, 'maximum': payload.maximum}
+        for batch in batches:
+            batch_id = batch['_id']
+            async with fenced_claim(db, user.org_id, ['ats-range:'+batch_id]):
+                current = await IntakeRepository(db).get_batch(batch_id, user.org_id)
+                if current.get('atsRangeRevision', 0) != batch.get('atsRangeRevision', 0):
+                    raise HTTPException(409, 'A batch range changed. Refresh and apply again; saved ranges are retained.')
+                revision = current.get('atsRangeRevision', 0) + 1
+                await db['resume_intake_batches'].update_one({'_id': batch_id, 'orgId': user.org_id}, {'$set': {
+                    'atsRange': policy, 'atsRangeRevision': revision, 'atsRangeSelectedBy': user.user_id,
+                    'atsRangeSelectedAt': now(), 'atsScoringRequested': True}})
+                await BackgroundJobRepository(db).enqueue(org_id=user.org_id, kind='resume_intake_score_batch',
+                    entity_type='resume_intake_batch', entity_key=batch_id, payload={'batchId': batch_id},
+                    dedupe_key=f'{user.org_id}:resume_intake_score_batch:{batch_id}:{revision}')
+            await IntakeRepository(db).refresh_summary(batch_id, user.org_id)
+        await intake.audit(db, user, 'job_ats_range_selected', job_id, {**policy, 'batches': len(batches)})
+    return await resume_job_review.overview(db, user, target)
+
+
+@router.post('/jobs/{job_id}/ats-review/confirm', status_code=202)
+async def confirm_job_ats_review(job_id: str, payload: JobAtsReviewRequest,
+        user: CurrentUser = Depends(module_permission('resumes.upload')), db=Depends(get_db)):
+    available(db)
+    target = await intake.job_for(db, user, job_id, write=True)
+    if not payload.reviewed:
+        raise HTTPException(422, 'Explicitly review the selected ATS range before creating profiles.')
+    async with fenced_claim(db, user.org_id, ['job-ats:'+job_id], ttl=900):
+        batches = await resume_job_review.batches_for(db, user, job_id)
+        policy = {'minimum': payload.minimum, 'maximum': payload.maximum}
+        if resume_job_review.fingerprint(batches) != payload.expectedSnapshot or any(b.get('atsRange') != policy for b in batches):
+            raise HTTPException(409, 'Uploads or ATS ranges changed. Apply the range to all batches and review again.')
+        if any(not b.get('imported') for b in batches):
+            raise HTTPException(409, 'Wait for all upload batches to finish importing.')
+        status = await resume_job_review.overview(db, user, target)
+        if status['counts'].get('pending') or status['counts'].get('score_failed'):
+            raise HTTPException(409, 'Finish ATS scoring before creating profiles across all batches.')
+        for batch in batches:
+            await confirm_batch(batch['_id'], BulkConfirmRequest(reviewed=True,
+                atsRangeRevision=batch.get('atsRangeRevision', 0)), user, db)
+        await intake.audit(db, user, 'job_bulk_approval', job_id, {**policy, 'batches': len(batches)})
+    return {'status': 'queued', 'batches': len(batches)}
+
+
 @router.get("/candidates")
 async def candidates(jobId: str, skip: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100),
     user: CurrentUser = Depends(module_permission("jobs.view")), db=Depends(get_db)):
@@ -294,7 +374,7 @@ async def candidates(jobId: str, skip: int = Query(0, ge=0), limit: int = Query(
         output.append({"candidateId": person["applicantId"], "applicationId": application["applicationId"],
             "name": person.get("name", ""), "email": mask_email(person.get("profile", {}).get("email", person.get("email", ""))),
             "phone": mask_phone(person.get("phone", "")), "stage": application["currentStage"],
-            "ats": application.get("scoreBreakdown", {}).get("ats"), "score": application.get("matchScore"),
+            "ats": redact_value(application.get("scoreBreakdown", {}).get("ats")), "score": application.get("matchScore"),
             "itemId": application.get("intakeItemId"), "applicationDate": application["createdAt"]})
     return jsonable_encoder({"items": output, "hasMore": len(rows) == limit})
 
@@ -339,7 +419,7 @@ async def item_detail(item_id: str, user: CurrentUser = Depends(module_permissio
         output['canEdit'] = False
     if item.get("applicationId"):
         application = await db["applications"].find_one({"orgId": user.org_id, "applicationId": item["applicationId"]})
-        output["ats"] = (application or {}).get("scoreBreakdown", {}).get("ats") or item.get("ats")
+        output["ats"] = redact_value((application or {}).get("scoreBreakdown", {}).get("ats") or item.get("ats"))
     ats = output.get("ats")
     output["atsStale"] = bool(item.get("atsStale") or ats and (ats.get("jobSnapshotHash") != job_fingerprint(job)
         or ats.get("profileSnapshotHash") != profile_fingerprint(item.get("profile", {}))))
@@ -435,6 +515,29 @@ async def retry_locked(db, user, item_id, payload):
     await intake.enqueue_item(db, updated)
     await intake.audit(db, user, "retry", item_id)
     return public_item(updated)
+
+
+@router.post("/items/{item_id}/reparse")
+async def reparse(item_id: str, payload: RevisionRequest, user: CurrentUser = Depends(module_permission("resumes.upload")), db=Depends(get_db)):
+    available(db)
+    item, _ = await intake.item_for(db, user, item_id, existing_write=True)
+    if not item.get("storageKey"):
+        raise HTTPException(409, "This row has no stored resume to reprocess. Upload a replacement.")
+    if item["status"] in {"queued", "processing", "confirming", "confirmation_paused"}:
+        raise HTTPException(409, "This resume is already being processed.")
+    async with fenced_claim(db, user.org_id, [f"item:{item_id}"]):
+        fresh = await IntakeRepository(db).get_item(item_id, user.org_id)
+        if fresh["revision"] != payload.expectedRevision:
+            raise HTTPException(409, "Resume changed. Refresh before reprocessing.")
+        updated = await IntakeRepository(db).patch_item(item_id, user.org_id, {
+            "status": "queued", "error": None, "reparseRequested": True, "reparseRequestedBy": user.user_id,
+            "reparseFromStatus": fresh["status"], "generation": fresh.get("generation", 0) + 1,
+            "ats": None, "atsStale": True, "atsState": "pending"},
+            payload.expectedRevision)
+        await intake.enqueue_item(db, updated)
+        await intake.audit(db, user, "reparse", item_id,
+            {"previousStatus": fresh["status"], "revision": updated["revision"]})
+        return public_item(updated)
 
 
 @router.post("/items/{item_id}/notes", status_code=201)
@@ -561,6 +664,7 @@ async def edit_candidate(item_id: str, payload: ReviewRequest, user: CurrentUser
     if not item.get("applicantId") or item["status"] not in {"completed", "duplicate"}:
         raise HTTPException(409, "Confirm the candidate before editing the stored profile.")
     profile = payload.profile.model_dump(mode="json")
+    profile["skillEvidence"] = reconcile_skill_evidence(profile, item.get("profile", {}))
     if len(profile["name"]) < 2 or not (profile["email"] or profile["phone"]):
         raise HTTPException(422, "A name and email or phone are required.")
     from ..services.pii import phone_digits_variants

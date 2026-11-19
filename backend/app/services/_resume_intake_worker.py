@@ -73,7 +73,7 @@ def parse_document(data, kind, options):
         raise IntakeError("unsupported_format", "Unsupported resume format.")
     if len(text.strip()) < 10:
         raise IntakeError("ocr_required", "No usable text was found. OCR or a replacement resume is required.")
-    from app.services.resume_extract import deterministic_parse
+    from app.services.resume_extract import deterministic_parse, PARSER_VERSION, TAXONOMY_VERSION
     from app.schemas.resume_intake import CandidateProfile
     extracted = deterministic_parse(text[:50000])
     values = {k: v for k, v in extracted.items() if k in CandidateProfile.model_fields}
@@ -129,6 +129,11 @@ def parse_document(data, kind, options):
             values[key] = next((degree for degree in values.get('education',[]) if re.search(patterns,degree)), '')
     from app.services.resume_intake_fields import enrich
     values = enrich(text, values)
+    if len(values.get('skills', [])) > 150:
+        values['skills'] = values['skills'][:150]
+        allowed_skills = set(values['skills'])
+        values['skillEvidence'] = [item for item in values.get('skillEvidence', []) if item['skill'] in allowed_skills]
+        warnings.append('Skills exceeded the 150-skill profile limit; review the retained skills against the resume.')
     from pydantic import ValidationError
     # Invalid optional suggestions do not discard the rest of the resume.
     for _ in range(len(CandidateProfile.model_fields)):
@@ -144,6 +149,7 @@ def parse_document(data, kind, options):
         raise IntakeError('rejected','Candidate fields could not be validated safely.')
     confidence = {key: ("review" if used_ocr or key not in {'email','phone'} and not re.search(rf'(?im)^\s*{re.escape(key)}\s*:',text) else "extracted") for key, value in profile.model_dump().items() if value not in (None, "", [])}
     return {"profile": profile.model_dump(mode="json"), "rawText": text[:50000], "confidence": confidence,
+        "parserVersion": PARSER_VERSION, "taxonomyVersion": TAXONOMY_VERSION,
         "warnings": warnings + (["OCR extraction requires careful review."] if used_ocr else []) + (["Resume text was truncated at the processing limit."] if len(text) > 50000 else [])}
 
 

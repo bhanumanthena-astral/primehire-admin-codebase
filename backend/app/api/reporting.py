@@ -1,6 +1,7 @@
 """Reports workspace API: resource authorization before content, history or media."""
 import asyncio
 import ipaddress
+import mimetypes
 import re
 import socket
 from datetime import datetime
@@ -146,6 +147,16 @@ async def validate_media_url(value):
         raise HTTPException(409,'Video is unavailable through the configured media service') from None
 
 
+def media_content_type(url, content_type):
+    mime = content_type.split(';')[0].strip().lower()
+    if mime in {'application/octet-stream', 'binary/octet-stream'}:
+        # Object storage serves recorded WebM/MP4 answers with a generic MIME type.
+        guessed = mimetypes.guess_type(urlsplit(url).path)[0]
+        if guessed and guessed.startswith(('video/', 'audio/')):
+            return guessed
+    return mime
+
+
 @router.get('/reports/{report_id}/media/{question_reference}')
 async def media(report_id:str,question_reference:str,request:Request,version:int=Query(...,ge=1),user=Depends(require_permission('reports.view')),db=Depends(database)):
     series,app,_=await service.series_for(db,user,report_id)
@@ -161,7 +172,7 @@ async def media(report_id:str,question_reference:str,request:Request,version:int
     client=httpx.AsyncClient(timeout=30,follow_redirects=False)
     try:
         upstream=await client.send(client.build_request('GET',url,headers=headers),stream=True)
-        mime=upstream.headers.get('content-type','').split(';')[0]
+        mime=media_content_type(url,upstream.headers.get('content-type',''))
         if upstream.status_code not in {200,206} or not mime.startswith(('video/','audio/')):
             raise ValueError('Media unavailable')
         if int(upstream.headers.get('content-length','0'))>128*1024*1024:raise ValueError('Media too large')

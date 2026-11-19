@@ -16,6 +16,7 @@ import {Capabilities, IntakeItem, IntakeBatch, BatchPage, CandidateRow, Limits, 
 import {ResumeBulkSelection} from './ResumeBulkSelection';
 import {ResumeReviewTable} from './ResumeReviewTable';
 import {JobResumeList} from './JobResumeList';
+import {JobResumeAtsReview} from './JobResumeAtsReview';
 import {ResumeAtsRange} from './ResumeAtsRange';
 import {uploadResumeSelection} from '../lib/resumeBulkUpload';
 import {ResumeFilePicker} from './ResumeFilePicker';
@@ -78,7 +79,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
   useEffect(()=>{
     const controller=new AbortController();
     void intakeGet<{items:IntakeBatch[];hasMore:boolean}>(`/batches?skip=${batchPage*10}&limit=10${scopedJob?`&jobId=${encodeURIComponent(scopedJob.jobId)}`:""}`,controller.signal).then(result=>{
-      setBatches(result.items);setMoreBatches(result.hasMore);if(!batchId&&result.items.length)setBatchId(result.items[0].batchId);
+      setBatches(result.items);setMoreBatches(result.hasMore);if(result.items.length)setBatchId(current=>current||result.items[0].batchId);
     }).catch(e=>{if(!controller.signal.aborted)setError(e.message);});
     return()=>controller.abort();
   },[batchPage,reload]);
@@ -107,9 +108,27 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
     return()=>controller.abort();
   },[view,jobId,candidatePage,reload]);
 
+  function continueToAts(item:IntakeItem){
+    if(!item.batchId||!caps.canUpload||item.canEdit===false)return;
+    setView('batches');setAllBatches(false);setBatchId(item.batchId);setData(null);
+    setPage(0);setStatus('');setScoreBand('');setSearch('');setError('');setMessage('');
+  }
+  const batchOptions=data?.batch&&data.batch.batchId===batchId&&!batches.some(batch=>batch.batchId===batchId)?[data.batch,...batches]:batches;
   async function action(work:()=>Promise<unknown>,success='') {
     setBusy(true);setError('');setMessage('');
     try{await work();setMessage(success);changed();}catch(e){setError(e instanceof Error?e.message:'Action failed.');}finally{setBusy(false);}
+  }
+  const atsJobId=scopedJob?.jobId||(view==='batches'?data?.batch.jobId:jobId);
+  async function resumeAts(){
+    if(!atsJobId)return;
+    setBusy(true);setError('');setMessage('');
+    try{
+      const batchScoped=view==='batches'&&(!scopedJob||!allBatches);
+      const result=await intakeMutate<{queued:number;alreadyScored:number;notReady:number}>(`/jobs/${encodeURIComponent(atsJobId)}/resume-ats`,batchScoped?{batchId}:{});
+      setMessage(`Resuming ATS for ${result.queued} resumes. ${result.alreadyScored} current scores retained.${result.notReady?' Some resumes are still being imported.':''}`);
+      latestStatus.current='processing';changed();
+    }catch(e){setError(e instanceof Error?e.message:'Could not resume ATS scoring.');}
+    finally{setBusy(false);}
   }
   async function open(itemId:string) {
     await action(async()=>{
@@ -141,6 +160,7 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
       {(caps.canUpload?[['upload','Upload resumes'],['batches','Processing & review'],['candidates','Candidate database']]:[['batches','Processing results'],['candidates','Candidate database']]).map(([id,title])=><Button variant="ghost" key={id} role="tab" aria-selected={view===id} onClick={()=>{setView(id as typeof view);setJobSearch('');setJobPage(0);}}
         className={`rounded-xl border px-4 py-3 text-xs font-bold ${view===id?'border-primary/40 bg-primary/15 text-foreground':'border-border bg-card text-muted-foreground'}`}>{title}</Button>)}
     </div>
+    {caps.canUpload&&atsJobId&&view!=='candidates'&&<div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4"><PAButton type="button" disabled={busy||uploading||(view==='batches'&&(!scopedJob||!allBatches)&&data?.batch.batchId!==batchId)} onClick={()=>void resumeAts()}><RefreshCw size={15}/>Resume ATS</PAButton><p className="text-xs text-muted-foreground">Continue scoring pending resumes. Existing current scores and saved ATS ranges are kept.</p></div>}
     {error&&<p role="alert" className="break-words rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-xs text-destructive">{error}</p>}
     {message&&<p role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs">{message}</p>}
     {caps.canAdmin&&caps.workerReady===false&&<p role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs">{hiringTerm('Processing is waiting for a resume worker. Uploads remain safely queued until a worker connects.',user?.role)}</p>}
@@ -171,14 +191,15 @@ export default function ResumeIntakePage({capabilities, initialJobKey='', scoped
       <PAButton variant={allBatches?'primary':'secondary'} onClick={()=>setAllBatches(true)}>All job resumes</PAButton>
       <PAButton variant={!allBatches?'primary':'secondary'} onClick={()=>setAllBatches(false)}>Upload batches</PAButton>
     </div>}
+    {view==='batches'&&scopedJob&&allBatches&&caps.canUpload&&<JobResumeAtsReview key={`ats-${scopedJob.jobId}`} jobId={scopedJob.jobId} reload={reload} onChanged={changed}/>}
     {view==='batches'&&scopedJob&&allBatches&&<JobResumeList key={scopedJob.jobId} jobId={scopedJob.jobId} reload={reload}
       preferenceKey={user?`elitehr:table-columns:resume-review:${user.orgId}:${user.userId}`:undefined}
-      caps={caps} jobs={jobs} busy={busy} onOpen={id=>void open(id)}
+      caps={caps} jobs={jobs} busy={busy} onContinueToAts={continueToAts} onOpen={id=>void open(id)}
       onRetry={item=>void action(()=>intakeMutate(`/items/${item.itemId}/retry`,{expectedRevision:item.revision}),'Retry queued.')}
       onDelete={item=>{setError('');setDeleteItem(item);setReason('');}} onChanged={changed}
       onAssociated={id=>{setBatchId(id);setAllBatches(false);setPage(0);setStatus('');setScoreBand('');changed();}}/>}
     {view==='batches'&&(!scopedJob||!allBatches)&&<div className="space-y-5">
-      <section className="rounded-2xl border border-border bg-card p-5"><div className="flex flex-wrap items-end gap-3"><label className="flex min-w-0 flex-1 flex-col gap-2 text-xs font-bold">Upload batch<AppSelect value={batchId} onValueChange={e=>{setBatchId(e);setData(null);setPage(0);setStatus('');setScoreBand('');}} aria-label="Upload batch" className="ehr-input min-w-0 p-3 font-normal"><option value="">Choose a batch</option>{batches.map(batch=><option key={batch.batchId} value={batch.batchId}>{batch.jobTitle} · {label(batch.mode)} · {new Date(batch.createdAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</option>)}</AppSelect></label><PAButton type="button" variant="secondary" onClick={changed}><RefreshCw size={15}/>Refresh</PAButton></div>
+      <section className="rounded-2xl border border-border bg-card p-5"><div className="flex flex-wrap items-end gap-3"><label className="flex min-w-0 flex-1 flex-col gap-2 text-xs font-bold">Upload batch<AppSelect value={batchId} onValueChange={e=>{setBatchId(e);setData(null);setPage(0);setStatus('');setScoreBand('');}} aria-label="Upload batch" className="ehr-input min-w-0 p-3 font-normal"><option value="">Choose a batch</option>{batchOptions.map(batch=><option key={batch.batchId} value={batch.batchId}>{batch.jobTitle} · {label(batch.mode)} · {new Date(batch.createdAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</option>)}</AppSelect></label><PAButton type="button" variant="secondary" onClick={changed}><RefreshCw size={15}/>Refresh</PAButton></div>
       <div className="mt-3 flex justify-end gap-2"><PAButton variant="secondary" disabled={!batchPage} onClick={()=>setBatchPage(n=>n-1)}>Previous batches</PAButton><PAButton variant="secondary" disabled={!moreBatches} onClick={()=>setBatchPage(n=>n+1)}>More batches</PAButton></div></section>
       {!batchId&&<EmptyNote>No uploads yet. Start with a resume, ZIP or Excel import.</EmptyNote>}
       {data&&data.batch.batchId===batchId&&<section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]">

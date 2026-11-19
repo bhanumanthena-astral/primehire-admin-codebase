@@ -1,11 +1,23 @@
 """Check the isolated localhost PostgreSQL connection without printing credentials."""
 import argparse
 import json
+import os
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
+
+
+def mail_mode_allowed(settings, recipient):
+    if settings.email_dry_run and settings.recruitment_email_dry_run is True:
+        return True
+    recipient = recipient.strip().lower()
+    valid = bool(re.fullmatch(r"[^\s<>,;@]+@[^\s<>,;@]+\.[^\s<>,;@]+", recipient))
+    staff = [value.strip().lower() for value in settings.recruitment_email_test_recipient_allowlist.split(',') if value.strip()]
+    return (valid and not settings.email_dry_run and settings.recruitment_email_dry_run is False
+            and settings.test_recipient_allowlist == [recipient] and staff == [recipient])
 
 
 def main():
@@ -18,8 +30,8 @@ def main():
         or uri.hostname!='127.0.0.1' or uri.port!=25432
         or uri.username!='elitehr_local' or uri.path!='/elitehr_v2_validation'):
         raise SystemExit('Local development must use the isolated E2E PostgreSQL test configuration. Run scripts/configure_e2e_local.py first.')
-    if not settings.email_dry_run or settings.recruitment_email_dry_run is not True:
-        raise SystemExit('Local development must keep invitation and recruitment email in dry-run mode.')
+    if not mail_mode_allowed(settings, os.environ.get('ELITEHR_LOCAL_TEST_EMAIL', '')):
+        raise SystemExit('Use email dry-run or the explicit single-recipient local test mode.')
     if args.config_only:
         return
     import psycopg

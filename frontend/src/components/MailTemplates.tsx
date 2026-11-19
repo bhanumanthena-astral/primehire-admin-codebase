@@ -9,7 +9,7 @@ import {Textarea} from '@/components/ui/textarea';
 
 import React, { useState } from 'react';
 import { MailTemplate } from '../types';
-import { Mail, Plus, Edit2, Save, Eye, Sparkles, CheckCheck } from 'lucide-react';
+import { Mail, Plus, Edit2, Save, Eye, Sparkles, CheckCheck, Clock3, FilePenLine, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SectionHeader, Panel, PanelTitle, Pill, PAButton, IconSquare, EmptyNote } from './ui/primitives';
 import { cn } from '@/lib/utils';
@@ -19,10 +19,10 @@ interface MailTemplatesProps {
   onSaveTemplate: (template: MailTemplate) => void;
 }
 
-const TYPE_META: Record<string, { label: string; tone: 'info' | 'warning' | 'success'; icon: string }> = {
-  STANDARD_INVITATION: { label: 'Invitation', tone: 'info', icon: '✉️' },
-  REMINDER: { label: 'Reminder', tone: 'warning', icon: '⏰' },
-  CUSTOM: { label: 'Custom', tone: 'success', icon: '✏️' },
+const TYPE_META: Record<string, { label: string; tone: 'info' | 'warning' | 'success'; icon: typeof Mail }> = {
+  STANDARD_INVITATION: { label: 'Invitation', tone: 'info', icon: Mail },
+  REMINDER: { label: 'Reminder', tone: 'warning', icon: Clock3 },
+  CUSTOM: { label: 'Custom', tone: 'success', icon: FilePenLine },
 };
 
 export default function MailTemplates({ templates, onSaveTemplate }: MailTemplatesProps) {
@@ -119,42 +119,43 @@ export default function MailTemplates({ templates, onSaveTemplate }: MailTemplat
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
         {/* Template list — selectable cards */}
-        <div className="lg:col-span-1 space-y-2.5">
-          <span className="eyebrow block">Available Templates</span>
-          <div className="space-y-2" role="listbox" aria-label="Templates">
+        <div className="min-w-0 space-y-3 rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">Available templates</h3><span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{templates.length}</span></div>
+          <div className="space-y-3" role="group" aria-label="Templates">
             {templates.map((tpl) => {
               const isSelected = tpl.id === selectedTemplateId;
               const meta = TYPE_META[tpl.type] || TYPE_META.CUSTOM;
+              const TypeIcon = meta.icon;
               return (
                 <Button variant="ghost"
                   key={tpl.id}
-                  role="option"
-                  aria-selected={isSelected}
+                  type="button"
+                  aria-pressed={isSelected}
                   onClick={() => { setSelectedTemplateId(tpl.id); setIsEditing(false); setIsCreating(false); }}
                   className={cn(
-                    'w-full text-left p-4 rounded-2xl border transition-all duration-200 flex items-start gap-3 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/40',
+                    'h-auto min-h-24 w-full min-w-0 justify-start whitespace-normal rounded-xl border p-4 text-left transition-colors flex items-start gap-3 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/40',
                     isSelected
-                      ? 'bg-primary-soft border-primary shadow-[var(--shadow-card)] -translate-y-0.5'
-                      : 'bg-card border-border/70 shadow-[var(--shadow-card)] hover:-translate-y-0.5 hover:border-primary/40'
+                      ? 'border-primary bg-primary/5 shadow-sm hover:bg-primary/10'
+                      : 'border-border bg-background shadow-none hover:border-primary/40 hover:bg-muted/50'
                   )}
                 >
                   <div className={cn(
                     'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-sm border',
-                    isSelected ? 'bg-gradient-primary text-primary-foreground border-transparent' : 'bg-accent/10 text-accent border-accent/15'
+                    isSelected ? 'bg-primary text-primary-foreground border-transparent' : 'bg-muted text-muted-foreground border-border'
                   )}>
-                    {isSelected ? <Mail className="w-4 h-4" /> : <span>{meta.icon}</span>}
+                    <TypeIcon aria-hidden="true" className="h-5 w-5"/>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm truncate text-foreground">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="break-words text-sm font-semibold leading-5 text-foreground [overflow-wrap:anywhere]">
                       {tpl.name}
                     </div>
-                    <div className="mt-1.5">
-                      <Pill tone={meta.tone}><span className="uppercase tracking-wide text-[0.6875rem]">{meta.label}</span></Pill>
+                    <div className="flex">
+                      <Pill tone={meta.tone}><span className="text-[0.6875rem] font-medium">{meta.label}</span></Pill>
                     </div>
                   </div>
-                  {isSelected && <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0 animate-pulse" />}
+                  {isSelected && <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-primary"/>}
                 </Button>
               );
             })}
@@ -162,11 +163,11 @@ export default function MailTemplates({ templates, onSaveTemplate }: MailTemplat
         </div>
 
         {/* Editor + Preview */}
-        <div className="lg:col-span-2">
+        <div className="min-w-0">
           {selectedTemplate ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-2">
               {/* Editor */}
-              <Panel className="space-y-4">
+              <Panel className="min-w-0 space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-border/60">
                   <span className="eyebrow">
                     {isEditing ? 'Editing Template' : 'Template Details'}

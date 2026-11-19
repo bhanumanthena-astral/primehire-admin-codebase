@@ -1,13 +1,32 @@
 param(
     [string]$PrivateKeyPath,
     [string]$Server = '216.48.178.2',
-    [switch]$RestartApi
+    [switch]$RestartApi,
+    [string]$TestEmailRecipient
 )
 $ErrorActionPreference = 'Stop'
+# Normal local startup remains dry-run; live tests require one explicit recipient.
+if ($TestEmailRecipient) {
+    if ($TestEmailRecipient -notmatch '^[^\s<>,;@]+@[^\s<>,;@]+\.[^\s<>,;@]+$') { throw 'Pass one valid test email address.' }
+    $TestEmailRecipient = $TestEmailRecipient.ToLowerInvariant()
+    $env:ELITEHR_LOCAL_TEST_EMAIL = $TestEmailRecipient
+    $env:EMAIL_DRY_RUN = 'false'
+    $env:RECRUITMENT_EMAIL_DRY_RUN = 'false'
+    $env:EMAIL_TEST_RECIPIENT_ALLOWLIST = $TestEmailRecipient
+    $env:RECRUITMENT_EMAIL_TEST_RECIPIENT_ALLOWLIST = $TestEmailRecipient
+    $RestartApi = $true
+} else {
+    $env:ELITEHR_LOCAL_TEST_EMAIL = ''
+    $env:EMAIL_DRY_RUN = 'true'
+    $env:RECRUITMENT_EMAIL_DRY_RUN = 'true'
+}
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $launchProfile = Join-Path $taskRoot 'backend/secrets/e2e-local-launch.json'
 $taskLogs = Join-Path $taskRoot '.tmp'
 New-Item -ItemType Directory -Force -Path $taskLogs | Out-Null
+$mailModeFile = Join-Path $taskLogs 'local-mail-mode'
+$requestedMailMode = if ($TestEmailRecipient) { 'test-recipient' } else { 'dry-run' }
+if ((Test-Path -LiteralPath $mailModeFile) -and (Get-Content -LiteralPath $mailModeFile -Raw).Trim() -ne $requestedMailMode) { $RestartApi = $true }
 if (-not $PrivateKeyPath -and (Test-Path -LiteralPath $launchProfile)) {
     $savedLaunchProfile = Get-Content -LiteralPath $launchProfile -Raw | ConvertFrom-Json
     $PrivateKeyPath = $savedLaunchProfile.privateKeyPath
@@ -93,10 +112,16 @@ if (-not $apiReady) { throw 'Local API did not become ready. Check .tmp/e2e-loca
 foreach ($role in @('resume_worker','assessment_worker','recruitment_worker')) {
     $scriptName = "run_v2_$role.py"
     $existingWorker = Get-CimInstance Win32_Process | Where-Object {
-        $_.Name -eq 'python.exe' -and $_.CommandLine -match [regex]::Escape($scriptName)
+        $_.Name -eq 'python.exe' -and $_.CommandLine.Contains($taskRoot) -and $_.CommandLine -match [regex]::Escape($scriptName)
     } | Select-Object -First 1
+    if ($existingWorker -and $RestartApi) {
+        Stop-Process -Id $existingWorker.ProcessId
+        $existingWorker = $null
+    }
     if (-not $existingWorker) {
         Background $python @((Join-Path $taskRoot "scripts/$scriptName")) "e2e-local-$role" | Out-Null
     }
 }
-Write-Host 'Ready: http://localhost:3000 (isolated E2E PostgreSQL test database; email dry-run).'
+$requestedMailMode | Set-Content -LiteralPath $mailModeFile
+if ($TestEmailRecipient) { Write-Host 'Ready: http://localhost:3000 (live email restricted to the explicit test recipient).' }
+else { Write-Host 'Ready: http://localhost:3000 (isolated E2E PostgreSQL test database; email dry-run).' }

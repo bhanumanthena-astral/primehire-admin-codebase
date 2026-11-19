@@ -20,3 +20,17 @@ it('loads the whole job, paginates and resets pagination for ATS and search filt
   fireEvent.change(screen.getByRole('textbox'),{target:{value:'Candidate'}});
   await waitFor(()=>expect(intakeGet).toHaveBeenLastCalledWith('/jobs/job-a/items?skip=0&limit=25&q=Candidate&atsOnly=true',expect.any(AbortSignal)));
 });
+
+it('offers a next-step action only for editable parsed resumes, without mutating them',async()=>{
+ const ready={itemId:'ready',batchId:'original-batch',fileName:'ready.pdf',status:'review_required'};
+ vi.mocked(intakeGet).mockResolvedValue({items:[{...ready,itemId:'done',status:'completed'},ready,{...ready,itemId:'denied',canEdit:false}],total:3} as any);
+ const next=vi.fn();const props={jobId:'job-a',reload:0,caps:{canUpload:true} as any,jobs:[],busy:false,onOpen:vi.fn(),onRetry:vi.fn(),onDelete:vi.fn(),onChanged:vi.fn(),onAssociated:vi.fn(),onContinueToAts:next};
+ const view=render(<JobResumeList {...props}/>);
+ await screen.findByRole('button',{name:'Review next upload batch'});
+ expect(screen.getByText(/1 resumes on this page need review/)).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Review next upload batch'}));
+ expect(next).toHaveBeenCalledWith(ready);
+ view.unmount();render(<JobResumeList {...props} caps={{canUpload:false} as any}/>);
+ await screen.findByText(/3 matching records/);
+ expect(screen.queryByRole('button',{name:'Review next upload batch'})).not.toBeInTheDocument();
+});

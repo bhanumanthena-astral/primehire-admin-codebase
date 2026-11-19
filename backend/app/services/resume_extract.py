@@ -11,69 +11,19 @@ import io
 import re
 import zipfile
 
-# Skill lexicon (matched case-insensitively, reported in canonical form).
-SKILLS = [
-    "Java", "Python", "React", "Spring Boot", "SQL", "AWS",
-    "JavaScript", "TypeScript", "Node.js", "Express", "NestJS", "Next.js",
-    "Angular", "Vue", "HTML", "CSS", "Django", "Flask", "FastAPI",
-    "Go", "Rust", "C++", "C#", ".NET", "Kotlin", "Swift", "PHP", "Ruby on Rails",
-    "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch",
-    "Docker", "Kubernetes", "Terraform", "Jenkins", "Git", "Linux",
-    "Kafka", "RabbitMQ", "GraphQL", "REST", "Microservices",
-    "Machine Learning", "TensorFlow", "PyTorch", "Pandas", "NumPy",
-    "Selenium", "Cypress", "JUnit", "Mockito", "Hibernate", "JPA", "Maven", "Gradle",
-    "Azure", "GCP", "Snowflake", "Airflow", "Spark", "Figma",
-]
+from .skill_taxonomy import (
+    ALIASES,
+    LANGUAGES,
+    PARSER_VERSION,
+    SKILLS,
+    TAXONOMY_VERSION,
+    extract_skill_evidence,
+    find_skills,
+    skill_hit,
+)
 
-LANGUAGES = [
-    "Java", "Python", "JavaScript", "TypeScript", "Go", "Rust", "C++",
-    "C#", "Kotlin", "Swift", "PHP", "Ruby", "Scala", "R",
-]
-
-# Canonical skill -> extra spellings seen in the wild (resumes, job posts).
-# Matching is case-insensitive with word boundaries on every variant, so
-# "Java" never matches "JavaScript" and "SQL" never matches "NoSQL".
-ALIASES: dict[str, list[str]] = {
-    "JavaScript": ["js", "javascript"],
-    "TypeScript": ["ts", "typescript"],
-    "Node.js": ["nodejs", "node.js", "node"],
-    "Next.js": ["nextjs", "next.js"],
-    "PostgreSQL": ["postgresql", "postgres"],
-    "Kubernetes": ["kubernetes", "k8s"],
-    ".NET": [".net", "dotnet"],
-    "C#": ["c#", "csharp"],
-    "C++": ["c++"],
-    "React": ["react"],
-    "React Native": ["react native", "react-native"],
-    "SQL": ["sql"],
-    "Go": ["go", "golang"],
-    "R": ["r"],
-    "C": ["c"],
-    "Ruby on Rails": ["ruby on rails", "rails"],
-    "Machine Learning": ["machine learning", "ml"],
-}
-
-
-def skill_hit(text: str, skill: str) -> bool:
-    """True if `skill` (or a known alias) appears as a standalone token.
-
-    Uses lookarounds instead of `\\b` so symbols like C++/C#/.NET match.
-    """
-    variants = [skill] + ALIASES.get(skill, [])
-    for variant in variants:
-        pattern = r"(?<!\w)" + re.escape(variant) + r"(?!\w)"
-        if re.search(pattern, text or "", re.IGNORECASE):
-            return True
-    return False
-
-
-def find_skills(text: str, catalogue: list[str]) -> list[str]:
-    """Catalogue skills present in text, in catalogue order, no duplicates."""
-    seen: list[str] = []
-    for skill in catalogue:
-        if skill not in seen and skill_hit(text, skill):
-            seen.append(skill)
-    return seen
+__all__ = ["SKILLS", "LANGUAGES", "ALIASES", "TAXONOMY_VERSION", "PARSER_VERSION",
+    "skill_hit", "find_skills", "extract_text", "deterministic_parse"]
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _PHONE_RE = re.compile(r"(?:\+?91[\s\-]?)?[6-9]\d{9}")
@@ -123,6 +73,39 @@ def extract_text(data: bytes, kind: str) -> str:
 
 
 def _extract_pdf(data: bytes) -> str:
+    """Extract page-separated text; PyMuPDF first, pypdf as a fallback.
+
+    Page breaks are retained as form-feed characters so evidence can report a
+    page number. Both readers are best-effort: text-based PDFs are the supported
+    input; scanned pages require the V2 OCR path.
+    """
+    try:
+        import pymupdf as fitz
+
+        try:
+            document = fitz.open(stream=data, filetype="pdf")
+        except Exception:
+            document = None
+        if document is not None:
+            with document:
+                if document.needs_pass:
+                    raise ValueError("PDF is password protected or encrypted.")
+                if document.page_count > 20:
+                    raise ValueError("Resume exceeds the 20-page limit.")
+                parts = []
+                for page in document:
+                    try:
+                        parts.append(page.get_text(textpage=None, sort=True) or "")
+                    except Exception:
+                        parts.append("")
+                text = "\n\f\n".join(parts).strip()
+                if text:
+                    return text
+    except ValueError:
+        raise
+    except Exception:
+        pass
+
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
@@ -134,7 +117,21 @@ def _extract_pdf(data: bytes) -> str:
             parts.append(page.extract_text() or "")
         except Exception:
             parts.append("")
-    return "\n".join(parts).strip()
+    return "\n\f\n".join(parts).strip()
+
+
+def _docx_textbox_text(doc) -> list[str]:
+    """Text box content is invisible to `paragraphs`; recover it explicitly."""
+    try:
+        from docx.oxml.ns import qn
+    except Exception:
+        return []
+    found = []
+    for element in doc.element.body.iter(qn("w:txbxContent")):
+        lines = [node.text for node in element.iter(qn("w:t")) if node.text and node.text.strip()]
+        if lines:
+            found.append(" ".join(lines).strip())
+    return found
 
 
 def _extract_docx(data: bytes) -> str:
@@ -151,7 +148,23 @@ def _extract_docx(data: bytes) -> str:
                 parts.append(": ".join(cells) if len(cells) == 2 else " | ".join(cells))
         else:
             parts.append(block.text)
-    return "\n".join(parts).strip()
+    parts.extend(_docx_textbox_text(doc))
+    for section in doc.sections:
+        for part in (section.header, section.footer):
+            try:
+                text = "\n".join(paragraph.text for paragraph in part.paragraphs if paragraph.text.strip())
+            except Exception:
+                text = ""
+            if text:
+                parts.append(text)
+    # Keep stable order while removing blank/duplicate header/footer repeats.
+    output, seen = [], set()
+    for part in parts:
+        cleaned = (part or "").strip()
+        if cleaned and cleaned.casefold() not in seen:
+            seen.add(cleaned.casefold())
+            output.append(cleaned)
+    return "\n".join(output).strip()
 
 
 def _extract_doc_strings(data: bytes) -> str:
@@ -171,10 +184,11 @@ def deterministic_parse(raw_text: str) -> dict:
     email = email_m.group(0) if email_m else ""
     phone = re.sub(r"[\s\-]", "", phone_m.group(0)) if phone_m else ""
 
-    lowered = text.lower()
-    skills = find_skills(text, SKILLS)
-    languages = find_skills(text, LANGUAGES)
-    technologies = [s for s in skills if s not in languages]
+    skill_evidence = extract_skill_evidence(text)
+    skills = [item["skill"] for item in skill_evidence]
+    language_set = set(LANGUAGES)
+    languages = [skill for skill in skills if skill in language_set]
+    technologies = [skill for skill in skills if skill not in language_set]
 
     exp: float | None = None
     for rx in (_EXP_RE, _EXP_ALT_RE):
@@ -230,6 +244,7 @@ def deterministic_parse(raw_text: str) -> dict:
         "email": email,
         "phone": phone,
         "skills": skills,
+        "skillEvidence": skill_evidence,
         "languages": languages,
         "technologies": technologies,
         "experienceYears": exp,
@@ -238,4 +253,6 @@ def deterministic_parse(raw_text: str) -> dict:
         "ctcExpectedLpa": ctc_exp,
         "noticePeriodDays": notice,
         "summary": summary,
+        "parserVersion": PARSER_VERSION,
+        "taxonomyVersion": TAXONOMY_VERSION,
     }

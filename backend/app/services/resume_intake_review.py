@@ -9,8 +9,9 @@ from ..schemas.resume_intake import CandidateProfile, REVIEWABLE
 from ..security.deps import CurrentUser
 from ..security.roles import effective_permissions
 from .resume_intake import item_for, job_for, get_limits, matches, audit
-from .resume_intake_ats import score
+from .resume_intake_ats import SCORE_VERSION, score
 from .resume_intake_llm import evaluate
+from .resume_intake_projection import reconcile_skill_evidence
 from .pii import phone_digits_variants
 
 
@@ -25,6 +26,7 @@ async def save_review(db, user, item_id, request):
         if item["status"] not in REVIEWABLE - {"completed", "duplicate"}:
             raise HTTPException(409, "This file is not awaiting profile review.")
         reviewed_profile = request.profile.model_dump(mode="json")
+        reviewed_profile["skillEvidence"] = reconcile_skill_evidence(reviewed_profile, item.get("profile", {}))
         from .resume_intake_ats import profile_fingerprint
         scoring_changed = profile_fingerprint(reviewed_profile) != profile_fingerprint(item.get('profile',{}))
         invalidation = {'atsStale':True,'atsState':'pending','atsPreviewHash':None} if scoring_changed else {}
@@ -49,6 +51,7 @@ async def confirm(db, user, item_id, request=None, *, enqueue_only=False):
     if not prior_app:
         job = await job_for(db, user, item["jobId"], write=True)
     profile = request.profile.model_dump(mode="json") if request else item.get("confirmation", {}).get("profile", {})
+    profile["skillEvidence"] = reconcile_skill_evidence(profile, item.get("profile", {}))
     if item["status"] == "confirming":
         if request and profile != item["confirmation"]["profile"]:
             raise HTTPException(409, "Confirmation is already in progress. Its reviewed profile cannot change.")
@@ -135,7 +138,7 @@ async def confirm(db, user, item_id, request=None, *, enqueue_only=False):
                 "candidateKey": None, "assignedReviewers": [], "status": "active", "createdAt": stamp,
                 "updatedAt": stamp, "matchScore": None, "needsReview": True,
                 "reviewReasons": ["Human hiring decision required."],
-                "scoreBreakdown": {"atsStatus": "pending", "final": None, "scoreVersion": "module2-v1"}}
+                "scoreBreakdown": {"atsStatus": "pending", "final": None, "scoreVersion": SCORE_VERSION}}
             try:
                 outcome = await db["applications"].update_one({"orgId": user.org_id, "applicationId": application_id}, {"$setOnInsert": application}, upsert=True)
                 if outcome.upserted_id is None:
@@ -163,7 +166,9 @@ async def confirm(db, user, item_id, request=None, *, enqueue_only=False):
                 ats["evaluatedAt"] = stamp.isoformat()
                 await db["applications"].update_one({"orgId": user.org_id, "applicationId": application_id}, {"$set": {
                     "matchScore": ats["overall"], "scoreBreakdown": {"ats": ats, "atsStatus": "done", "final": ats["overall"],
-                        "keyword": ats["breakdown"]["keyword"], "matched": ats["matchedSkills"], "missing": ats["missingSkills"], "scoreVersion": "module2-v1"}, "updatedAt": stamp}})
+                        "keyword": ats["breakdown"]["keyword"], "matched": ats["matchedSkills"], "missing": ats["missingSkills"],
+                        "scoreVersion": ats.get("scoreVersion") or SCORE_VERSION,
+                        "taxonomyVersion": ats.get("taxonomyVersion", "")}, "updatedAt": stamp}})
         elif existing:
             application_id = existing["applicationId"]
         if item.get("fileId"):

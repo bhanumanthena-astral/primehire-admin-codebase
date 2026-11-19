@@ -1,5 +1,23 @@
 # DECISIONS.md — Phase 1 Plan
 
+## 2026-11-18: resume skill extraction and Module 2 ATS repair
+
+The reported missing/false-positive skills are fixed in the extraction layer,
+not by inflating scores: add a versioned curated taxonomy (`skills-v2`) with
+symmetric aliases, negation/ambiguity guards and evidence records; keep the
+legacy `SKILLS`/`LANGUAGES` exports and `find_skills` order stable. V2 parsing
+stores `parserVersion` and `taxonomyVersion`. The ATS becomes `module2-v2`:
+`mustHaveSkills` is mandatory when present (otherwise keywords), and
+`niceToHaveSkills` plus remaining keywords are preferred. Reviewed profile
+skills are authoritative; evidence only explains a match, so a reviewer's edit
+cannot be overridden by raw text. Multi-part requirements may earn explicit
+partial credit. Existing five breakdown keys and score weights are retained.
+Non-detail projections now include skills and recursively redact nested
+evidence; a new audited reparse endpoint repairs confirmed resumes without
+overwriting reviewed personal fields. No migration is required because the
+profile/ATS fields are optional JSON extensions; no new service or paid
+dependency is introduced.
+
 ## 2026-11-09: authorized dedicated leadership workspace
 
 The user explicitly requests implementation of a new leadership login and hiring

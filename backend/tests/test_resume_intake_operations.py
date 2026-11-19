@@ -189,3 +189,22 @@ async def test_bulk_approval_processes_valid_rows_only(client, db):
             break
     assert await db['applications'].count_documents({}) == 1
     assert (await db['resume_intake_batches'].find_one({'_id':batch_id}))['bulkApprovalResult'] == {'queued':1,'skipped':0}
+
+async def test_reparse_repairs_skills_and_refreshes_the_confirmed_application(client, db):
+    item = await completed(client, db)
+    path = f"/api/resume-intake/items/{item['itemId']}"
+    edited = await client.put(path+'/profile', json={'expectedRevision':item['revision'], 'profile':{**item['profile'], 'skills':['Java']}}, headers=headers())
+    assert edited.status_code == 200, edited.text
+    queued = await client.post(path+'/reparse', json={'expectedRevision':edited.json()['revision']}, headers=headers())
+    assert queued.status_code == 200, queued.text
+    assert queued.json()['status'] == 'queued'
+    await drain(db)
+    fresh = await reveal(client, await first(client, item['batchId']))
+    assert fresh['status'] == 'completed'
+    assert {'Python','SQL'} <= set(fresh['profile']['skills'])
+    assert fresh['profile']['skillEvidence']
+    assert fresh['ats']['scoreVersion'] == 'module2-v2'
+    assert fresh['ats']['breakdown']['skills'] == 100
+    applicant = await db['applicants'].find_one({'applicantId':fresh['applicantId']})
+    assert {'Python','SQL'} <= set(applicant['profile']['skills'])
+    assert await db['audit_log'].count_documents({'action':'resume_intake.reparse'}) == 1

@@ -518,3 +518,49 @@ async def test_super_admin_provider_sync_failure_preserves_configuration(module_
     reloaded = (await module_client.get('/api/assessment-management/JOB-sync-fail', headers=headers('super_admin'))).json()
     assert 'Config update: Provider rejected update' in reloaded['publishError']
     assert reloaded['publicationState'] == 'published'
+
+
+def test_csv_accepts_frontend_intern_day_first_dates_and_verbal_labels_without_losing_questions():
+    rows=[{'Round Type':'Technical Interview','Start Date':'18/11/2026','End Date':'18/12/2026','Question Type':'Verbal','Weightage (%)':'10','Question Prompt / Text':f'Explain frontend concept {i}'} for i in range(10)]
+    result=parse_csv(csv_text(rows),'default')
+    assert not result['fileErrors']
+    assert result['groups'][0]['status']=='valid'
+    config=result['groups'][0]['config']
+    assert config['roundType']=='TECHNICAL'
+    assert config['startDate'].startswith('2026-11-18')
+    assert config['endDate'].startswith('2026-12-18')
+    assert len(config['questions'])==10
+    assert all(question['type']=='SPEAK_TO_ANSWER' for question in config['questions'])
+    assert result['rows'][0]['values']['Start Date']=='18/11/2026'
+    assert result['columns']==HEADERS+OPTIONAL
+
+
+async def test_csv_corrected_preview_preserves_text_and_import_requires_updated_hash(module_client,db):
+    raw=csv_text([{'Start Date':'bad date','Round Type':'unknown','Question Type':'written'}])
+    response=await module_client.post('/api/assessment-management/csv/validate',json={'text':raw},headers=headers())
+    preview=response.json()
+    assert preview['groups'][0]['status']=='invalid'
+    assert not any(error['field']=='startDate' for error in preview['rows'][0]['errors'])
+    row=preview['rows'][0]['values']
+    row.update({'Start Date':'2027-01-01','Round Type':'TECHNICAL','Question Type':'SPEAK_TO_ANSWER','Question Prompt / Text':'Explain "HTML", including\nsemantics'})
+    output=io.StringIO();writer=csv.writer(output);writer.writerow(preview['columns']);writer.writerow([row.get(column,'') for column in preview['columns']])
+    corrected=output.getvalue()
+    checked=(await module_client.post('/api/assessment-management/csv/validate',json={'text':corrected},headers=headers())).json()
+    assert checked['groups'][0]['status']=='valid'
+    assert await db.assessments.count_documents({})==0
+    body={'text':corrected,'previewHash':preview['previewHash'],'confirmed':True}
+    assert (await module_client.post('/api/assessment-management/csv/import',json=body,headers=headers())).status_code==409
+    body['previewHash']=checked['previewHash']
+    imported=await module_client.post('/api/assessment-management/csv/import',json=body,headers=headers())
+    assert imported.status_code==200,imported.text
+    assert imported.json()['imported']==1
+    stored=await db.assessments.find_one({})
+    assert stored['questions'][0]['text']=='Explain "HTML", including\nsemantics'
+
+
+def test_existing_valid_csv_keeps_historical_assessment_identity():
+    import hashlib,json
+    metadata=['Python, services\nand APIs','English','TECHNICAL','2027-01-01','2027-02-01','']
+    group='auto:'+hashlib.sha256(json.dumps(metadata,ensure_ascii=False).encode()).hexdigest()
+    expected='JOB-'+hashlib.sha256(('default\0'+group).encode()).hexdigest()[:32]
+    assert parse_csv(csv_text(),'default')['groups'][0]['config']['jobId']==expected

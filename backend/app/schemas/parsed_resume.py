@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .skills import SkillEvidence
+
 
 class ParsedResume(BaseModel):
     """Structured fields extracted deterministically from resume text."""
@@ -14,6 +16,7 @@ class ParsedResume(BaseModel):
     email: str = ""
     phone: str = ""
     skills: list[str] = Field(default_factory=list)
+    skillEvidence: list[SkillEvidence] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     technologies: list[str] = Field(default_factory=list)
     experienceYears: float | None = None
@@ -22,3 +25,5 @@ class ParsedResume(BaseModel):
     ctcExpectedLpa: float | None = None
     noticePeriodDays: int | None = None
     summary: str = ""
+    parserVersion: str = ""
+    taxonomyVersion: str = ""

@@ -30,6 +30,7 @@ export function JobResumeList({jobId,reload,...tableProps}:Props) {
     const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
     return()=>{controller.abort();clearTimeout(delay);clearInterval(timer);};
   },[jobId,page,search,atsOnly,reload]);
+  const pending=(data?.items||[]).filter(item=>item.batchId&&item.canEdit!==false&&['review_required','duplicate_suspected','confirmation_paused'].includes(item.status));
   return <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
     <h3 className="text-base font-bold">All resumes for this job</h3>
     <p className="text-xs text-muted-foreground">Includes every upload batch. Open Upload batches to set ATS ranges and create profiles for a batch.</p>
@@ -38,6 +39,10 @@ export function JobResumeList({jobId,reload,...tableProps}:Props) {
     {error&&<p role="alert">{error}</p>}
     {loading&&<p role="status">Loading resumes…</p>}
     {data&&<>
+      {tableProps.caps.canUpload&&tableProps.onContinueToAts&&pending.length>0&&<div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+        <div><h4 className="text-sm font-semibold">Continue reviewing parsed resumes</h4><p className="mt-1 text-xs text-muted-foreground">{pending.length} resumes on this page need review. Open their upload batch to choose an ATS range, apply it and create eligible profiles.</p></div>
+        <PAButton disabled={tableProps.busy} onClick={()=>tableProps.onContinueToAts?.(pending[0])}>Review next upload batch</PAButton>
+      </div>}
       <ResumeReviewTable {...tableProps} items={data.items}/>
       {!data.items.length&&<p>No resumes match these filters.</p>}
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs"><span>Page {page+1} · {data.total} matching records across all batches</span><div className="flex gap-2">

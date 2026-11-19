@@ -6,6 +6,8 @@ from datetime import date
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .skills import SkillEvidence
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -24,6 +26,7 @@ class CandidateProfile(Contract):
     role: str = Field(default="", max_length=100)
     industry: str = Field(default="", max_length=100)
     skills: list[str] = Field(default_factory=list, max_length=150)
+    skillEvidence: list[SkillEvidence] = Field(default_factory=list, max_length=200)
     headline: str = Field(default="", max_length=250)
     summary: str = Field(default="", max_length=5000)
     education: list[str] = Field(default_factory=list, max_length=30)
@@ -153,6 +156,10 @@ class ReviewRequest(Contract):
     atsRangeRevision: int | None = Field(default=None,ge=0)
 
 
+class ResumeAtsRequest(Contract):
+    batchId: str | None = Field(default=None,min_length=1,max_length=128)
+
+
 class RevisionRequest(Contract):
     expectedRevision: int = Field(ge=1)
 
@@ -188,6 +195,19 @@ class AtsRangeRequest(Contract):
     @model_validator(mode='after')
     def ordered(self):
         if self.minimum>self.maximum:raise ValueError('Minimum ATS score must not exceed maximum')
+        return self
+
+
+class JobAtsReviewRequest(Contract):
+    minimum: int = Field(ge=0, le=100, strict=True)
+    maximum: int = Field(ge=0, le=100, strict=True)
+    expectedSnapshot: str = Field(min_length=64, max_length=64)
+    reviewed: bool = False
+
+    @model_validator(mode='after')
+    def ordered(self):
+        if self.minimum > self.maximum:
+            raise ValueError('Minimum ATS score must not exceed maximum')
         return self
 
 
