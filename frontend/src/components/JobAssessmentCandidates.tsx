@@ -75,7 +75,7 @@ export function JobAssessmentCandidates({job,onChooseAssessment,pipelineStage,on
         const ids=selected.slice(offset,offset+50);
         try {
           const result=confirm==='generate'?await sendAssessments(ids,true):await sendAssessments(ids,false,template);
-          results.push(...result.items.map(item=>item.applicationId+' · '+(item.reason||item.linkStatus||(item.result==='accepted'?'Queued':item.result))));
+          results.push(...result.items.map(item=>(items.find(row=>row.applicationId===item.applicationId)?.candidate.name||item.applicationId)+' · '+(item.reason||item.linkStatus||(item.result==='accepted'?'Queued for processing — email has not been sent yet':item.result))));
         } catch(e){results.push(...ids.map(id=>id+' · '+(e instanceof Error?e.message:'Request failed')));}
       }
       setNotice(results.join('\n'));}else{let success=0;const failures:string[]=[];for(const id of selected){try{await transitionApplication(id,'SHORTLISTED','Recruiter confirmed candidate after reviewing the job ATS score.');success++;}catch(e){failures.push(e instanceof Error?e.message:'Confirmation failed');}}setNotice(`${success} candidates shortlisted. ${failures.join(' ')}`);}setConfirm(null);setSelected([]);onChanged?.();setRevision(n=>n+1);}catch(e){setError(e instanceof Error?e.message:'Action failed');}finally{setBusy(false);}}

@@ -41,6 +41,8 @@ def recipient_allowed(email: str) -> bool:
         return True
     addr = (email or "").strip().lower()
     for entry in settings.test_recipient_allowlist:
+        if entry in ("*", "@*"):
+            return True
         if "@" in entry and addr == entry:
             return True
         if entry.startswith("@") and addr.endswith(entry):

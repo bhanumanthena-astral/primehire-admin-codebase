@@ -38,9 +38,12 @@ function Cleanup {
             } catch {}
         }
     }
-    # Also kill any orphan processes on our ports
+    # Also kill any orphan processes on our ports and workers
     Get-NetTCPConnection -LocalPort 3000,8002 -State Listen -ErrorAction SilentlyContinue |
         ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -eq 'python.exe' -and ($_.CommandLine -match 'run_v2_assessment_worker\.py|run_v2_recruitment_worker\.py')
+    } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Write-Ok "Cleanup complete."
 }
 
@@ -90,13 +93,16 @@ if (!$cloudflaredExe) {
 }
 Write-Ok "cloudflared found: $cloudflaredExe"
 
-# Free up ports and stop existing cloudflared instances
+# Free up ports, workers, and stop existing cloudflared instances
 Write-Step "Ensuring ports 3000 and 8002 are free..."
 Get-NetTCPConnection -LocalPort 3000,8002 -State Listen -ErrorAction SilentlyContinue |
     ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
 Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -eq 'python.exe' -and ($_.CommandLine -match 'run_v2_assessment_worker\.py|run_v2_recruitment_worker\.py')
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 1
-Write-Ok "Ports are ready"
+Write-Ok "Ports and workers are ready"
 
 # Check node_modules
 if (!(Test-Path (Join-Path $projectRoot "node_modules"))) {
@@ -141,6 +147,30 @@ if ($waited -ge $maxWait) {
     Write-Warn "Backend didn't respond within $maxWait seconds, continuing anyway..."
     Write-Warn "Check backend_tunnel.err.log for errors."
 }
+
+# ─── Step 2.5: Start V2 background workers (Assessment & Recruitment) ───
+Write-Host ""
+Write-Step "Starting assessment background worker (handles assessment invites & sync)..."
+$assessmentWorkerProcess = Start-Process -FilePath $pythonExe `
+    -ArgumentList "scripts/run_v2_assessment_worker.py" `
+    -WorkingDirectory $projectRoot `
+    -PassThru -NoNewWindow `
+    -RedirectStandardOutput (Join-Path $projectRoot "assessment_worker.log") `
+    -RedirectStandardError (Join-Path $projectRoot "assessment_worker.err.log")
+
+$global:childProcesses += $assessmentWorkerProcess
+Write-Ok "Assessment worker started (PID: $($assessmentWorkerProcess.Id))"
+
+Write-Step "Starting recruitment background worker (handles interview invites & reminders)..."
+$recruitmentWorkerProcess = Start-Process -FilePath $pythonExe `
+    -ArgumentList "scripts/run_v2_recruitment_worker.py" `
+    -WorkingDirectory $projectRoot `
+    -PassThru -NoNewWindow `
+    -RedirectStandardOutput (Join-Path $projectRoot "recruitment_worker.log") `
+    -RedirectStandardError (Join-Path $projectRoot "recruitment_worker.err.log")
+
+$global:childProcesses += $recruitmentWorkerProcess
+Write-Ok "Recruitment worker started (PID: $($recruitmentWorkerProcess.Id))"
 
 # ─── Step 3: Start Express + Vite dev server (port 3000) ───
 Write-Host ""

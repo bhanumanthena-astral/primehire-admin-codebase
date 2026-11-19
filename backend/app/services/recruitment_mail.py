@@ -29,7 +29,9 @@ def recipient_allowed(email):
         if entry.strip()
     ]
     return any(
-        address == entry or (entry.startswith("@") and address.endswith(entry))
+        entry in ("*", "@*")
+        or address == entry
+        or (entry.startswith("@") and address.endswith(entry))
         for entry in entries
     )
 
