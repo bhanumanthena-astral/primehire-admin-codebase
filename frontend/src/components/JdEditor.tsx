@@ -1,4 +1,5 @@
 import {Button} from '@/components/ui/button';
+import {Skeleton} from '@/components/ui/skeleton';
 import React, { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -86,7 +87,7 @@ export function JdEditor({
   }, [value, editor]);
 
   if (!editor) {
-    return <div className="ehr-input min-h-[180px] animate-pulse" aria-label="Loading editor" />;
+    return <Skeleton className="ehr-input min-h-[180px]" aria-label="Loading editor" />;
   }
 
   const setLink = () => {

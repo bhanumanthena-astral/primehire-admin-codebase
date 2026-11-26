@@ -1,4 +1,5 @@
 import {Button} from '@/components/ui/button';
+import {Skeleton} from '@/components/ui/skeleton';
 import {Input} from '@/components/ui/input';
 import {AppSelect} from '@/src/components/ui/AppSelect';
 import {RefreshCw} from 'lucide-react';
@@ -540,7 +541,7 @@ export default function JobsPage({onUpload,renderAssessments}: {onUpload?: (job:
       <div className="space-y-5">
         {loading ? (
           <div className="space-y-2 p-4" aria-label="Loading jobs">
-            {[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-muted" />)}
+            {[0, 1, 2, 3].map((i) => <Skeleton key={i} index={i} className="h-12 rounded-xl" />)}
           </div>
         ) : error ? (
           <p role="alert" className="p-6 text-sm text-destructive">{error}</p>

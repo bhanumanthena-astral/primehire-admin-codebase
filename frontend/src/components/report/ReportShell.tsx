@@ -116,7 +116,7 @@ export default function ReportShell({
 
   return (
     <div ref={rootRef} className="space-y-4 bg-background px-4 py-6 sm:px-6 dark:bg-background">
-      <div className="mx-auto max-w-7xl space-y-4">
+      <div className="w-full space-y-4">
         <div className="rounded-2xl border border-border bg-card px-5 py-4 shadow-sm dark:border-border dark:bg-card">
           <ReportHeader
             name={candidate.name}

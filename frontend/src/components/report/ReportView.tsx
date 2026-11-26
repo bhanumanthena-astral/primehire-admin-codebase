@@ -48,7 +48,7 @@ export default function ReportView({ data, roundType }: { data: unknown; roundTy
 
   return (
     <div className="bg-background py-6 px-4 sm:px-6 rounded-2xl">
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         <Header report={report} insights={insights} onExport={handleExport} exporting={exporting} />
 
         {isEmpty ? (

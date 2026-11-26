@@ -1,10 +1,11 @@
+import {VideoPlayer as SharedVideoPlayer} from '@/components/ui/video-player';
 import {Button} from '@/components/ui/button';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Candidate, AssessmentProfile } from '../types';
 import { mockGetReport, mockRegenerateReport } from '../mockData';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -115,38 +116,9 @@ function ExecutiveScoreCard({
   );
 }
 
-function VideoPlayer({ url, questionNum }: { url: string; questionNum: number }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  return (
-    <div className="rounded-xl overflow-hidden border border-border bg-background shadow-md">
-      <div className="relative aspect-video max-h-72 bg-black flex items-center justify-center">
-        <video
-          ref={videoRef}
-          src={url}
-          className="w-full h-full object-contain"
-          controls
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onEnded={() => setIsPlaying(false)}
-          preload="metadata"
-        />
-      </div>
-      <div className="bg-gradient-primary border-t border-primary-foreground/15 px-3.5 py-2 flex items-center justify-between text-xs text-primary-foreground/80 font-mono">
-        <div className="flex items-center gap-2">
-          <Video className="w-3.5 h-3.5 text-warning" />
-          <span>Question {questionNum} Video Recording</span>
-        </div>
-        <span className="text-[0.6875rem] text-muted-foreground bg-slate-800 px-2 py-0.5 rounded font-mono">WebM Stream</span>
-      </div>
-    </div>
-  );
+function VideoPlayer({url,questionNum}:{url:string;questionNum:number}){
+ return <SharedVideoPlayer key={url} src={url} label={`Question ${questionNum} video recording`}/>;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REAL REPORT RENDERER
-// ─────────────────────────────────────────────────────────────────────────────
 
 function RealTechnicalReport({
   report,
@@ -567,7 +539,7 @@ export default function ReportDialog({ candidate, assessment, isOpen, onClose, o
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl lg:max-w-6xl max-h-[92vh] overflow-y-auto text-foreground bg-card border border-border/60 shadow-2xl p-0 font-sans rounded-2xl">
+      <DialogContent className="w-screen max-w-none lg:max-w-none h-dvh max-h-dvh overflow-y-auto text-foreground bg-card border border-border/60 shadow-2xl p-0 font-sans rounded-none">
         
         {/* ── Executive Header Banner ── */}
         <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-md border-b border-border/60 px-6 py-4 shadow-2xs">

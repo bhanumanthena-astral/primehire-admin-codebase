@@ -16,6 +16,7 @@ import {
 import { EmptyNote, Pill, SectionHeader } from './ui/primitives';
 import RoadmapStepper, { stepsForStage } from './RoadmapStepper';
 import ScoreBadge from './ScoreBadge';
+import {LoadingState} from './ui/LoadingState';
 
 /**
  * Applicant Profile (Slice B): everything HR needs for one candidate —
@@ -84,13 +85,7 @@ export default function ApplicantProfilePage({
     }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-2" aria-label="Loading profile">
-        {[0, 1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-xl border" />)}
-      </div>
-    );
-  }
+  if (loading) return <LoadingState label="Loading applicant profile…"/>;
   if (error && !applicant) return <p role="alert" className="text-sm text-destructive">{error}</p>;
   if (!applicant) return <EmptyNote>Candidate not found.</EmptyNote>;
 

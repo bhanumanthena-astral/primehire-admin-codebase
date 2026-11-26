@@ -1,3 +1,4 @@
+import {VideoPlayer} from '@/components/ui/video-player';
 import {Button} from '@/components/ui/button';
 import { useState, Fragment } from 'react';
 import { motion } from 'motion/react';
@@ -65,15 +66,7 @@ export default function VideoReview({
 
       {/* REAL VIDEO PLAYER — uses the actual video_url from the JSON */}
       {q.videoUrl ? (
-        <video
-          key={q.videoUrl}
-          src={q.videoUrl}
-          controls
-          preload="metadata"
-          className="w-full rounded-xl bg-black aspect-video mb-4"
-        >
-          Your browser does not support video playback.
-        </video>
+        <VideoPlayer key={q.videoUrl} src={q.videoUrl} label={`Video response for question ${selectedIndex+1}`}/>
       ) : (
         <div className="w-full aspect-video rounded-xl bg-muted flex items-center justify-center mb-4 text-sm text-muted-foreground">
           No video available for this question

@@ -1,5 +1,6 @@
 import {AdminHiringProgress} from './AdminHiringProgress';
 import {Button} from '@/components/ui/button';
+import {Skeleton} from '@/components/ui/skeleton';
 import {JobStatusControl} from './JobStatusControl';
 import {JobAccessModal} from './JobAccessControls';
 import {hasJobAccess,isJobAdmin,acceptsResumes} from '../lib/jobAccess';
@@ -374,9 +375,9 @@ export default function JobDetailsPage({
   if (loading && detail?.job.jobId !== jobId) {
     return (
       <div className="space-y-4" aria-label="Loading job details">
-        <div className="h-8 w-64 animate-pulse rounded-lg bg-muted" />
-        <div className="h-40 animate-pulse rounded-[1.25rem] bg-muted" />
-        <div className="h-40 animate-pulse rounded-[1.25rem] bg-muted" />
+        <Skeleton index={0} className="h-8 w-64 rounded-lg" />
+        <Skeleton index={1} className="h-40 rounded-[1.25rem]" />
+        <Skeleton index={2} className="h-40 rounded-[1.25rem]" />
       </div>
     );
   }
@@ -569,7 +570,7 @@ export default function JobDetailsPage({
       <section aria-label="Activity" className="ehr-rise ehr-rise-4 rounded-[1.25rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">
         <h2 className="text-[0.875rem] font-semibold tracking-tight">Activity</h2>
         {activityLoading ? (
-          <div className="mt-3 h-16 animate-pulse rounded-lg bg-muted" aria-label="Loading activity" />
+          <Skeleton index={1} className="mt-3 h-16 rounded-lg" aria-label="Loading activity" />
         ) : activity.length === 0 ? (
           <EmptyNote>No activity recorded yet.</EmptyNote>
         ) : (
@@ -588,7 +589,7 @@ export default function JobDetailsPage({
           Assignment emails queued through the existing outbox. The Activity trail above remains authoritative for who changed the assignee and when.
         </p>
         {notifLoading ? (
-          <div className="mt-3 h-16 animate-pulse rounded-lg bg-muted" aria-label="Loading notifications" />
+          <Skeleton index={2} className="mt-3 h-16 rounded-lg" aria-label="Loading notifications" />
         ) : notifError ? (
           <div role="alert" className="mt-3 rounded-xl border border-border bg-muted/40 px-4 py-3 text-[0.78125rem] text-muted-foreground">
             Could not load notification status.{' '}

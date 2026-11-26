@@ -1,6 +1,7 @@
 import React from "react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
-import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon } from "lucide-react"
+import StatusMark from "@/src/components/reactbits/StatusMark"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const theme = "light"
@@ -22,9 +23,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         error: (
           <OctagonXIcon className="size-4" />
         ),
-        loading: (
-          <Loader2Icon className="size-4 animate-spin" />
-        ),
+        loading: <StatusMark status="running" size={16} />,
       }}
       style={
         {

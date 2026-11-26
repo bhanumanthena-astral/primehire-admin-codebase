@@ -403,3 +403,29 @@ test('developer range table bulk shortlist reaches the admin scheduling queue', 
   await expect(page.getByRole('dialog').getByLabel('Assigned interviewer')).toContainText('Rahul Demo');
   await expect(page.getByRole('dialog')).toContainText('Developer shortlisted. Schedule this round');
 });
+
+test('assigned developer opens full-page candidate report history', async ({page}) => {
+  const response=await page.request.post('/api/auth/login',{data:{email:'admin@example.com',password:'Browser-test-only-2026!'}});
+  const admin=await response.json();
+  const assigned=await page.request.put('/api/jobs/recruit-job/developer-assignment',{
+    headers:{Authorization:`Bearer ${admin.accessToken}`},data:{userId:'browser-technical_interviewer'},
+  });
+  expect(assigned.ok()).toBeTruthy();
+  await page.request.post('/api/auth/logout',{headers:{Authorization:`Bearer ${admin.accessToken}`}});
+  await page.goto('/login');
+  await page.getByPlaceholder('Enter Email / Phone No').fill('technical_interviewer@example.com');
+  await page.getByPlaceholder('Passcode').fill('Browser-test-only-2026!');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Developer Portal',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Jobs & assessments',exact:true}).click();
+  await page.getByLabel('Recruitment job scope').click();
+  await page.getByRole('option',{name:'Recruitment Platform Engineer',exact:true}).click();
+  await page.getByRole('row').filter({hasText:'Interview Candidate 0'}).getByRole('button',{name:'View assessment reports'}).click();
+  await expect(page.getByRole('heading',{name:'Interview Candidate 0',exact:true})).toBeVisible();
+  await expect(page.getByText('Report application not found or not accessible')).toHaveCount(0);
+  const main=page.getByRole('main');
+  expect((await main.boundingBox())!.width).toBeGreaterThan(1200);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await expect(page.getByRole('button',{name:'Back to workspace'})).toBeVisible();
+});

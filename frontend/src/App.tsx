@@ -70,6 +70,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { fetchAssessments, fetchCandidates, updateCandidate, ApiError } from './lib/mongoApi';
+import {LoadingState} from './components/ui/LoadingState';
 
 const MODULE_TABS = [
   { id: 'dashboard', label: 'Overview', short: 'Overview', icon: LayoutDashboard },
@@ -612,7 +613,7 @@ function AdminDashboard() {
           )}
           {activeTab === 'diagnostics' && <DiagnosticsPage />}
           {activeTab === 'candidates' && (
-            candidateMode==='enabled'?<CandidateDirectory externalSearch={searchQuery} onSearchChange={setSearchQuery}/>:candidateMode==='loading'?<p role="status">Loading Candidate Management…</p>:candidateMode==='error'?<div role="alert">Candidate Management is unavailable.<Button variant="outline" onClick={()=>setCandidateRetry(v=>v+1)}>Retry</Button></div>:<CandidateManagement
+            candidateMode==='enabled'?<CandidateDirectory externalSearch={searchQuery} onSearchChange={setSearchQuery}/>:candidateMode==='loading'?<LoadingState compact label="Loading Candidate Management…"/>:candidateMode==='error'?<div role="alert">Candidate Management is unavailable.<Button variant="outline" onClick={()=>setCandidateRetry(v=>v+1)}>Retry</Button></div>:<CandidateManagement
               candidates={candidates}
               assessments={assessments}
               filterRound={filterRound}
@@ -654,7 +655,6 @@ function AdminDashboard() {
         onReportUpdated={handleReportUpdated}
       />
 
-      <Toaster position="bottom-right" />
     </div>
   );
 }
@@ -683,6 +683,7 @@ export default function App() {
             }
           />
         </Routes>
+        <Toaster position="bottom-right" />
       </AuthProvider>
     </BrowserRouter>
   );
@@ -703,8 +704,8 @@ function RoleWorkspace() {
     return()=>controller.abort();
   },[reviewer,user?.userId]);
   if(user?.role==='leadership')return <LeadershipDashboard/>;
-  if(reviewer&&location.pathname.startsWith('/reports')&&!hrJobs)return <main className="mx-auto min-h-screen max-w-7xl space-y-5 bg-background p-4 sm:p-6"><Button variant="outline" onClick={()=>navigate('/')}>Back to interview workspace</Button><ReportsWorkspace/></main>;
-  if(reviewer&&portalsEnabled===null)return <main className="flex min-h-screen items-center justify-center bg-background text-muted-foreground" role="status">Opening your workspace…</main>;
+  if(user&&(location.pathname.startsWith('/reports/')||(reviewer&&location.pathname==='/reports')))return <main className="min-h-screen w-full space-y-5 bg-background p-4 sm:p-6"><Button variant="outline" onClick={()=>navigate('/')}>Back to workspace</Button><ReportsWorkspace/></main>;
+  if(reviewer&&portalsEnabled===null)return <main className="flex min-h-screen items-center justify-center bg-background"><LoadingState compact label="Opening your workspace…" className="max-w-sm"/></main>;
   if(user?.role==='hr'&&hrJobs)return <AdminDashboard/>;
   if (reviewer&&portalsEnabled&&user) return <RecruitmentWorkspace standalone onOpenJobs={user.role==='hr'&&hasJobAccess(user,'view')?()=>setHrJobs(true):undefined} />;
   if(user&&['technical_interviewer','managerial_interviewer'].includes(user.role))return <main className="min-h-screen bg-background p-8"><h1 className="text-xl font-bold">Interviewer workspace</h1><p className="mt-4">Recruitment portals are not enabled on this backend.</p><div className="mt-5"><ProfileLink/></div><Button className="mt-6" onClick={logout}>Sign out</Button></main>;

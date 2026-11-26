@@ -144,7 +144,7 @@ async def test_viewer_cross_tenant_and_same_candidate_different_application_are_
     row=await capture(db,source(),report_available=True,submitted=True);url=BASE+'/reports/'+row['reportId']
     assert (await client.get(url,headers=headers('viewer'))).status_code==403
     assert (await client.get(url,headers=headers(org='other'))).status_code==404
-    assert (await client.get(url,headers=headers('technical_interviewer'))).status_code==404
+    assert (await client.get(url,headers=headers('technical_interviewer', uid='unassigned-developer'))).status_code==404
     assert (await client.get(url,headers=headers('recruiter'))).status_code==200
     # An interview assignment for another application never grants this report.
     await db.recruit_interviews.insert_one({'orgId':'default','applicationId':'app1','interviewId':'assigned-other','interviewerId':'managerial_interviewer','status':'scheduled','createdAt':now(),'startsAt':now()+timedelta(days=1)})
@@ -262,3 +262,17 @@ async def test_mcq_old_versions_recover_answer_fields_and_scoped_original_option
     assert content['assessmentQuestions'][0]['options']==['Google','OpenAI']
     unchanged=await db.report_versions.find_one({'reportId':row['reportId']})
     assert 'mcqInput' not in unchanged['content']['questions'][0]
+
+async def test_job_assigned_developer_can_read_report_without_review_profile(client, db):
+    row = await capture(db, source(), report_available=True, submitted=True)
+    tech = headers('technical_interviewer')
+    assert await db.recruit_profiles.find_one({'userId': 'technical_interviewer'}) is None
+    history = await client.get(BASE+'/applications/app0', headers=tech)
+    assert history.status_code == 200, history.text
+    detail = await client.get(BASE+'/reports/'+row['reportId'], headers=tech)
+    assert detail.status_code == 200, detail.text
+    assert (await client.get(BASE+'/reports', headers=tech)).json()['total'] == 1
+    await db.jobs.update_one({'jobId': 'job'}, {'$set': {'assignedDeveloperUserId': 'another-developer'}})
+    assert (await client.get(BASE+'/applications/app0', headers=tech)).status_code == 404
+    assert (await client.get(BASE+'/reports/'+row['reportId'], headers=tech)).status_code == 404
+    assert (await client.get(BASE+'/reports/'+row['reportId']+'/media/q1?version=1', headers=tech)).status_code == 404

@@ -1,4 +1,5 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
+import {useProfileAppearance} from '../lib/profileAppearance';
 
 export type TeamAvatarRole='hr'|'manager'|'developer'|'admin'|'member';
 export function avatarRole(role:string):TeamAvatarRole {
@@ -13,9 +14,11 @@ const BHANU_ACCOUNT_ID='4b9e2e41-c708-40c3-8aeb-361c5cbd91df';
 /** Static artwork only: no canvas, renderer, animation loop or remote model. */
 export function StaticTeamAvatar({role='member',accountId,className='',portrait=false}:{role?:TeamAvatarRole;accountId?:string;className?:string;portrait?:boolean}) {
   const [failed,setFailed]=useState(false);
+  const appearance=useProfileAppearance(accountId);
   const label=role==='hr'?'HR professional':role==='manager'?'Manager':role==='developer'?'Developer':role==='member'?'Team member':'Administrator';
-  const source=role==='admin'&&accountId===BHANU_ACCOUNT_ID?'/images/team/bhanu-static.png':assets[role];
+  const source=appearance.image||(role==='admin'&&accountId===BHANU_ACCOUNT_ID?'/images/team/bhanu-static.png':assets[role]);
+  useEffect(()=>setFailed(false),[source]);
   return <div className={`team-avatar ${portrait?'team-avatar-portrait':''} ${className}`}>
-    {failed?<span className="team-avatar-fallback" role="img" aria-label={`${label} illustration`}>{role==='hr'?'HR':role==='manager'?'M':role==='developer'?'D':'A'}</span>:<img src={source} alt={`${label} illustration`} decoding="async" onError={()=>setFailed(true)}/>}
+    {failed?<span className="team-avatar-fallback" role="img" aria-label={`${label} illustration`}>{role==='hr'?'HR':role==='manager'?'M':role==='developer'?'D':'A'}</span>:<img src={source} alt={appearance.image?'Custom profile image':`${label} illustration`} decoding="async" onError={()=>setFailed(true)}/>}
   </div>;
 }

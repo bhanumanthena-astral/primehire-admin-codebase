@@ -11,6 +11,7 @@ import { useAuth } from '../lib/authContext';
 import { authFetch } from '../lib/authFetch';
 import { teamInvitationUrl } from '../lib/teamInvitation';
 import {StaticTeamAvatar,avatarRole,teamRoleLabel} from '../components/StaticTeamAvatar';
+import {LoadingState} from '../components/ui/LoadingState';
 import { User, Role } from '../lib/authTypes';
 import {
   Users,
@@ -277,10 +278,7 @@ export const UsersManagementPage: React.FC = () => {
       {/* Users table */}
       <div className="bg-card dark:bg-card border border-border dark:border-border rounded-xl shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center p-12 text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin mr-2 text-warning" />
-            <span>Loading members...</span>
-          </div>
+          <LoadingState compact label="Loading team members…"/>
         ) : users.length === 0 && !directory?.companies?.length ? (
           <div className="text-center p-12 text-muted-foreground">
             <Users className="h-10 w-10 mx-auto mb-2 text-muted-foreground dark:text-foreground" />

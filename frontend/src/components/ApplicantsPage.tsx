@@ -16,6 +16,7 @@ import {
 import { EmptyNote, Pill, SectionHeader } from './ui/primitives';
 import DryRunBanner from './DryRunBanner';
 import ScoreBadge from './ScoreBadge';
+import {LoadingState} from './ui/LoadingState';
 
 function assessmentTone(state: string): 'success' | 'warning' | 'danger' | 'neutral' | 'info' {
   if (state === 'email_sent') return 'success';
@@ -178,11 +179,7 @@ export default function ApplicantsPage({ onOpen }: { onOpen: (id: string) => voi
         />
         <Button variant="ghost" type="submit" className="rounded-md border px-3 py-1.5 text-sm">Search</Button>
       </form>
-      {loading && (
-        <div className="space-y-2" aria-label="Loading applicants">
-          {[0, 1, 2].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl border" />)}
-        </div>
-      )}
+      {loading && <LoadingState label="Loading applicants…" compact/>}
       {!loading && error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {!loading && !error && items.length === 0 && (
         <EmptyNote>No applicants yet — upload resumes to create candidate profiles.</EmptyNote>

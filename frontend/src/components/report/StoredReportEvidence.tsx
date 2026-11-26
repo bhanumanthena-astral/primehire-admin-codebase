@@ -1,3 +1,4 @@
+import {VideoPlayer} from '@/components/ui/video-player';
 import McqAnswerReview from './McqAnswerReview';
 import {normalizeMcq} from '../../utils/mcqReport';
 import {useEffect,useState} from 'react';
@@ -20,10 +21,13 @@ function SkillRadar({metrics}:{metrics:ReportMetric[]}){
  if(points.length<3||scales.length!==1||scales[0]==null||scales[0]<=0)return <Block title="Skill profile / spider graph"><p className="mb-4 text-sm text-muted-foreground">{points.length<3?'At least three source metrics are needed to draw the graph.':'A shared score scale was not supplied, so the metrics are shown without assuming a chart scale.'}</p><MetricTable metrics={metrics}/></Block>;
  return <Block title="Skill profile / spider graph"><div role="img" aria-label={`Skill profile on a source scale of 0 to ${scales[0]}`} className="h-72"><ResponsiveContainer width="100%" height="100%"><RadarChart data={points}><PolarGrid stroke="var(--border)"/><PolarAngleAxis dataKey="label" tick={{fill:'var(--foreground)',fontSize:11}}/><PolarRadiusAxis domain={[0,scales[0]]}/><Radar isAnimationActive={false} name="Source score" dataKey="value" stroke="var(--accent)" fill="var(--primary)" fillOpacity={0.4}/><Tooltip/></RadarChart></ResponsiveContainer></div><MetricTable metrics={metrics}/></Block>;
 }
-export function QuestionVideo({reportId,version,reference}:{reportId:string;version:number;reference:string|null}){
+export function QuestionVideo(props:{reportId:string;version:number;reference:string|null}){
+ return <QuestionVideoContent key={`${props.reportId}:${props.version}:${props.reference}`} {...props}/>;
+}
+function QuestionVideoContent({reportId,version,reference}:{reportId:string;version:number;reference:string|null}){
  const [url,setUrl]=useState(''),[loading,setLoading]=useState(false),[error,setError]=useState('');
- const [requested,setRequested]=useState(false);
- useEffect(()=>{if(!requested||!reference)return;const controller=new AbortController();let objectUrl='';setLoading(true);setError('');
+ const [requested,setRequested]=useState(0);
+ useEffect(()=>{if(!requested||!reference)return;const controller=new AbortController();let objectUrl='';setUrl('');setLoading(true);setError('');
  async function loadVideo(){
   for(let attempt=0;attempt<3;attempt++){
    if(controller.signal.aborted)return;
@@ -44,7 +48,8 @@ export function QuestionVideo({reportId,version,reference}:{reportId:string;vers
  void loadVideo().catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof TypeError?'The video download was interrupted. Please retry.':cause.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
  return()=>{controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};},[requested,reference,reportId,version]);
  if(!reference)return <p className="text-sm text-muted-foreground">Video unavailable for this question.</p>;
- return <div className="space-y-2">{url?<video aria-label="Authorized question video" controls preload="metadata" src={url} className="max-h-80 w-full rounded-xl bg-black" onError={()=>setError('Video playback is unavailable. The transcript and other report sections remain accessible.')}/>:<Button variant="outline" disabled={loading} onClick={()=>{setRequested(false);setTimeout(()=>setRequested(true),0);}}>{loading?'Loading video…':error?'Retry video':'Load authorized video'}</Button>}{error&&<p role="alert" className="text-xs text-destructive">{error}</p>}</div>;
+ return <VideoPlayer src={url} label="Authorized question video" loading={loading} error={error} autoPlay
+  onRequest={()=>setRequested(value=>value+1)}/>;
 }
 export function StoredReportEvidence({content,reportId,version}:{content:ReportContent;reportId:string;version:number}){
  if(!content.schemaSupported)return <Block title="Round-specific schema unavailable"><p className="text-sm text-muted-foreground">This round’s detailed schema has not been confirmed. Basic and Technical fields are withheld. Common report metadata and version history remain available.</p></Block>;

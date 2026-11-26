@@ -1,4 +1,6 @@
 import {Button} from '@/components/ui/button';
+import {Skeleton} from '@/components/ui/skeleton';
+import StatusMark from './reactbits/StatusMark';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Diagnostics, fetchDiagnostics, retryFailedLlmJobs, retryJob, retryOutboxMessage } from '../lib/hiringApi';
 import { EmptyNote, Pill, SectionHeader } from './ui/primitives';
@@ -67,7 +69,7 @@ export default function DiagnosticsPage() {
         subtitle="Email outbox and background-job health. Bodies are never listed here."
       />
       {data && <DryRunBanner dryRun={data.dryRun} />}
-      {loading && <div className="h-16 animate-pulse rounded-xl border" aria-label="Loading diagnostics" />}
+      {loading && <div aria-label="Loading diagnostics" className="rounded-xl border p-4"><StatusMark status="running" label="Loading diagnostics…" strike={false}/><Skeleton index={1} className="mt-4 h-16 rounded-lg" aria-hidden="true"/></div>}
       {!loading && error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {!loading && !error && data && (
         <>

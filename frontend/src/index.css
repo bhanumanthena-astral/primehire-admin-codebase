@@ -2,6 +2,32 @@
 @import "tw-animate-css";
 @import "./styles/shadcn.css";
 
+@keyframes shadcn-skeleton-shimmer {
+  to { transform: translateX(100%); }
+}
+
+.shadcn-shimmer {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: var(--muted);
+}
+
+.shadcn-shimmer::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  transform: translateX(-100%);
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--foreground) 9%, transparent) 50%, transparent 80%);
+  animation: shadcn-skeleton-shimmer 1.5s ease-in-out infinite;
+  animation-delay: var(--skeleton-delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shadcn-shimmer::after { animation: none; transform: none; }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

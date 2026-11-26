@@ -32,12 +32,21 @@ async def audit(db,user,action,key,details=None):
         details={'role':user.role,**(details or {})})
 
 
+async def report_review_jobs(db, user):
+    jobs = await review_jobs(db, user)
+    if user.role == 'technical_interviewer':
+        from ..security.recruitment import visible_query
+        await require_job_access(db, user, 'view')
+        jobs += await bounded_ids(db.jobs.find(await visible_query(db, user), {'jobId': 1}), 'jobId')
+    return jobs
+
+
 async def scope(db,user):
     if 'reports.view' not in user.permissions:raise HTTPException(403,'Report access is not permitted')
     if 'assessment' not in await fields_for(db,user):raise HTTPException(403,'Assessment evidence access has been removed')
     if user.role in {'super_admin','admin'}:return {'orgId':user.org_id}
     jobs=await bounded_ids(db.jobs.find(await job_scope(db,user),{'jobId':1}),'jobId')
-    jobs += await review_jobs(db,user)
+    jobs += await report_review_jobs(db,user)
     assigned=await bounded_ids(db.recruit_interviews.find({'orgId':user.org_id,'interviewerId':user.user_id,
         'status':{'$ne':'cancelled'}},{'applicationId':1}),'applicationId')
     return {'orgId':user.org_id,'$or':[{'jobId':{'$in':jobs}},{'applicationId':{'$in':assigned}}]}
@@ -48,7 +57,7 @@ async def application_for(db,user,key):
     if not app:raise HTTPException(404,'Report application not found or not accessible')
     job=await db.jobs.find_one({'orgId':user.org_id,'jobId':app['jobId']})
     if not job:raise HTTPException(404,'Report job not found')
-    if user.role in {'super_admin','admin'} or job.get('assigneeUserId')==user.user_id:
+    if user.role in {'super_admin','admin'} or job.get('assigneeUserId')==user.user_id or job.get('assignedDeveloperUserId')==user.user_id:
         await require_job_access(db,user,'view',job)
     return app,job
 
@@ -57,7 +66,7 @@ async def catalog_scope(db,user):
     base=await scope(db,user)
     if user.role in {'super_admin','admin'}:return base
     jobs=await bounded_ids(db.jobs.find(await job_scope(db,user),{'jobId':1}),'jobId')
-    jobs += await review_jobs(db,user)
+    jobs += await report_review_jobs(db,user)
     permitted=[{'jobId':{'$in':jobs}}]
     async for assignment in db.recruit_interviews.find({'orgId':user.org_id,'interviewerId':user.user_id,'status':{'$ne':'cancelled'}}).limit(5000):
         cutoff=utc(assignment.get('startsAt') or assignment.get('createdAt'))

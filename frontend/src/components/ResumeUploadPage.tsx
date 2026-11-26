@@ -1,6 +1,7 @@
 import {TableColumnSettings} from './TableColumnSettings';
 import {useTableColumnSettings} from '../lib/useTableColumnSettings';
 import {Progress} from '@/components/ui/progress';
+import {Skeleton} from '@/components/ui/skeleton';
 import {AppSelect} from '@/src/components/ui/AppSelect';
 import {Checkbox} from '@/components/ui/checkbox';
 import {Button} from '@/components/ui/button';
@@ -251,7 +252,7 @@ export function LegacyResumeUploadPage({initialJobKey=''}:{initialJobKey?:string
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">Upload batches</h3>
-        {loading && <div className="h-12 animate-pulse rounded-xl border" aria-label="Loading batches" />}
+        {loading && <Skeleton className="h-12 rounded-xl border" aria-label="Loading batches" />}
         {!loading && batches.length === 0 && (
           <EmptyNote>No uploads yet — run the first batch above.</EmptyNote>
         )}
@@ -284,8 +285,8 @@ export default function ResumeUploadPage({initialJobKey=''}:{initialJobKey?:stri
     void intakeGet<Capabilities>('/capabilities',controller.signal).then(value=>{if(!controller.signal.aborted)setCaps(value);}).catch(()=>undefined).finally(()=>{if(!controller.signal.aborted)setChecked(true);});
     return()=>controller.abort();
   },[attempt]);
-  if(!checked)return <div aria-label="Loading resume workspace" className="h-48 animate-pulse rounded-2xl border border-border bg-card"/>;
-  if(caps?.enabled)return <React.Suspense fallback={<div role="status">Loading resume workspace…</div>}><IntakeWorkspace capabilities={caps} initialJobKey={initialJobKey}/></React.Suspense>;
+  if(!checked)return <Skeleton aria-label="Loading resume workspace" className="h-48 rounded-2xl border border-border bg-card"/>;
+  if(caps?.enabled)return <React.Suspense fallback={<Skeleton role="status" aria-label="Loading resume workspace" className="h-48 rounded-2xl"/>}><IntakeWorkspace capabilities={caps} initialJobKey={initialJobKey}/></React.Suspense>;
   if(!legacyScreensAllowed())return <div role="alert" className="rounded-2xl border border-border bg-card p-6">Resume workspace is temporarily unavailable.<Button variant="outline" className="ml-3" onClick={()=>setAttempt(value=>value+1)}>Retry resume workspace</Button></div>;
   return <LegacyResumeUploadPage initialJobKey={initialJobKey}/>;
 }

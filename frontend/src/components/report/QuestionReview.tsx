@@ -1,3 +1,4 @@
+import {VideoPlayer} from '@/components/ui/video-player';
 import McqAnswerReview from './McqAnswerReview';
 import {Button} from '@/components/ui/button';
 import type React from 'react';
@@ -74,11 +75,9 @@ export function QuestionNavigate({
 
 function QuestionDetail({ q, qkey, delay = 0 }: { q: NormalizedQuestion | undefined; qkey: string | number; delay?: number }) {
   const [tab, setTab] = useState<(typeof DETAIL_TABS)[number]>('Response');
-  const [videoError, setVideoError] = useState(false);
   // Reset detail state whenever a different question is selected.
   useEffect(() => {
     setTab('Response');
-    setVideoError(false);
   }, [qkey]);
   if (!q) return null;
   if(q.mcq)return <div className="min-w-0 space-y-4 rounded-2xl border border-border bg-card p-5"><h3 className="font-semibold">{q.question}</h3><McqAnswerReview result={q.mcq}/></div>;
@@ -106,18 +105,8 @@ function QuestionDetail({ q, qkey, delay = 0 }: { q: NormalizedQuestion | undefi
         </span>
       </div>
 
-      {q.videoUrl && !videoError ? (
-        <video
-          key={q.videoUrl}
-          src={q.videoUrl}
-          controls
-          preload="metadata"
-          onError={() => setVideoError(true)}
-          className="mb-4 aspect-video w-full rounded-xl bg-black"
-          aria-label={`Video response for question ${q.index}`}
-        >
-          Your browser does not support video playback.
-        </video>
+      {q.videoUrl ? (
+        <VideoPlayer key={q.videoUrl} src={q.videoUrl} label={`Video response for question ${q.index}`}/>
       ) : (
         <div className="mb-4 flex aspect-video w-full items-center justify-center rounded-xl bg-muted text-sm text-muted-foreground">
           {q.videoUrl ? 'Video failed to load.' : 'No video available for this question.'}

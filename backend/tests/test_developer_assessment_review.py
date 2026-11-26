@@ -47,8 +47,11 @@ async def test_review_scope_and_revocation(client, db):
     await db.report_catalog.insert_one({'orgId':'default','jobId':'job','applicationId':'app0','reportId':'r'})
     assert await db.report_catalog.count_documents(await catalog_scope(db, actor)) == 1
     assert (await assign(client, reviewJobIds=[], expectedRevision=1)).status_code == 200
+    # The independent job assignment continues to grant read-only report access.
+    assert await db.applications.count_documents(await scope(db, actor)) == 3
+    await db.jobs.update_one({'jobId': 'job'}, {'$unset': {'assignedDeveloperUserId': ''}})
     assert await db.applications.count_documents(await scope(db, actor)) == 0
-    assert (await client.post('/api/recruitment/applications/app0/shortlist', headers=headers('technical_interviewer'))).status_code == 403
+    assert (await client.post('/api/recruitment/applications/app0/shortlist', headers=headers('technical_interviewer'))).status_code == 404
 
 
 async def test_assessment_permission_required(client):
