@@ -1049,6 +1049,26 @@ async def assign_job_developer(
     old_id = existing.get("assignedDeveloperUserId")
     updates = {"assignedDeveloperUserId": payload.userId, "assignedDeveloperName": target.get("name") if target else None}
     updated = await repo.update(job_id, updates, current_user.org_id)
+    # The Job Details developer assignment is also the reviewer assignment
+    # used by the developer portal's assessment queue.
+    if old_id and old_id != payload.userId:
+        await db.recruit_profiles.update_one(
+            {"orgId": current_user.org_id, "userId": old_id},
+            {"$pull": {"reviewJobIds": job_id}, "$inc": {"revision": 1}},
+        )
+    if payload.userId:
+        await db.recruit_profiles.update_one(
+            {"orgId": current_user.org_id, "userId": payload.userId},
+            {"$addToSet": {"reviewJobIds": job_id}, "$setOnInsert": {
+                "visibleFields": ["assessment", "skills", "experience", "education", "summary"],
+                "portalName": "", "createdAt": _utcnow(),
+            }, "$inc": {"revision": 1}},
+            upsert=True,
+        )
+        await db.recruit_profiles.update_one(
+            {"orgId": current_user.org_id, "userId": payload.userId},
+            {"$addToSet": {"visibleFields": "assessment"}},
+        )
     if old_id != payload.userId:
         await AuditLogRepository(db).log(
             org_id=current_user.org_id, actor_user_id=current_user.user_id,

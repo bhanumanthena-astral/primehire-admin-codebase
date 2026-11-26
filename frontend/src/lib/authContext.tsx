@@ -28,6 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(!localPreviewEnabled);
   const [impersonatingUser, setImpersonatingUser] = useState<User | null>(null);
   const [originalToken, setOriginalToken] = useState<string | null>(null);
+  const [originalUser, setOriginalUser] = useState<User | null>(null);
   const authEpoch = useRef(0);
 
   const fetchProfile = useCallback(async () => {
@@ -178,11 +179,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setImpersonatingUser(null);
       setOriginalToken(null);
+      setOriginalUser(null);
     }
   };
 
   const viewAs = async (targetUserId: string, reason: string) => {
+    if (originalToken) throw new Error('Exit the current view-as session before switching users.');
     const currentTok = getAccessToken();
+    const currentUser = user;
     const res = await authFetch('/api/auth/view-as', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -196,16 +200,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const data = await res.json();
     setOriginalToken(currentTok);
+    setOriginalUser(currentUser);
     setAccessToken(data.accessToken);
     setTokenState(data.accessToken);
     setImpersonatingUser(data.impersonating);
+    setUser(data.impersonating);
   };
 
   const exitViewAs = () => {
     if (originalToken) {
       setAccessToken(originalToken);
       setTokenState(originalToken);
+      setUser(originalUser);
       setOriginalToken(null);
+      setOriginalUser(null);
       setImpersonatingUser(null);
       fetchProfile();
     }
