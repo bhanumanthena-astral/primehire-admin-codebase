@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AppSelect } from "../ui/AppSelect";
-import { Staff, Page, recruitmentRequest } from "../../lib/recruitmentApi";
+import { Staff, Page, Job, recruitmentRequest } from "../../lib/recruitmentApi";
 const LABELS: Record<string, string> = {
   skills: "Skills",
   experience: "Experience and role",
@@ -27,6 +27,16 @@ export function RecruitmentAccess() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobSkip, setJobSkip] = useState(0);
+  const [jobTotal, setJobTotal] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    void recruitmentRequest<Page<Job>>(`/jobs?skip=${jobSkip}&limit=50`, undefined, 'GET', controller.signal)
+      .then(result => {setJobs(result.items);setJobTotal(result.total);})
+      .catch(cause => {if(!controller.signal.aborted)setError(cause.message);});
+    return () => controller.abort();
+  }, [jobSkip]);
   useEffect(() => {
     const controller = new AbortController();
     void recruitmentRequest<Page<Staff>>(
@@ -65,6 +75,8 @@ export function RecruitmentAccess() {
           `/access/${selected}`,
           {
             visibleFields: profile.visibleFields,
+            portalName: profile.portalName || '',
+            reviewJobIds: profile.reviewJobIds || [],
             expectedRevision: profile.revision,
             reason,
           },
@@ -88,8 +100,7 @@ export function RecruitmentAccess() {
             Interviewer access
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Each person sees only assigned interviews. Choose which candidate
-            details their workspace exposes.
+            Choose candidate visibility and assign developers jobs to review before interviews.
           </p>
         </div>
         <Button
@@ -146,6 +157,11 @@ export function RecruitmentAccess() {
       </div>
       {profile && (
         <form onSubmit={save} className="space-y-4">
+          <label className="block text-sm">Portal name<Input aria-label="Portal name" placeholder="Frontend Developer" maxLength={80} value={profile.portalName || ''} onChange={e=>setProfile({...profile,portalName:e.target.value})}/></label>
+          {staff.find(person=>person.userId===selected)?.role==='technical_interviewer'&&<fieldset className="space-y-3"><legend className="font-semibold">Jobs for assessment review</legend><p className="text-sm text-muted-foreground">Selected jobs require developer shortlisting before the first technical interview.</p>
+            {jobs.map(job=><label key={job.jobId} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={(profile.reviewJobIds||[]).includes(job.jobId)} onChange={e=>setProfile({...profile,reviewJobIds:e.target.checked?[...(profile.reviewJobIds||[]),job.jobId]:(profile.reviewJobIds||[]).filter((id:string)=>id!==job.jobId)})}/>{job.title}</label>)}
+            <div className="flex gap-2"><Button type="button" variant="outline" disabled={!jobSkip} onClick={()=>setJobSkip(n=>n-50)}>Previous jobs</Button><Button type="button" variant="outline" disabled={jobSkip+50>=jobTotal} onClick={()=>setJobSkip(n=>n+50)}>Next jobs</Button></div>
+          </fieldset>}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {Object.entries(LABELS).map(([key, label]) => (
               <label

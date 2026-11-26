@@ -45,6 +45,7 @@ import { RecruitmentAccess } from "./RecruitmentAccess";
 import { TalentPool } from "./TalentPool";
 import { CandidateRoadmapPage } from "./CandidateRoadmapPage";
 import { ReviewerDashboard } from "./ReviewerDashboard";
+import { DeveloperAssessments } from './DeveloperAssessments';
 import { InterviewCandidateCard } from "./InterviewCandidateCard";
 import {ReviewSubmissionSuccess,ReviewCompletion} from './ReviewSubmissionSuccess';
 
@@ -84,7 +85,7 @@ export function RecruitmentWorkspace({
   ].includes(role || "");
   const title =
     role === "technical_interviewer"
-      ? "Technical Interview Portal"
+      ? "Developer Portal"
       : role === "managerial_interviewer"
         ? "Managerial Interview Portal"
         : role === "hr"
@@ -159,7 +160,7 @@ export function RecruitmentWorkspace({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const refresh = () => setRevision((n) => n + 1);
-  const canSchedule = (application:Application) => !application.activeInterview && !['HIRED','REJECTED','WITHDRAWN'].includes(application.currentStage);
+  const canSchedule = (application:Application) => !application.developerReviewPending && !application.activeInterview && !['HIRED','REJECTED','WITHDRAWN'].includes(application.currentStage);
   useEffect(() => {
     if (externalSearch === undefined || externalSearch === search) return;
     setSearch(externalSearch);
@@ -354,6 +355,7 @@ export function RecruitmentWorkspace({
     }
   }
   const tabs: [string, string, LucideIcon][] = [
+    ...(role==='technical_interviewer' ? [["assessments", "Jobs & assessments", Briefcase] as [string,string,LucideIcon]] : []),
     ["tracker", reviewer ? "Overview" : "Recruitment tracker", Activity],
     ["interviews", reviewer ? "My interviews" : "Interviews", Users],
     ["candidates", "Candidates", Users],
@@ -422,7 +424,7 @@ export function RecruitmentWorkspace({
                 }}>Clear candidate filters</Button>}
                 {view === "candidates" && <p className="text-sm text-muted-foreground">
                   {caps?.canManage ? "Search all application stages, including candidates waiting for their next interview. Use the scheduling action on the candidate card."
-                    : "Only candidates assigned to you are visible. A recruiter or administrator must assign your interview before a candidate enters your workspace."}
+                    : "Only candidates from your assigned review jobs or interviews are visible."}
                 </p>}
                 {caps?.canManage && apps.items.length > 0 && (
                   <div className="flex flex-wrap items-center gap-4 text-sm">
@@ -508,6 +510,7 @@ export function RecruitmentWorkspace({
                           )}
                         </div>
                         <p className="mt-3 text-xs text-muted-foreground">
+                          {a.developerReviewPending ? 'Awaiting developer assessment review · ' : a.developerShortlist ? 'Developer shortlisted · ' : ''}
                           {a.candidate.currentDesignation ||
                             "Candidate profile"}
                           {a.candidate.experienceYears != null
@@ -579,7 +582,7 @@ export function RecruitmentWorkspace({
               : "People, progress and next steps"}
           </p>
           <h1 data-recruitment-heading tabIndex={-1} className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl outline-none">
-            {title}
+            {caps?.portalName || title}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
             {reviewer
@@ -716,6 +719,7 @@ export function RecruitmentWorkspace({
       ) : (
         <>
           {view === "talent" && caps?.canManage && <TalentPool jobId={job} onReused={refresh}/>}
+          {view === 'assessments' && role === 'technical_interviewer' && <DeveloperAssessments job={jobs.find(row=>row.jobId===job)} canShortlist={!!caps?.reviewJobIds?.includes(job)} readOnly={!!impersonatingUser} onChanged={refresh}/>}
           {view === "candidates" && (loading ? <Skeleton aria-label="Loading recruitment candidates" className="h-64"/> : candidatePipeline)}
           {view === "tracker" && reviewer && (
             <ReviewerDashboard

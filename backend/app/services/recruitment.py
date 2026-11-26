@@ -48,6 +48,10 @@ def pending_scheduling_pipeline(org_id, round_name=None):
     stages = READY[round_name] if round_name else set().union(*READY.values())
     return [
         {"$match": {"currentStage": {"$in": sorted(stages)}}},
+        {"$lookup": {"from": "recruit_profiles", "localField": "jobId", "foreignField": "reviewJobIds", "as": "reviewProfiles"}},
+        {"$match": {"$or": [{"currentStage": {"$ne": "ASSESSMENT_COMPLETED"}},
+                              {"reviewProfiles": {"$not": {"$elemMatch": {"orgId": org_id}}}}]}},
+        {"$project": {"reviewProfiles": 0}},
         {"$lookup": {"from": "recruit_interviews", "localField": "applicationId",
                       "foreignField": "applicationId", "as": "schedulingBookings"}},
         {"$match": {"schedulingBookings": {"$not": {"$elemMatch": {
@@ -147,6 +151,12 @@ async def schedule(db, user, payload, *, existing=None):
     writable(user)
     app = await app_allowed(db, user, payload.applicationId)
     job = await job_allowed(db, user, app["jobId"])
+    if payload.round == 'technical' and not existing:
+        review_required = await db.recruit_profiles.find_one({'orgId': user.org_id, 'reviewJobIds': app['jobId']})
+        if review_required and not app.get('developerShortlist'):
+            raise HTTPException(409, 'The assigned developer must shortlist this candidate before scheduling')
+        if app.get('developerShortlist') and payload.interviewerId != app['developerShortlist']['userId']:
+            raise HTTPException(422, 'Schedule the technical interview with the developer who shortlisted the candidate')
     if app["currentStage"] in {"HIRED", "REJECTED", "WITHDRAWN"}:
         raise HTTPException(409, "This application is terminal")
     if str(job.get("lifecycleStatus", job.get("status", "OPEN"))).upper() in {

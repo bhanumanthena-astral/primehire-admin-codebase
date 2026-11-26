@@ -33,6 +33,7 @@ from ..schemas.hiring import (
     JobDuplicateCheckIn,
     JobDuplicateOut,
     JobAssignIn,
+    JobDeveloperAssignIn,
     JobDetailPublic,
     JDParseOut,
     jd_text_of,
@@ -1022,6 +1023,40 @@ async def assign_job(
         )
         await _notify_assignee(db, org_id=current_user.org_id, job=updated or {}, user=target)
     return JobPublic(**updated)
+
+
+@router.put("/jobs/{job_id}/developer-assignment", response_model=JobPublic)
+async def assign_job_developer(
+    job_id: str,
+    payload: JobDeveloperAssignIn,
+    request: Request,
+    current_user: CurrentUser = Depends(_JOB_ADMIN),
+    db: Any = Depends(get_db),
+) -> JobPublic:
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    repo = job_repository(db, current_user)
+    existing = await repo.get_by_id(job_id, current_user.org_id)
+    if not existing:
+        raise HTTPException(404, "Job not found")
+    if _lifecycle_of(existing) == "ARCHIVED":
+        raise HTTPException(409, "Archived jobs cannot be reassigned")
+    target = None
+    if payload.userId:
+        target = await db["users"].find_one({"orgId": current_user.org_id, "userId": payload.userId, "role": "technical_interviewer", "isActive": {"$ne": False}})
+        if not target:
+            raise HTTPException(422, "Choose an active developer in this organization")
+    old_id = existing.get("assignedDeveloperUserId")
+    updates = {"assignedDeveloperUserId": payload.userId, "assignedDeveloperName": target.get("name") if target else None}
+    updated = await repo.update(job_id, updates, current_user.org_id)
+    if old_id != payload.userId:
+        await AuditLogRepository(db).log(
+            org_id=current_user.org_id, actor_user_id=current_user.user_id,
+            action="job.developer_assign", resource_type="job", resource_id=job_id,
+            details={"from": old_id, "to": payload.userId},
+            ip_address=request.client.host if request.client else "",
+        )
+    return JobPublic(**(updated or {}))
 
 
 @router.get("/jobs/{job_id}/activity")

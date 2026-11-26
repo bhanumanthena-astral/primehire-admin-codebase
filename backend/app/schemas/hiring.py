@@ -228,6 +228,8 @@ class JobPublic(BaseModel):
     jobId: str
     datesVersion: str | None = None
     assigneeName: str | None = None
+    assignedDeveloperUserId: str | None = None
+    assignedDeveloperName: str | None = None
     orgId: str
     jobKey: str
     companyName: str = ""
@@ -332,6 +334,11 @@ class JobAssignIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: str = Field(..., min_length=3, max_length=255)
+
+
+class JobDeveloperAssignIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    userId: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class JobDetailPublic(BaseModel):

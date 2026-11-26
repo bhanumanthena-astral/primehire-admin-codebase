@@ -5,10 +5,27 @@ import {rememberSignInMethod,withGoogleTimeout} from './googleConnection';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const localPreviewUser: User = {
+  userId: 'preview-admin',
+  orgId: 'northstar-preview',
+  email: 'preview@elitehr.local',
+  name: 'Maya Singh',
+  role: 'admin',
+  isActive: true,
+  mfaEnabled: false,
+  jobAccess: ['view', 'edit', 'create', 'upload'],
+};
+
+const localPreviewEnabled =
+  import.meta.env.DEV &&
+  import.meta.env.MODE !== 'test' &&
+  typeof window !== 'undefined' &&
+  ['127.0.0.1', 'localhost'].includes(window.location.hostname);
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(localPreviewEnabled ? localPreviewUser : null);
   const [token, setTokenState] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(!localPreviewEnabled);
   const [impersonatingUser, setImpersonatingUser] = useState<User | null>(null);
   const [originalToken, setOriginalToken] = useState<string | null>(null);
   const authEpoch = useRef(0);
@@ -38,6 +55,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initial bootstrap: try refreshing token using httpOnly cookie
   useEffect(() => {
+    if (localPreviewEnabled) {
+      setAuthFailureHandler(() => undefined);
+      return () => setAuthFailureHandler(() => undefined);
+    }
     let mounted = true;
     const bootstrapEpoch = authEpoch.current;
 

@@ -60,6 +60,8 @@ it('shows a real provider-pending error and allows retry without a mock report',
  vi.mocked(authFetch).mockResolvedValueOnce(new Response(JSON.stringify({detail:'The assessment report is still pending.'}),{status:409}));
  render(<JobCandidateReportDialog job={job} application={candidate} onClose={vi.fn()}/>);
  expect(await screen.findByRole('alert')).toHaveTextContent('still pending');
+ expect(screen.getByRole('main',{name:'Assessment report for Synthetic Candidate'})).toBeVisible();
+ expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
  expect(screen.queryByText(/Report for Synthetic/)).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'Retry report'}));
  expect(await screen.findByText('Report for Synthetic Candidate: 0')).toBeVisible();

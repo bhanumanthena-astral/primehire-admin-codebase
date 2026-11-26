@@ -20,6 +20,7 @@ from ..security.recruitment import (
     fields_for,
     project_candidate,
     project_application,
+    review_jobs,
 )
 from ..models.recruitment import RecruitmentRepository, lease, now, aware, clean
 from ..schemas.recruitment import (
@@ -53,7 +54,10 @@ async def capabilities(
     heartbeat = await db["recruit_leases"].find_one(
         {"_id": "recruit-worker-heartbeat", "expiresAt": {"$gt": now()}}
     )
+    profile = await db.recruit_profiles.find_one({'orgId': user.org_id, 'userId': user.user_id}) or {}
     return {
+        "portalName": profile.get('portalName', ''),
+        "reviewJobIds": await review_jobs(db, user),
         "enabled": True,
         "canManage": user.role in MANAGERS,
         "canReview": user.role
@@ -74,13 +78,15 @@ async def jobs(
 ):
     query = {"orgId": user.org_id}
     if user.role not in ADMIN:
-        if user.role == "recruiter":
+        if user.role == "technical_interviewer":
+            query['jobId'] = (await visible_query(db, user))['jobId']
+        elif user.role == "recruiter":
             query["assigneeUserId"] = user.user_id
             query['jobId']=(await visible_query(db,user))['jobId']
         else:
             scoped = await visible_query(db, user)
             ids = await db["applications"].distinct("jobId", scoped)
-            query["jobId"] = {"$in": ids}
+            query["jobId"] = {"$in": list(set(ids + await review_jobs(db, user)))}
     rows = [
         {
             k: r.get(k)
@@ -93,6 +99,8 @@ async def jobs(
                 "positionsFilled",
                 "lifecycleStatus",
                 "status",
+                "jdText", "jobRole", "department", "location", "workMode", "keywords",
+                "minExperienceYears", "maxExperienceYears", "assessmentJobId", "assessmentRoundType",
             ]
         }
         async for r in db["jobs"]
@@ -102,6 +110,32 @@ async def jobs(
         .limit(limit)
     ]
     return {"items": rows, "total": await db["jobs"].count_documents(query)}
+
+
+@router.post('/applications/{key}/shortlist')
+async def shortlist(key: str, user=Depends(require_permission('recruitment.review')), db=Depends(database)):
+    writable(user)
+    async with lease(db, user.org_id, [f'application:{key}']):
+        application = await app_allowed(db, user, key)
+        if application['jobId'] not in await review_jobs(db, user):
+            raise HTTPException(403, 'Only the assigned developer can shortlist this candidate')
+        if 'assessment' not in await fields_for(db, user):
+            raise HTTPException(403, 'Assessment evidence access has been removed')
+        if application['currentStage'] != 'ASSESSMENT_COMPLETED':
+            raise HTTPException(409, 'Only a completed assessment awaiting review can be shortlisted')
+        decision = {'userId': user.user_id, 'at': now()}
+        result = await db.applications.update_one(
+            {'orgId': user.org_id, 'applicationId': key, 'currentStage': 'ASSESSMENT_COMPLETED'},
+            {'$set': {'currentStage': 'ROUND1_PENDING_ASSIGNMENT', 'developerShortlist': decision,
+                      'stageEnteredAt': now(), 'updatedAt': now(), 'status': 'ACTIVE'}})
+        if not result.modified_count:
+            raise HTTPException(409, 'Application changed; refresh first')
+        from ..models.hiring import StageHistoryRepository
+        await StageHistoryRepository(db).record_transition(application_id=key, from_stage='ASSESSMENT_COMPLETED',
+            to_stage='ROUND1_PENDING_ASSIGNMENT', actor_user_id=user.user_id,
+            reason='Developer shortlisted after assessment review', metadata=decision)
+        await service.audit(db, user, 'assessment_shortlisted', key, decision)
+    return {'shortlisted': True}
 
 
 @router.get("/staff")
@@ -277,6 +311,7 @@ async def applications(
                 "activeInterview": bookings.get(row['applicationId']),
                 "invitationDelivery": delivery.get(row["applicationId"]),
                 "latestInterview": latest.get(row['applicationId']),
+                "developerReviewPending": row['currentStage'] == 'ASSESSMENT_COMPLETED' and bool(await db.recruit_profiles.find_one({'orgId': user.org_id, 'reviewJobIds': row['jobId']})),
                 **({"invitation": {
                     "status": row["invitationState"], "canInvite": row["canInvite"],
                     "assessmentId": job.get("assessmentJobId"),
@@ -1159,6 +1194,12 @@ async def set_access(
     db=Depends(database),
 ):
     writable(user)
+    if payload.reviewJobIds:
+        target = await db.users.find_one({'orgId': user.org_id, 'userId': user_id})
+        if not target or target['role'] != 'technical_interviewer':
+            raise HTTPException(422, 'Review jobs can only be assigned to developers')
+        if await db.jobs.count_documents({'orgId': user.org_id, 'jobId': {'$in': payload.reviewJobIds}}) != len(set(payload.reviewJobIds)):
+            raise HTTPException(422, 'Select jobs from your company')
     if not await db["users"].find_one(
         {
             "orgId": user.org_id,
@@ -1178,6 +1219,8 @@ async def set_access(
             {
                 "$set": {
                     "visibleFields": sorted(set(payload.visibleFields)),
+                    "portalName": payload.portalName.strip(),
+                    "reviewJobIds": list(dict.fromkeys(payload.reviewJobIds)),
                     "updatedBy": user.user_id,
                     "updatedAt": now(),
                 },
@@ -1193,6 +1236,8 @@ async def set_access(
             {
                 "before": old.get("visibleFields") if old else None,
                 "after": payload.visibleFields,
+                "portalName": payload.portalName.strip(),
+                "reviewJobIds": payload.reviewJobIds,
                 "reason": payload.reason,
             },
         )

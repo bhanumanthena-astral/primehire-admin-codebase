@@ -77,7 +77,7 @@ describe("Recruitment workspace", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Technical Interview Portal" }),
+      screen.getByRole("heading", { name: "Developer Portal" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Team access" }),

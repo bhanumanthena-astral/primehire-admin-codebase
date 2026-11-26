@@ -34,6 +34,8 @@ export type JobPipeline = {
 export interface Job {
   pipeline?: JobPipeline | null;
   assigneeName?: string | null;
+  assignedDeveloperUserId?: string | null;
+  assignedDeveloperName?: string | null;
   assigneeAccess?: ('view' | 'edit' | 'upload')[] | null;
   jobId: string;
   orgId: string;
@@ -367,6 +369,14 @@ export async function assignJob(jobId: string, email: string): Promise<Job> {
     body: JSON.stringify({ email }),
   });
   if (!res.ok) throw new Error(await apiErrorMessage(res, `POST /api/jobs/${jobId}/assign`));
+  return res.json();
+}
+
+export async function assignJobDeveloper(jobId: string, userId: string | null): Promise<Job> {
+  const res = await hiringFetch(`${API_BASE}/api/jobs/${encodeURIComponent(jobId)}/developer-assignment`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }),
+  });
+  if (!res.ok) throw new Error(await apiErrorMessage(res, `PUT /api/jobs/${jobId}/developer-assignment`));
   return res.json();
 }
 

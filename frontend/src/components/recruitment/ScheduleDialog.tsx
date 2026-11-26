@@ -51,7 +51,7 @@ export function ScheduleDialog({
   const [total, setTotal] = useState(0);
   const [skip, setSkip] = useState(0);
   const [search, setSearch] = useState("");
-  const [interviewer, setInterviewer] = useState(existing?.interviewerId || "");
+  const [interviewer, setInterviewer] = useState(existing?.interviewerId || (round==='technical'?application.developerShortlist?.userId:'') || "");
   const [start, setStart] = useState(
     existing ? localTime(existing.startsAt) : "",
   );

@@ -96,8 +96,8 @@ if (-not (Listener 3000)) {
     } finally { $env:FASTAPI_URL = $previousLocalProxy }
 }
 $apiReady = $false
-# PostgreSQL index checks can take longer than 20 connection-refused retries after reconnecting.
-$startupDeadline = [DateTime]::UtcNow.AddMinutes(2)
+# PostgreSQL index checks over the SSH tunnel can take several minutes after reconnecting.
+$startupDeadline = [DateTime]::UtcNow.AddMinutes(5)
 while ([DateTime]::UtcNow -lt $startupDeadline) {
     try {
         $ready = Invoke-RestMethod 'http://127.0.0.1:8002/api/ready' -TimeoutSec 2

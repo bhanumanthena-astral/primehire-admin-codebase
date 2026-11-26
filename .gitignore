@@ -39,3 +39,6 @@ tunnel_url.txt
 /.bob/
 /.ua/
 /docs/technical-kt/
+.agents/skills/security-audit/
+.env
+/output/

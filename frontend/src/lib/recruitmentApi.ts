@@ -16,6 +16,8 @@ export type Person = {
   [key: string]: any;
 };
 export type Application = {
+  developerReviewPending?: boolean;
+  developerShortlist?: {userId: string; at: string};
   applicationSource?:string;
   invitation?: {status:'not_invited'|'pending'|'invited'|'failed';canInvite:boolean;assessmentId?:string;sentAt?:string;requestedAt?:string};
   invitationDelivery?: {status:string;via?:string;retryId?:string}|null;
@@ -73,6 +75,8 @@ export type Interview = {
   scheduleChanges?:{changedAt:string;reason:string;before?:{startsAt?:string;endsAt?:string};after?:{startsAt?:string;endsAt?:string}}[];
 };
 export type Capabilities = {
+  portalName?: string;
+  reviewJobIds?: string[];
   enabled: boolean;
   canManage: boolean;
   canReview: boolean;
@@ -84,6 +88,10 @@ export type Capabilities = {
 };
 export type Page<T> = { items: T[]; total: number };
 export type Job = {
+  companyName?: string; lifecycleStatus?: string;
+  jdText?: string; jobRole?: string; department?: string; location?: string; workMode?: string;
+  keywords?: string[]; minExperienceYears?: number; maxExperienceYears?: number;
+  assessmentJobId?: string; assessmentRoundType?: string;
   jobId: string;
   title: string;
   positionsTotal?: number;

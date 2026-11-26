@@ -6,6 +6,8 @@ def owner_scope(user: CurrentUser) -> str | None:
 
 def job_repository(db, user):
     from ..models.hiring import JobRepository
+    if user.role == 'technical_interviewer':
+        return JobRepository(db, owner_id=user.user_id, owner_field='assignedDeveloperUserId')
     return JobRepository(db, owner_id=owner_scope(user))
 
 

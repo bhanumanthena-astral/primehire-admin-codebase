@@ -15,6 +15,7 @@ import {
   fetchJobDetail,
   fetchJobNotifications,
   fetchUserDirectory,
+  assignJobDeveloper,
   AuditEntry,
   DirectoryUser,
   Job,
@@ -106,6 +107,8 @@ function ActivityTitle({ entry, directory }: { entry: AuditEntry; directory: Dir
     }
     case 'job.assign':
       return <div className="mt-0.5 text-[0.8125rem] font-bold">Assignee changed · by {by}</div>;
+    case 'job.developer_assign':
+      return <div className="mt-0.5 text-[0.8125rem] font-bold">Developer assignment changed · by {by}</div>;
     case 'job.close':
       return <div className="mt-0.5 text-[0.8125rem] font-bold">Job closed · by {by}</div>;
     case 'job.reopen':
@@ -136,6 +139,9 @@ function ActivityDetails({
   if (entry.action === 'job.assign' && rows.length === 0 && 'from' in details) {
     rows.push({ field: 'assigneeUserId', from: details.from, to: details.to });
   }
+  if (entry.action === 'job.developer_assign' && rows.length === 0 && 'from' in details) {
+    rows.push({ field: 'assignedDeveloperUserId', from: details.from, to: details.to });
+  }
   if (rows.length === 0) {
     if (entry.action === 'job.close' && details.reason) {
       return <div className="text-xs text-muted-foreground">Reason: {fmtValue(details.reason)}</div>;
@@ -143,7 +149,7 @@ function ActivityDetails({
     return null;
   }
   const idLike = (field: string) =>
-    field === 'assigneeUserId' || field.toLowerCase().includes('actor');
+    ['assigneeUserId', 'assignedDeveloperUserId'].includes(field) || field.toLowerCase().includes('actor');
   return (
     <ul className="mt-1 space-y-0.5">
       {rows.map((r) => (
@@ -245,6 +251,8 @@ export default function JobDetailsPage({
   const { user } = useAuth();
   const canManage = isJobAdmin(user) || hasJobAccess(user,'edit');
   const [accessOpen,setAccessOpen]=useState(false);
+  const [developerAssigning,setDeveloperAssigning]=useState(false);
+  const [developerId,setDeveloperId]=useState('');
 
   const [detail, setDetail] = useState<JobDetail | null>(null);
   const [activity, setActivity] = useState<AuditEntry[]>([]);
@@ -390,6 +398,7 @@ export default function JobDetailsPage({
   const actions = {...jobActionsFor(lifecycle, isJobAdmin(user), counts.total ?? 0),canEdit:hasJobAccess(user,'edit',job)&&lifecycle!=='ARCHIVED'};
   const canRestoreArchived = lifecycle==='ARCHIVED' && user?.role==='super_admin';
   const owner = resolveOwner(job, directory);
+  const developers = directory.filter(person => person.role === 'technical_interviewer' && person.isActive);
 
   return (
     <div className="space-y-5" aria-label="Job details">
@@ -419,6 +428,7 @@ export default function JobDetailsPage({
                 void runAction(()=>status==='CLOSED'?closeJob(job.jobId):status==='ARCHIVED'?archiveJob(job.jobId):setJobLifecycle(job.jobId,status as "OPEN"|"ON_HOLD"));
               }}/>}
               {isJobAdmin(user)&&lifecycle!=='ARCHIVED'&&<PAButton variant="secondary" onClick={()=>setAccessOpen(true)}>Assignee access</PAButton>}
+              {isJobAdmin(user)&&lifecycle!=='ARCHIVED'&&<PAButton variant="secondary" onClick={()=>{setDeveloperId(job.assignedDeveloperUserId||'');setDeveloperAssigning(value=>!value)}}>{job.assignedDeveloperName ? `Developer: ${job.assignedDeveloperName}` : 'Assign developer'}</PAButton>}
               {accessOpen&&<JobAccessModal job={job} onClose={()=>setAccessOpen(false)} onSaved={updated=>{onChanged(updated);void load();}}/>}
               {isJobAdmin(user) && ['DRAFT', 'OPEN', 'ON_HOLD'].includes(lifecycle) && (
                 <PAButton disabled={busy} onClick={() => void runAction(() => setJobLifecycle(job.jobId, lifecycle === 'OPEN' ? 'ON_HOLD' : 'OPEN'))}>
@@ -453,6 +463,13 @@ export default function JobDetailsPage({
               )}
             </div>
           )}
+          {developerAssigning&&isJobAdmin(user)&&<form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={async event=>{event.preventDefault();try{const updated=await assignJobDeveloper(job.jobId,developerId||null);onChanged(updated);setDeveloperAssigning(false);await load()}catch(error){setActionError(error instanceof Error?error.message:'Developer assignment failed.')}}}>
+            <label className="text-sm font-semibold" htmlFor="job-developer">Assigned developer</label>
+            <select id="job-developer" value={developerId} onChange={event=>setDeveloperId(event.target.value)} className="ehr-input rounded-md px-3 py-2">
+              <option value="">Unassigned</option>{developers.map(person=><option key={person.userId} value={person.userId}>{person.name} · {person.email}</option>)}
+            </select>
+            <PAButton type="submit">Save developer</PAButton>
+          </form>}
         </div>
         {actionError && (
           <div role="alert" className="mt-3 rounded-xl border border-destructive/30 bg-[var(--destructive-soft)] px-4 py-2 text-[0.78125rem] font-medium text-destructive">
@@ -494,6 +511,7 @@ export default function JobDetailsPage({
           <InfoRow label="Opened At" value={fmtDate(job.openedAt)} />
           <InfoRow label="Closes At" value={fmtDate(job.closesAt)} />
           <InfoRow label="Assignee Email" value={job.assigneeEmail || '—'} />
+          <InfoRow label="Assigned Developer" value={job.assignedDeveloperName || 'Unassigned'} />
         </dl>
         {(job.keywords?.length ?? 0) > 0 && (
           <div className="mt-3">

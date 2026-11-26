@@ -95,16 +95,19 @@ def can_transition(from_stage: Stage, to_stage: Stage, is_override: bool = False
 
 
 class JobRepository:
-    def __init__(self, db: Any, owner_id: str | None = None) -> None:
+    def __init__(self, db: Any, owner_id: str | None = None, owner_field: str = "assigneeUserId") -> None:
         self.coll = db["jobs"]
         self.db = db
         self.owner_id = owner_id
+        self.owner_field = owner_field
 
     def scope(self, query):
         if not self.owner_id:
             return query
-        return {**query, 'assigneeUserId':self.owner_id, '$and':query.get('$and', []) + [
-            {'$or':[{'assigneeAccess':None},{'assigneeAccess':'view'}]}]}
+        scoped = {**query, self.owner_field: self.owner_id}
+        if self.owner_field == 'assigneeUserId':
+            scoped['$and'] = query.get('$and', []) + [{'$or':[{'assigneeAccess':None},{'assigneeAccess':'view'}]}]
+        return scoped
 
     async def create(self, doc: dict[str, Any]) -> dict[str, Any]:
         record = dict(doc)
@@ -126,6 +129,10 @@ class JobRepository:
             if owner:
                 doc["assigneeEmail"] = owner.get("email", doc.get("assigneeEmail"))
                 doc["assigneeName"] = owner.get("name", doc.get("assigneeName"))
+        if doc and doc.get("assignedDeveloperUserId"):
+            developer = await self.db["users"].find_one({"orgId": org_id, "userId": doc["assignedDeveloperUserId"]})
+            if developer:
+                doc["assignedDeveloperName"] = developer.get("name")
         return doc
 
     async def get_by_key(self, job_key: str, org_id: str) -> dict[str, Any] | None:

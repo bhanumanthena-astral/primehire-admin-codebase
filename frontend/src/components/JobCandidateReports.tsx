@@ -29,7 +29,7 @@ export function JobCandidateReports({job,onSchedule,completedOnly,onScheduleSele
   const [range,setRange]=useState<number[]|null>(null);
   const [selected,setSelected]=useState<Application[]>([]);
   const [selecting,setSelecting]=useState(false);
-  const eligible=(row:Application)=>!['HIRED','REJECTED','WITHDRAWN'].includes(row.currentStage);
+  const eligible=(row:Application)=>!row.developerReviewPending&&!['HIRED','REJECTED','WITHDRAWN'].includes(row.currentStage);
   const listPath=`/applications?jobId=${encodeURIComponent(job.jobId)}&skip=${page*50}&limit=50`+
     (completedOnly?'&pipelineStage=assessmentsCompleted':'')+
     (range?'&scoreField=assessment&minimum='+range[0]+'&maximum='+range[1]:'');
@@ -54,7 +54,7 @@ export function JobCandidateReports({job,onSchedule,completedOnly,onScheduleSele
         <TableBody>{items.map(row=>{
           const hasReport=row.assessment?.reportAvailable??(row.assessment?.score!=null);
           const terminal=['HIRED','REJECTED','WITHDRAWN'].includes(row.currentStage);
-          const canSchedule=canManage&&!terminal;
+          const canSchedule=canManage&&!terminal&&!row.developerReviewPending;
           return <TableRow key={row.applicationId}>
             {completedOnly&&<TableCell><input type="checkbox" aria-label={'Select '+row.candidate.name} checked={selected.some(r=>r.applicationId===row.applicationId)} disabled={!canSchedule||selecting} onChange={e=>setSelected(rows=>e.target.checked?[...rows,row]:rows.filter(r=>r.applicationId!==row.applicationId))}/></TableCell>}
             <TableCell className="font-semibold">{row.candidate.name}{completedOnly&&<div className="text-xs font-normal">{row.candidate.email}</div>}</TableCell>

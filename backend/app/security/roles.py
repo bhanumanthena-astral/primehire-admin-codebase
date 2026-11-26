@@ -83,6 +83,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     Role.LEADERSHIP.value: frozenset({"leadership.view"}),
     Role.TECHNICAL_INTERVIEWER.value: frozenset({
         "recruitment.view", "recruitment.review",
+        "jobs.view",
         "applications.view_all",
         "reviews.read_all", "reports.view",
     }),

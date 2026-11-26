@@ -17,6 +17,13 @@ DEFAULT_FIELDS = {
 }
 
 
+async def review_jobs(db, user):
+    if user.role != 'technical_interviewer':
+        return []
+    profile = await db.recruit_profiles.find_one({'orgId': user.org_id, 'userId': user.user_id}) or {}
+    return profile.get('reviewJobIds', [])
+
+
 def questions_allowed(record, fields):
     if not record:
         return True
@@ -49,7 +56,9 @@ def writable(user):
 
 async def job_allowed(db, user, job_id):
     query = {"orgId": user.org_id, "jobId": job_id}
-    if user.role not in ADMIN:
+    if user.role == 'technical_interviewer':
+        query['assignedDeveloperUserId'] = user.user_id
+    elif user.role not in ADMIN:
         query["assigneeUserId"] = user.user_id
     job = await db["jobs"].find_one(query)
     if not job:
@@ -65,9 +74,11 @@ async def app_allowed(db, user, key):
     )
     if not app:
         raise HTTPException(404, "Application not found")
-    if user.role in MANAGERS:
+    if user.role in MANAGERS or user.role == 'technical_interviewer':
         await job_allowed(db, user, app["jobId"])
     else:
+        if app['jobId'] in await review_jobs(db, user):
+            return app
         assigned = await db["recruit_interviews"].find_one(
             {
                 "orgId": user.org_id,
@@ -82,7 +93,7 @@ async def app_allowed(db, user, key):
 
 
 async def interview_allowed(db, user, row, *, review=False):
-    if user.role in MANAGERS:
+    if user.role in MANAGERS or user.role == 'technical_interviewer':
         await job_allowed(db, user, row["jobId"])
     elif row["interviewerId"] != user.user_id:
         raise HTTPException(404, "Interview not found")
@@ -94,6 +105,13 @@ async def interview_allowed(db, user, row, *, review=False):
 async def visible_query(db, user):
     if user.role in ADMIN:
         return {"orgId": user.org_id}
+    if user.role == 'technical_interviewer':
+        rows = await db['jobs'].find(
+            {'orgId': user.org_id, 'assignedDeveloperUserId': user.user_id}, {'jobId': 1}
+        ).limit(5001).to_list(5001)
+        if len(rows) > 5000:
+            raise HTTPException(422, "Use a narrower workspace filter")
+        return {'orgId': user.org_id, 'jobId': {'$in': [row['jobId'] for row in rows]}}
     if user.role == "recruiter":
         from .job_permissions import job_access
         actor=await db['users'].find_one({'orgId':user.org_id,'userId':user.user_id},{'jobAccess':1})
@@ -126,7 +144,8 @@ async def visible_query(db, user):
         raise HTTPException(422, "Use a narrower workspace filter")
     return {
         "orgId": user.org_id,
-        "applicationId": {"$in": list({r["applicationId"] for r in rows})},
+        "$or": [{"applicationId": {"$in": list({r["applicationId"] for r in rows})}},
+                {"jobId": {"$in": await review_jobs(db, user)}}],
     }
 
 
@@ -199,6 +218,7 @@ def project_application(app, fields):
         "stageEnteredAt",
         "createdAt",
         "updatedAt",
+        "developerShortlist",
     ]
     result = {k: app.get(k) for k in keys}
     if "assessment" in fields:

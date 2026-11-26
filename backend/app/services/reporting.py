@@ -11,7 +11,7 @@ from ..models.recruitment import now, lease, clean
 from ..models.hiring import AuditLogRepository
 from ..models.jobs import BackgroundJobRepository
 from ..security.job_permissions import require_job_access
-from ..security.recruitment import fields_for, project_candidate, project_application
+from ..security.recruitment import fields_for, project_candidate, project_application, review_jobs
 from .candidate_management import job_scope, bounded_ids, utc
 from .resume_intake_projection import project_management_profile
 from .report_content import presentation, generation_status, obj
@@ -37,6 +37,7 @@ async def scope(db,user):
     if 'assessment' not in await fields_for(db,user):raise HTTPException(403,'Assessment evidence access has been removed')
     if user.role in {'super_admin','admin'}:return {'orgId':user.org_id}
     jobs=await bounded_ids(db.jobs.find(await job_scope(db,user),{'jobId':1}),'jobId')
+    jobs += await review_jobs(db,user)
     assigned=await bounded_ids(db.recruit_interviews.find({'orgId':user.org_id,'interviewerId':user.user_id,
         'status':{'$ne':'cancelled'}},{'applicationId':1}),'applicationId')
     return {'orgId':user.org_id,'$or':[{'jobId':{'$in':jobs}},{'applicationId':{'$in':assigned}}]}
@@ -56,6 +57,7 @@ async def catalog_scope(db,user):
     base=await scope(db,user)
     if user.role in {'super_admin','admin'}:return base
     jobs=await bounded_ids(db.jobs.find(await job_scope(db,user),{'jobId':1}),'jobId')
+    jobs += await review_jobs(db,user)
     permitted=[{'jobId':{'$in':jobs}}]
     async for assignment in db.recruit_interviews.find({'orgId':user.org_id,'interviewerId':user.user_id,'status':{'$ne':'cancelled'}}).limit(5000):
         cutoff=utc(assignment.get('startsAt') or assignment.get('createdAt'))

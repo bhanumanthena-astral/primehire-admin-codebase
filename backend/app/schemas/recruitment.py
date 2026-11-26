@@ -223,6 +223,9 @@ class Review(Strict):
 
 class AccessProfile(Strict):
 
+    portalName: str = Field(default='', max_length=80)
+    reviewJobIds: list[str] = Field(default_factory=list, max_length=100)
+
     visibleFields: list[VisibleField] = Field(max_length=9)
 
     expectedRevision: int = Field(default=0, ge=0)
