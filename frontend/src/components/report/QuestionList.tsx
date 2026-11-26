@@ -58,7 +58,7 @@ export default function QuestionList({
                   {q.isGenerated ? (
                     <>
                       <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-bold text-foreground whitespace-nowrap">
-                        {formatScore(q.obtainedScore)} / {q.maxScore}
+                        {q.scoreLabel ?? `${formatScore(q.obtainedScore)} / ${q.maxScore}`}
                       </span>
                       <span
                         className="flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-xs font-bold"

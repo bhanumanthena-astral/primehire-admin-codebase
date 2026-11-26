@@ -22,17 +22,19 @@ export default function QuestionReview({
   selectedIndex,
   onSelect,
   delay = 0,
+  renderVideo,
 }: {
   questions: NormalizedQuestion[];
   selectedIndex: number;
   onSelect: (i: number) => void;
   delay?: number;
+  renderVideo?: (question: NormalizedQuestion) => React.ReactNode;
 }) {
   if (questions.length === 0) return null;
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <QuestionList questions={questions} selectedIndex={selectedIndex} onSelect={onSelect} delay={delay} />
-      <QuestionDetail q={questions[selectedIndex]} qkey={questions[selectedIndex]?.key ?? selectedIndex} delay={delay + 0.05} />
+      <QuestionDetail q={questions[selectedIndex]} qkey={questions[selectedIndex]?.key ?? selectedIndex} delay={delay + 0.05} renderVideo={renderVideo}/>
     </div>
   );
 }
@@ -73,14 +75,14 @@ export function QuestionNavigate({
   );
 }
 
-function QuestionDetail({ q, qkey, delay = 0 }: { q: NormalizedQuestion | undefined; qkey: string | number; delay?: number }) {
+function QuestionDetail({ q, qkey, delay = 0, renderVideo }: { q: NormalizedQuestion | undefined; qkey: string | number; delay?: number; renderVideo?: (question: NormalizedQuestion) => React.ReactNode }) {
   const [tab, setTab] = useState<(typeof DETAIL_TABS)[number]>('Response');
   // Reset detail state whenever a different question is selected.
   useEffect(() => {
     setTab('Response');
   }, [qkey]);
   if (!q) return null;
-  if(q.mcq)return <div className="min-w-0 space-y-4 rounded-2xl border border-border bg-card p-5"><h3 className="font-semibold">{q.question}</h3><McqAnswerReview result={q.mcq}/></div>;
+  if(q.mcq)return <div className="min-w-0 space-y-4 rounded-2xl border border-border bg-card p-5"><h3 className="font-semibold">{q.question}</h3><McqAnswerReview result={q.mcq}/>{renderVideo?.(q)}</div>;
   const grade = getGrade(q.percentage);
 
   return (
@@ -105,7 +107,7 @@ function QuestionDetail({ q, qkey, delay = 0 }: { q: NormalizedQuestion | undefi
         </span>
       </div>
 
-      {q.videoUrl ? (
+      {renderVideo ? renderVideo(q) : q.videoUrl ? (
         <VideoPlayer key={q.videoUrl} src={q.videoUrl} label={`Video response for question ${q.index}`}/>
       ) : (
         <div className="mb-4 flex aspect-video w-full items-center justify-center rounded-xl bg-muted text-sm text-muted-foreground">
@@ -132,7 +134,7 @@ function QuestionDetail({ q, qkey, delay = 0 }: { q: NormalizedQuestion | undefi
 
       {tab === 'Response' && (
         <div className="space-y-2.5">
-          <ScoreBar label="Obtained score" value={q.percentage} right={q.isGenerated ? `${q.obtainedScore} / ${q.maxScore}` : undefined} />
+          <ScoreBar label="Obtained score" value={q.percentage} right={q.scoreLabel ?? (q.isGenerated ? `${q.obtainedScore} / ${q.maxScore}` : undefined)} />
           {q.weightage !== null && (
             <p className="text-xs text-muted-foreground">
               Weightage: <b className="text-foreground">{q.weightage}%</b>

@@ -24,7 +24,7 @@ export function VideoPlayer({src,label='Candidate video',loading=false,error='',
   if(event.key.toLowerCase()==='k'){event.preventDefault();play();}
  }}>
   <div className="relative flex aspect-video max-h-[75dvh] items-center justify-center bg-black">
-   {src&&<video key={src} ref={video} src={src} aria-label={label} playsInline preload="none" autoPlay={autoPlay} className="h-full w-full object-contain" onClick={play}
+   {src&&<video key={src} ref={video} src={src} aria-label={label} playsInline preload="auto" autoPlay={autoPlay} className="h-full w-full object-contain" onClick={play}
     onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onEnded={()=>setPlaying(false)}
     onTimeUpdate={event=>setTime(event.currentTarget.currentTime)} onDurationChange={event=>setDuration(Number.isFinite(event.currentTarget.duration)?event.currentTarget.duration:0)}
     onVolumeChange={event=>{setMuted(event.currentTarget.muted);setVolume(event.currentTarget.volume);}}

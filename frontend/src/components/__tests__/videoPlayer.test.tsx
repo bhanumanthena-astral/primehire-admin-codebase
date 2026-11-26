@@ -6,6 +6,8 @@ it('loads on play and exposes accessible playback controls',()=>{
  fireEvent.click(screen.getByRole('button',{name:'Play video'}));expect(request).toHaveBeenCalledTimes(1);
  view.rerender(<VideoPlayer src="blob:test" label="Candidate response"/>);
  const video=screen.getByLabelText('Candidate response') as HTMLVideoElement;
+ expect(video).toHaveAttribute('preload','auto');
+ expect(video).not.toHaveAttribute('autoplay');
  video.play=vi.fn().mockResolvedValue(undefined);video.pause=vi.fn();
  fireEvent.click(screen.getByRole('button',{name:'Play video'}));expect(video.play).toHaveBeenCalledTimes(1);
  Object.defineProperty(video,'duration',{value:120,configurable:true});fireEvent.durationChange(video);

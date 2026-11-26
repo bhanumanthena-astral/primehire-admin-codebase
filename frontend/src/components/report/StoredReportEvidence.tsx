@@ -1,7 +1,7 @@
 import {VideoPlayer} from '@/components/ui/video-player';
 import McqAnswerReview from './McqAnswerReview';
 import {normalizeMcq} from '../../utils/mcqReport';
-import {useEffect,useState} from 'react';
+import {createContext,useCallback,useContext,useEffect,useRef,useState} from 'react';
 import {Radar,RadarChart,PolarGrid,PolarAngleAxis,PolarRadiusAxis,ResponsiveContainer,Tooltip} from 'recharts';
 import {Button} from '@/components/ui/button';
 import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table';
@@ -21,20 +21,36 @@ function SkillRadar({metrics}:{metrics:ReportMetric[]}){
  if(points.length<3||scales.length!==1||scales[0]==null||scales[0]<=0)return <Block title="Skill profile / spider graph"><p className="mb-4 text-sm text-muted-foreground">{points.length<3?'At least three source metrics are needed to draw the graph.':'A shared score scale was not supplied, so the metrics are shown without assuming a chart scale.'}</p><MetricTable metrics={metrics}/></Block>;
  return <Block title="Skill profile / spider graph"><div role="img" aria-label={`Skill profile on a source scale of 0 to ${scales[0]}`} className="h-72"><ResponsiveContainer width="100%" height="100%"><RadarChart data={points}><PolarGrid stroke="var(--border)"/><PolarAngleAxis dataKey="label" tick={{fill:'var(--foreground)',fontSize:11}}/><PolarRadiusAxis domain={[0,scales[0]]}/><Radar isAnimationActive={false} name="Source score" dataKey="value" stroke="var(--accent)" fill="var(--primary)" fillOpacity={0.4}/><Tooltip/></RadarChart></ResponsiveContainer></div><MetricTable metrics={metrics}/></Block>;
 }
+const ReportVideoCache=createContext<((path:string)=>Promise<Blob>)|null>(null);
+export function ReportVideoProvider({children}:{children:React.ReactNode}){
+ const cache=useRef(new Map<string,Promise<Blob>>());
+ const controller=useRef<AbortController|null>(null);
+ useEffect(()=>()=>{controller.current?.abort();controller.current=null;cache.current.clear();},[]);
+ const load=useCallback((path:string)=>{
+  const existing=cache.current.get(path);if(existing)return existing;
+  controller.current??=new AbortController();
+  const pending=reportingResponse(path,undefined,controller.current.signal).then(response=>response.blob());
+  cache.current.set(path,pending);
+  void pending.catch(()=>{if(cache.current.get(path)===pending)cache.current.delete(path);});
+  return pending;
+ },[]);
+ return <ReportVideoCache.Provider value={load}>{children}</ReportVideoCache.Provider>;
+}
 export function QuestionVideo(props:{reportId:string;version:number;reference:string|null}){
  return <QuestionVideoContent key={`${props.reportId}:${props.version}:${props.reference}`} {...props}/>;
 }
 function QuestionVideoContent({reportId,version,reference}:{reportId:string;version:number;reference:string|null}){
+ const loadCached=useContext(ReportVideoCache);
  const [url,setUrl]=useState(''),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const [requested,setRequested]=useState(0);
- useEffect(()=>{if(!requested||!reference)return;const controller=new AbortController();let objectUrl='';setUrl('');setLoading(true);setError('');
+ useEffect(()=>{if(!reference)return;const controller=new AbortController();let objectUrl='';setUrl('');setLoading(true);setError('');
  async function loadVideo(){
   for(let attempt=0;attempt<3;attempt++){
    if(controller.signal.aborted)return;
    let blob:Blob;
    try{
-    const response=await reportingResponse(`/reports/${encodeURIComponent(reportId)}/media/${encodeURIComponent(reference!)}?version=${version}`,undefined,controller.signal);
-    blob=await response.blob();
+    const path=`/reports/${encodeURIComponent(reportId)}/media/${encodeURIComponent(reference!)}?version=${version}`;
+    blob=loadCached?await loadCached(path):await (await reportingResponse(path,undefined,controller.signal)).blob();
    }catch(cause){
     if(controller.signal.aborted)return;
     if(!(cause instanceof TypeError)||attempt===2)throw cause;
@@ -46,9 +62,9 @@ function QuestionVideoContent({reportId,version,reference}:{reportId:string;vers
   }
  }
  void loadVideo().catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof TypeError?'The video download was interrupted. Please retry.':cause.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
- return()=>{controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};},[requested,reference,reportId,version]);
+ return()=>{controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};},[requested,reference,reportId,version,loadCached]);
  if(!reference)return <p className="text-sm text-muted-foreground">Video unavailable for this question.</p>;
- return <VideoPlayer src={url} label="Authorized question video" loading={loading} error={error} autoPlay
+ return <VideoPlayer src={url} label="Authorized question video" loading={loading} error={error}
   onRequest={()=>setRequested(value=>value+1)}/>;
 }
 export function StoredReportEvidence({content,reportId,version}:{content:ReportContent;reportId:string;version:number}){

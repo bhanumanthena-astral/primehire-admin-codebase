@@ -51,6 +51,7 @@ export function formatDate(dateStr: string | null | undefined): string {
 }
 
 export interface NormalizedQuestion {
+  scoreLabel?: string;
   mcq?: McqResult;
   key: string;
   index: number;
