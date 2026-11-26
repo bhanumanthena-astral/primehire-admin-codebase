@@ -69,6 +69,7 @@ async def client(db, monkeypatch):
             "jobId": "job",
             "title": "Backend Engineer",
             "assigneeUserId": "recruiter",
+            "assignedDeveloperUserId": "technical_interviewer",
             "lifecycleStatus": "OPEN",
             "positionsTotal": 2,
             "positionsFilled": 0,
@@ -367,7 +368,7 @@ async def test_tracker_and_readonly_role(client, db):
     response = await client.get(
         "/api/recruitment/applications", headers=headers("technical_interviewer")
     )
-    assert response.status_code == 200 and response.json()["total"] == 1
+    assert response.status_code == 200 and response.json()["total"] == 3
     for method, path in [
         ("get", "/api/recruitment/tracker"),
         ("post", "/api/recruitment/interviews"),

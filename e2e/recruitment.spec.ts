@@ -356,3 +356,50 @@ test('recruiter compares the talent pool, reviews historical context and reuses 
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:'test-results/recruitment/talent-mobile.png',fullPage:true});
 });
+
+test('developer range table bulk shortlist reaches the admin scheduling queue', async ({page}) => {
+  const response=await page.request.post('/api/auth/login',{data:{email:'admin@example.com',password:'Browser-test-only-2026!'}});
+  expect(response.ok()).toBeTruthy();
+  const admin=await response.json();
+  const assigned=await page.request.put('/api/jobs/recruit-job/developer-assignment',{
+    headers:{Authorization:`Bearer ${admin.accessToken}`},data:{userId:'browser-technical_interviewer'},
+  });
+  expect(assigned.ok()).toBeTruthy();
+  await page.request.post('/api/auth/logout',{headers:{Authorization:`Bearer ${admin.accessToken}`}});
+  await page.goto('/login');
+  await page.getByPlaceholder('Enter Email / Phone No').fill('technical_interviewer@example.com');
+  await page.getByPlaceholder('Passcode').fill('Browser-test-only-2026!');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await page.getByRole('button',{name:'Jobs & assessments',exact:true}).click();
+  await page.getByLabel('Recruitment job scope').click();
+  await page.getByRole('option',{name:'Recruitment Platform Engineer',exact:true}).click();
+  const table=page.getByRole('table',{name:'Candidate assessments'});
+  await expect(table.getByRole('row')).toHaveCount(7);
+  const minimum=page.getByRole('slider',{name:'Minimum assessment score'});
+  await minimum.focus();
+  await minimum.press('ArrowRight');
+  await expect(minimum).toHaveAttribute('aria-valuenow','1');
+  await page.getByLabel('Minimum score percentage').fill('80');
+  await page.getByLabel('Maximum score percentage').fill('90');
+  await page.getByRole('button',{name:'Select all in range'}).click();
+  await expect(page.getByRole('button',{name:'Shortlist selected (3)'})).toBeEnabled();
+  await table.getByRole('button',{name:'Assessment score',exact:true}).click();
+  await expect(table.getByRole('columnheader',{name:'Assessment score'})).toHaveAttribute('aria-sort','ascending');
+  await page.screenshot({path:'test-results/recruitment/developer-table-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.screenshot({path:'test-results/recruitment/developer-table-mobile.png',fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.getByRole('button',{name:'Shortlist selected (3)'}).click();
+  await expect(page.getByText('3 candidates shortlisted. Administrators can now schedule their developer interviews.')).toBeVisible();
+  await expect(table.getByText('Developer shortlisted',{exact:true})).toHaveCount(3);
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();
+  await login(page);
+  await page.getByLabel('Pipeline stage filter').click();
+  await page.getByRole('option',{name:'Developer shortlisted',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Schedule developer interview',exact:true})).toHaveCount(3);
+  await page.screenshot({path:'test-results/recruitment/developer-shortlist-admin.png',fullPage:true});
+  await page.getByRole('button',{name:'Schedule developer interview',exact:true}).first().click();
+  await expect(page.getByRole('dialog').getByLabel('Assigned interviewer')).toContainText('Rahul Demo');
+  await expect(page.getByRole('dialog')).toContainText('Developer shortlisted. Schedule this round');
+});

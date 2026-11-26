@@ -46,6 +46,17 @@ class Strict(BaseModel):
 
 
 
+class BulkShortlist(Strict):
+    applicationIds: list[str] = Field(min_length=1, max_length=100)
+
+    @field_validator('applicationIds')
+    @classmethod
+    def valid_ids(cls, values):
+        if any(not value.strip() or len(value) > 100 for value in values):
+            raise ValueError('Application IDs must be nonempty and at most 100 characters')
+        return list(dict.fromkeys(values))
+
+
 class Schedule(Strict):
 
     applicationId: str = Field(min_length=1, max_length=100)

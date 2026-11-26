@@ -9,7 +9,8 @@ async def assign(client, **extra):
 
 async def test_developer_review_handoff(client, db):
     tech = headers('technical_interviewer')
-    assert (await client.get('/api/recruitment/applications', headers=tech)).json()['total'] == 0
+    assert (await client.get('/api/recruitment/applications', headers=tech)).json()['total'] == 3
+    assert (await client.post('/api/recruitment/applications/app0/shortlist', headers=tech)).status_code == 403
     assert (await assign(client)).status_code == 200
     assert (await client.get('/api/recruitment/capabilities', headers=tech)).json()['portalName'] == 'Backend Developer'
     jobs = (await client.get('/api/recruitment/jobs', headers=tech)).json()['items']
@@ -47,7 +48,7 @@ async def test_review_scope_and_revocation(client, db):
     assert await db.report_catalog.count_documents(await catalog_scope(db, actor)) == 1
     assert (await assign(client, reviewJobIds=[], expectedRevision=1)).status_code == 200
     assert await db.applications.count_documents(await scope(db, actor)) == 0
-    assert (await client.post('/api/recruitment/applications/app0/shortlist', headers=headers('technical_interviewer'))).status_code == 404
+    assert (await client.post('/api/recruitment/applications/app0/shortlist', headers=headers('technical_interviewer'))).status_code == 403
 
 
 async def test_assessment_permission_required(client):

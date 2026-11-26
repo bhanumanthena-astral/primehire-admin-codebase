@@ -36,6 +36,7 @@ from ..schemas.recruitment import (
     QuestionsAction,
     QuestionAnswer,
     Reveal,
+    BulkShortlist,
 )
 from ..services import recruitment as service
 
@@ -115,6 +116,23 @@ async def jobs(
 @router.post('/applications/{key}/shortlist')
 async def shortlist(key: str, user=Depends(require_permission('recruitment.review')), db=Depends(database)):
     writable(user)
+    return await _shortlist_application(db, user, key)
+
+
+@router.post('/applications/shortlist-bulk')
+async def shortlist_bulk(payload: BulkShortlist, user=Depends(require_permission('recruitment.review')), db=Depends(database)):
+    writable(user)
+    shortlisted, failed = [], []
+    for key in payload.applicationIds:
+        try:
+            await _shortlist_application(db, user, key)
+            shortlisted.append(key)
+        except HTTPException as error:
+            failed.append({'applicationId': key, 'message': error.detail})
+    return {'shortlistedIds': shortlisted, 'failed': failed}
+
+
+async def _shortlist_application(db, user, key):
     async with lease(db, user.org_id, [f'application:{key}']):
         application = await app_allowed(db, user, key)
         if application['jobId'] not in await review_jobs(db, user):
@@ -198,6 +216,7 @@ async def applications(
     search: str = Query("", max_length=100),
     applicationSource: str = Query("",max_length=50),
     schedulingRound: Literal["technical", "managerial", "hr"] | None = None,
+    developerShortlisted: bool = False,
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     user=Depends(require_permission("recruitment.view")),
@@ -213,6 +232,8 @@ async def applications(
         if stage not in {s.value for s in Stage}:
             raise HTTPException(422, "Invalid recruitment stage")
         filters["currentStage"] = stage
+    if developerShortlisted:
+        filters['developerShortlist.userId'] = {'$exists': True, '$ne': None}
     if applicationSource:
         filters["applicationSource"]={"$in":[None,"","unknown"]} if applicationSource=="unknown" else applicationSource
     query = {"$and": [scope, filters]}
@@ -268,7 +289,9 @@ async def applications(
                 }
             }
         )
-    sort_fields = {"name": "candidateRows.name", "ats": "_sortScore", "stage": "currentStage", "status": "invitationState" if invitationCandidates else "assessment.state", "score": "assessment.score"}
+    sort_fields = {"name": "candidateRows.name", "ats": "_sortScore", "stage": "currentStage", "status": "invitationState" if invitationCandidates else "_sortStatus", "score": "assessment.score"}
+    if sortBy == 'status' and not invitationCandidates:
+        pipeline.append({'$addFields': {'_sortStatus': {'$ifNull': ['$assessment.status', {'$ifNull': ['$assessment.state', 'Not invited']}]}}})
     if sortBy == "ats":
         pipeline.append({"$addFields": {"_sortScore": {"$ifNull": ["$matchScore", "$scoreBreakdown.ats"]}}})
     ordering = {sort_fields[sortBy]: -1 if descending else 1, "applicationId": 1} if sortBy else {"createdAt": -1, "applicationId": 1}

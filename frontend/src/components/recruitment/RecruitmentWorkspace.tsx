@@ -117,8 +117,8 @@ export function RecruitmentWorkspace({
   const [bucket, setBucket] = useState("upcoming");
   const [round, setRound] = useState<string>(initialRound || "");
   const scheduling = schedulingFilters[view === "interviews" ? bucket : stage];
-  const applicationStage = scheduling ? "" : stage;
-  const applicationFilter = `jobId=${encodeURIComponent(job)}&stage=${applicationStage}${scheduling ? `&schedulingRound=${scheduling.round}` : ""}`;
+  const applicationStage = scheduling || stage === 'developer_shortlisted' ? "" : stage;
+  const applicationFilter = `jobId=${encodeURIComponent(job)}&stage=${applicationStage}${scheduling ? `&schedulingRound=${scheduling.round}` : ""}${stage==='developer_shortlisted'?'&developerShortlisted=true':''}`;
   const [month, setMonth] = useState(() =>
     dateKey(new Date().toISOString()).slice(0, 7),
   );
@@ -201,6 +201,7 @@ export function RecruitmentWorkspace({
   }, [initialScheduleApplication, caps, scopedJobId, impersonatingUser, onInitialScheduleHandled]);
   const eligibleOnPage = apps.items.filter(canSchedule);
   useEffect(() => {
+    if (search === query) return;
     const timer = setTimeout(() => {
       setQuery(search);
       setPage(0);
@@ -410,6 +411,7 @@ export function RecruitmentWorkspace({
                     onValueChange={setStage}
                   >
                     <option value="">All stages</option>
+                    <option value="developer_shortlisted">Developer shortlisted</option>
                     {Object.entries(schedulingFilters).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
                     {STAGES.map((s) => (
                       <option key={s} value={s}>
@@ -504,13 +506,14 @@ export function RecruitmentWorkspace({
                         </div>
                         <div className="mt-4 flex flex-wrap gap-2">
                           <Tag>{stageLabel(a.currentStage)}</Tag>
+                          {a.developerShortlist && <Tag>Developer shortlisted</Tag>}
                           {pendingRound(a) && <Tag>{pendingRound(a)} interview scheduling pending</Tag>}
                           {a.assessment?.score != null && (
                             <Tag>Assessment {a.assessment.score}%</Tag>
                           )}
                         </div>
                         <p className="mt-3 text-xs text-muted-foreground">
-                          {a.developerReviewPending ? 'Awaiting developer assessment review · ' : a.developerShortlist ? 'Developer shortlisted · ' : ''}
+                          {a.developerReviewPending ? 'Awaiting developer assessment review · ' : a.developerShortlist && !a.activeInterview && a.currentStage==='ROUND1_PENDING_ASSIGNMENT' ? 'Ready for admin to schedule the developer round · ' : ''}
                           {a.candidate.currentDesignation ||
                             "Candidate profile"}
                           {a.candidate.experienceYears != null
@@ -555,7 +558,7 @@ export function RecruitmentWorkspace({
                                   setReschedule(null);
                                 }}
                               >
-                                {pendingRound(a) === "HR" ? "Schedule HR interview" : "Schedule interview"}
+                                {pendingRound(a) === "HR" ? "Schedule HR interview" : a.developerShortlist && pendingRound(a)==='Technical' ? 'Schedule developer interview' : "Schedule interview"}
                               </Button>
                             )}
                         </div>

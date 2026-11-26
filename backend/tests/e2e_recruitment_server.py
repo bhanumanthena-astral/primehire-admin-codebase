@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 os.environ.update(
     RECRUITMENT_PORTALS_ENABLED="true",
     MONGODB_DATABASE="primehire_admin_v2",
+    DATABASE_BACKEND="mongodb",
+    POSTGRES_URL="",
     RESUME_ATS_MODEL="",
 )
 import e2e_server as base

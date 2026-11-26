@@ -269,6 +269,7 @@ export function ScheduleDialog({
               ))}
             </AppSelect>
           </label>
+          {application.developerShortlist&&round==='technical'&&!existing&&<p className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">Developer shortlisted. Schedule this round with the developer who selected the candidate. Their account is preselected.</p>}
           {interviewer&&assignedStaff&&<p role="status" className="mt-3 text-xs text-muted-foreground">
             {assignedStaff.name}{calendarConnected?' has connected Google Calendar.':' has not connected Google Calendar. You can schedule manually; they can connect it later.'}
           </p>}

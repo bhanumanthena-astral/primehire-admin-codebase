@@ -731,7 +731,7 @@ def test_job_activity_404_and_forbidden(client):
     assert client.get("/api/jobs/no-such-job/activity", headers=headers).status_code == 404
     job = post_job(client, headers, headers, "ACT-2")
     iv = _interviewer_headers()
-    assert client.get(f"/api/jobs/{job['jobId']}/activity", headers=iv).status_code == 403
+    assert client.get(f"/api/jobs/{job['jobId']}/activity", headers=iv).status_code == 404
 
 
 def test_audit_log_filters_by_resource_id(client):
